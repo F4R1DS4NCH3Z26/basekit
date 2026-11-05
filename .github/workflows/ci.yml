@@ -1,0 +1,44 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: npm test (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 22, 24]
+    steps:
+      # Pin these actions by commit SHA before relying on this workflow for releases.
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ matrix.node }}
+      - run: npm ci
+      # Includes acceptance 1-11; the compose tests (9) run because the runner has Docker.
+      - run: npm test
+
+  e2e:
+    name: make dev real (${{ matrix.stack }})
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        stack: [fastapi, laravel, nextjs, spring]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - run: npm ci && npm run build
+      # Acceptance 12: make new-app + make dev, answering on the stack healthcheck.
+      - run: bash scripts/e2e.sh ${{ matrix.stack }}
