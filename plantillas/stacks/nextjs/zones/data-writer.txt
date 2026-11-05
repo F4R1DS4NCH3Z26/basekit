@@ -1,0 +1,6 @@
+src/features/*/schemas.ts
+src/features/*/services.ts
+src/features/*/actions.ts
+src/features/*/server.ts
+src/features/*/types.ts
+src/app/api/**

@@ -1,0 +1,15 @@
+pyproject.toml
+uv.lock
+poetry.lock
+requirements*.txt
+alembic.ini
+alembic/**
+migrations/**
+src/core/**
+src/main.py
+src/modules/*/__init__.py
+src/modules/*/tests/__init__.py
+tests/conftest.py
+src/modules/*/tests/conftest.py
+manage.py
+src/__init__.py

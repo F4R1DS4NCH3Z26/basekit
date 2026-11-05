@@ -1,0 +1,2 @@
+src/modules/*/tests/test_*.py
+tests/**/test_*.py

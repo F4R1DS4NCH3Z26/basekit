@@ -1,0 +1,43 @@
+# Overlay de PostgreSQL (activado por infra-setup). La app recibe la conexión en todos los formatos habituales.
+x-db-env: &db-env
+  DB_DRIVER: postgres
+  DB_CONNECTION: pgsql
+  DB_HOST: db
+  DB_PORT: "5432"
+  DB_DATABASE: ${DB_NAME:-app}
+  DB_USERNAME: ${DB_USER:-app}
+  DB_PASSWORD: ${DB_PASSWORD}
+  DATABASE_URL: postgresql://${DB_USER:-app}:${DB_PASSWORD}@db:5432/${DB_NAME:-app}
+  SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/${DB_NAME:-app}
+  SPRING_DATASOURCE_USERNAME: ${DB_USER:-app}
+  SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD}
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${DB_NAME:-app}
+      POSTGRES_USER: ${DB_USER:-app}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Define DB_PASSWORD (make env)}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    # Sin "ports": la BD no se expone al host. Usa `make db-shell`.
+  app:
+    depends_on:
+      db:
+        condition: service_healthy
+    environment: *db-env
+  migrate:
+    depends_on:
+      db:
+        condition: service_healthy
+    environment: *db-env
+
+volumes:
+  db-data: {}

@@ -1,0 +1,14 @@
+{
+  "id": "laravel",
+  "name": "PHP · Laravel (monolito modular)",
+  "port": 8000,
+  "detect": { "files": ["artisan"], "manifest": "composer.json", "contains": "laravel/framework" },
+  "appMarker": "composer.json",
+  "roles": ["data-writer", "app-writer", "http-writer", "qa-writer"],
+  "skills": [
+    ["php-scaffold", "Módulo nuevo: estructura + contrato"],
+    ["php-patterns", "Antes de escribir cualquier capa; auth en references/auth.md"],
+    ["php-verify", "Lo usa `make verify`"]
+  ],
+  "defaultAuth": "sanctum"
+}

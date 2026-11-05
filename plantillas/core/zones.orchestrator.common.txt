@@ -1,0 +1,25 @@
+# Común a todos los stacks: solo la sesión principal (orquestador) edita esto
+AGENTS.md
+CLAUDE.md
+README.md
+GLOSSARY.md
+GLOSSARY-MAP.md
+docs/**
+.agents/**
+.claude/**
+.opencode/**
+opencode.json
+.hermes/**
+.gemini/**
+.cursor/**
+.github/**
+skills-lock.json
+Makefile
+.make/**
+Dockerfile
+compose.yaml
+compose.*.yaml
+.dockerignore
+.env.example
+.gitignore
+.editorconfig

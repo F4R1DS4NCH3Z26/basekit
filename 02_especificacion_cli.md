@@ -1,0 +1,218 @@
+# 02 · Especificación del CLI
+
+Esta guía define **qué debe hacer** el CLI, en qué orden y con qué reglas. Las plantillas que copia están en `plantillas/`. En los ejemplos se usa el nombre provisional `basekit`.
+
+## 1. Objetivo y límites
+
+El CLI **prepara**; el agente **decide**.
+
+- **Determinista.** El CLI copia plantillas, genera adaptadores por herramienta e instala skills. No decide la base de datos ni la autenticación: eso lo hace el agente con la skill `project-bootstrap`, conversando con el usuario. La única excepción es que el usuario pase `--db`.
+- **Idempotente.** Ejecutarlo dos veces no cambia nada la segunda vez. Antes de escribir un archivo generado, compara su contenido y no lo toques si es igual. `manifest.updatedAt` solo cambia si cambió algo más.
+- **Nunca sobrescribe archivos del usuario.** Solo actualiza bloques gestionados (marcados) y archivos generados (con cabecera "Generado por…").
+- **Opera solo dentro del directorio del proyecto.**
+- **Recomendación técnica**: Node ≥ 20 sin dependencias. El CLI `skills`, que es obligatorio, ya necesita Node/npx, así que no añades requisitos, y sin dependencias no añades riesgo de cadena de suministro. Si eliges Go o Rust, el comportamiento es el mismo.
+
+## 2. Comandos
+
+| Comando | Qué hace |
+|---|---|
+| `init [dir]` | Crea la base completa en un proyecto nuevo o existente |
+| `sync [dir] [--agents a,b]` | Regenera el bloque de `AGENTS.md`, los adaptadores y los enlaces desde `.agents/`; con `--agents`, también añade herramientas |
+| `doctor [dir]` | Diagnóstico del entorno y del proyecto (sección 11) |
+| `stacks` | Lista los stacks (leídos de `plantillas/stacks/*/stack.json`) y los agentes soportados |
+
+Flags de `init`:
+
+| Flag | Valores | Por defecto |
+|---|---|---|
+| `--stack` | `nextjs`, `fastapi`, `laravel`, `spring` | detectado; si no, se pregunta |
+| `--agents` | lista separada por comas (ver guía 03) | detectados; si no, se pregunta (sugerencia: `claude-code,opencode`) |
+| `--context` | texto libre: "de qué trata el proyecto" | se pregunta (puede ir vacío) |
+| `--db` | `auto`, `postgres`, `mysql`, `sqlite`, `none` | `auto` (lo decide el bootstrap) |
+| `--redis` | booleano | no |
+| `--no-external-skills` | omite `npx skills add` (CI o sin red) | no |
+| `--force` | reemplaza las skills del kit modificadas localmente | no |
+| `--dry-run` | muestra lo que haría sin escribir | no |
+| `--yes`, `-y` | no interactivo; usa flags y valores por defecto | no |
+
+## 3. Algoritmo de `init` (orden exacto)
+
+1. **Directorio**: resolverlo (expandir `~`) y crearlo si no existe.
+2. **Stack**: flag → detección (sección 6) → pregunta → error si sigue sin definirse.
+3. **Agentes**: flag → detección (guía 03, sección 1) → pregunta. Valida contra la lista blanca.
+4. **Contexto** (texto) y **BD** (`auto` por defecto).
+5. **Git**: si no hay `.git`, ejecutar `git init` (zone-check lo necesita).
+6. **Núcleo `.agents/`**, siguiendo la tabla de la sección 4: README, roles, zonas, skills del kit (scripts con permisos 755) y `manifest.json`.
+7. **`AGENTS.md`**: bloque gestionado (sección 7) con los placeholders resueltos (sección 5). Si supera 18.000 caracteres, avisar: Hermes trunca a partir de 20.000.
+8. **Docker y Make**:
+   - `Makefile`: si existe sin la marca `generado por basekit`, escribir `Makefile.basekit` y avisar.
+   - Copiar `files/` del stack sin sobrescribir.
+   - Copiar el `starter/` si falta el `appMarker`.
+   - Agregar el bloque de `.gitignore`.
+9. **Documentación**: `README.md`, `docs/PROJECT.md`, `docs/ARCHITECTURE.md`, `docs/RUNBOOK.md`, `docs/AUTH.md` y `docs/specs/.gitkeep`, solo si no existen. **No crear** `GLOSSARY.md` ni `docs/adr/`: los crea `domain-modeling` cuando hay contenido real.
+10. **Adaptadores** para cada agente elegido (guía 03, sección 3).
+11. **Enlaces de skills** para los agentes que no leen `.agents/skills/`: enlace relativo y, si falla (Windows sin permisos), copia.
+12. **Skills externas** (sección 9), salvo con `--no-external-skills`.
+13. **Infraestructura**: si `--db ≠ auto`, ejecutar `bash .agents/skills/infra-setup/scripts/infra.sh --db <db> [--redis]`. Es el **mismo script** que usa el agente, así que la lógica vive en un solo lugar.
+14. **Resumen y próximo paso.** Imprimir el prompt sugerido:
+    > «Lee AGENTS.md y ejecuta el bootstrap. El proyecto trata de: `<contexto>`»
+
+    Si falta la app del framework, indicar también `make new-app`.
+
+Cada acción se reporta con `+` (creado), `~` (actualizado), `=` (existía, se conserva) o `!` (aviso).
+
+## 4. Mapeo plantilla → proyecto
+
+| Origen (`plantillas/`) | Destino | Política |
+|---|---|---|
+| `core/AGENTS.block.md` | `AGENTS.md` | Bloque gestionado |
+| `core/Makefile` | `Makefile` | Crear; si existe sin marca → `Makefile.basekit` |
+| `core/README.tpl.md` | `README.md` | Crear (con render) |
+| `core/docs/*.md` | `docs/*.md` | Crear (con render) |
+| `core/agents-README.md` | `.agents/README.md` | Crear |
+| `core/zones.orchestrator.common.txt` + `stacks/<s>/zones/orchestrator.stack.txt` | `.agents/zones/orchestrator.txt` | Crear (concatenados) |
+| `core/gitignore.block` | `.gitignore` | Bloque gestionado (`# >>> basekit` … `# <<< basekit`) |
+| `skills/{project-bootstrap,infra-setup,zone-check}/` | `.agents/skills/<nombre>/` | Copiar; las modificadas solo se reemplazan con `--force` |
+| `stacks/<s>/roles/*.md` | `.agents/roles/` | Crear |
+| `stacks/<s>/zones/*.txt` (menos `orchestrator.stack.txt`) | `.agents/zones/` | Crear |
+| `stacks/<s>/skills/*/` | `.agents/skills/` | Igual que las skills core |
+| `stacks/<s>/files/**` (incluye `.make/`, `.dockerignore`, `.env.example`) | raíz | Crear sin sobrescribir |
+| `stacks/<s>/starter/**` | raíz | Solo si falta `appMarker` (hoy solo FastAPI) |
+| `stacks/<s>/AGENTS.section.md` | dentro del bloque de `AGENTS.md` | Placeholder `{{STACK_SECTION}}` |
+
+## 5. Placeholders
+
+| Placeholder | Valor |
+|---|---|
+| `{{VERSION}}` | Versión del CLI |
+| `{{STACK_NAME}}` | `stack.json → name` |
+| `{{STACK_SKILLS}}` | Filas de tabla desde `stack.json → skills`: `` | `nombre` | cuándo | `` |
+| `{{STACK_SECTION}}` | Contenido de `AGENTS.section.md` |
+| `{{PROJECT_NAME}}` | Nombre de la carpeta |
+| `{{ONE_LINER}}` | Contexto, o "Descripción pendiente: la completa el bootstrap." |
+| `{{CONTEXT}}` | Contexto, o "_(sin contexto inicial: el bootstrap lo pedirá)_" |
+| `{{PORT}}` | `stack.json → port` |
+
+**No renderices** `__NAME__`, `__PASCAL__`, `__KEBAB__`, `__SNAKE__`, `__PKG__` (los usan los scripts de scaffold) ni `__GENERATE__` / `__GENERATE_B64__` (los usa `make env`).
+
+## 6. `stack.json` y detección
+
+```json
+{
+  "id": "nextjs",
+  "name": "Next.js (App Router) + TypeScript",
+  "port": 3000,
+  "detect": { "files": ["next.config.ts"], "manifest": "package.json", "contains": "\"next\"" },
+  "appMarker": "package.json",
+  "roles": ["data-writer", "logic-writer", "ui-writer", "qa-writer"],
+  "skills": [["nextjs-scaffold", "Feature nueva: estructura + contrato"]],
+  "defaultAuth": "better-auth"
+}
+```
+
+**Detección**: para cada stack, se detecta si existe alguno de `detect.files`, o si `detect.manifest` existe y contiene `detect.contains`. Gana el primero que coincida.
+
+**Agregar un stack** = una carpeta nueva en `plantillas/stacks/` con esta estructura. El CLI no debe tener nada específico de un stack en su código.
+
+## 7. Bloques gestionados
+
+- Marcadores: `<!-- basekit:start …` / `<!-- basekit:end -->` en Markdown, y `# >>> basekit` / `# <<< basekit` en `.gitignore` y `.env.example`.
+- Si el bloque existe, se reemplaza lo que hay entre los marcadores. Si no existe, se agrega al final, con una línea en blanco de separación.
+- Todo lo que está fuera del bloque es del usuario y no se toca. Así el kit funciona en proyectos que ya tienen `AGENTS.md`.
+
+## 8. `.agents/manifest.json`
+
+```json
+{
+  "kit": "basekit",
+  "version": "0.1.0",
+  "stack": "nextjs",
+  "agents": ["claude-code", "opencode", "hermes-agent"],
+  "options": { "db": "auto", "redis": false },
+  "externalSkills": {
+    "cli": "skills@1.7.4",
+    "source": "https://github.com/mattpocock/skills",
+    "ref": "5beb35b040e3de97e54fa9e386d7e42d15c295c2",
+    "skills": ["grill-me", "grill-with-docs", "grilling", "domain-modeling"]
+  },
+  "createdAt": "…",
+  "updatedAt": "…"
+}
+```
+
+Al reescribirlo, conserva `createdAt` y cualquier campo desconocido; así un `upgrade` futuro podrá migrar.
+
+## 9. Skills externas (obligatorias)
+
+```bash
+DISABLE_TELEMETRY=1 DO_NOT_TRACK=1 npx -y skills@1.7.4 add \
+  https://github.com/mattpocock/skills/tree/5beb35b040e3de97e54fa9e386d7e42d15c295c2 \
+  -s grill-me grill-with-docs grilling domain-modeling \
+  -a <agentes elegidos> -y
+```
+
+- **Son cuatro, no dos.** `grill-me` y `grill-with-docs` son envoltorios de una línea:
+  - `grill-me` = "Call the Skill tool with grilling".
+  - `grill-with-docs` = "grilling + domain-modeling".
+
+  Sin esas dos dependencias quedan rotas.
+- `grill-me` y `grill-with-docs` tienen `disable-model-invocation: true`, así que **las invoca el usuario** (`/grill-with-docs`). El agente usa directamente `grilling` y `domain-modeling`; por eso `project-bootstrap` las nombra a ellas.
+- El CLI `skills` deja la copia canónica en `.agents/skills/`, enlaza `.claude/skills/` y `.hermes/skills/`, y escribe `skills-lock.json` con el commit y el hash. **Commitea `skills-lock.json`.**
+- Después de instalar, comprueba que existan los cuatro `.agents/skills/<s>/SKILL.md`. Si falla, imprime el comando para reintentarlo; no abortes el `init`.
+- **Auditoría (19 de octubre de 2026)**: solo contienen markdown y `agents/openai.yaml`, sin scripts, URLs ni comandos. Licencia MIT.
+- **Para actualizar los pines**:
+  1. Elige un commit o versión con al menos 14 días de antigüedad.
+  2. Revisa el diff de las cuatro carpetas: `git diff <viejo> <nuevo> -- skills/productivity/grill* skills/productivity/grilling skills/engineering/grill-with-docs skills/engineering/domain-modeling`.
+  3. Busca contenido ejecutable (`curl`, `http`, `eval`, `npx`, scripts nuevos).
+  4. Cambia la constante y publica.
+
+## 10. `sync`
+
+1. Lee el manifest (error si no existe). Con `--agents`, reemplaza la lista y la valida.
+2. Re-renderiza el bloque de `AGENTS.md`.
+3. Regenera los archivos **generados**: `.claude/agents/*.md` y `.opencode/agents/*.md`, desde `.agents/roles/` y `.agents/zones/`.
+4. Crea solo si faltan: `CLAUDE.md`, `.claude/settings.json`, `opencode.json` y `.gemini/settings.json`. Son del usuario una vez creados.
+5. Rehace los enlaces de skills que falten. Si se añadieron agentes, reinstala las skills externas para ellos.
+
+## 11. `doctor`
+
+Imprime `OK` o `FALTA` con una sugerencia:
+- Node ≥ 20, git, docker y `docker compose` v2, make, openssl.
+- El manifest, y el bloque de `AGENTS.md` (y su tamaño).
+- `Makefile`, `.make/stack.mk`, `Dockerfile`, los tres `compose*.yaml` y `.env.example`.
+- El `appMarker` (si falta → `make new-app`).
+- Cada `SKILL.md` esperado (core, stack y las cuatro externas).
+- Los enlaces de skills por agente.
+- Hermes: que no exista `.hermes.md` ni `HERMES.md`.
+- `.env`.
+
+## 12. Requisitos de seguridad del CLI
+
+- **Listas blancas** para stack, agentes y BD. Nunca construyas rutas con texto del usuario sin normalizarlas; comprueba que el destino resuelto empiece por el directorio del proyecto.
+- **Sin shell con datos del usuario.** Usa `spawn` con un array de argumentos. El `--context` solo se escribe en archivos; nunca se pasa a un comando.
+- **Nunca leer** `.env` ni `.env.prod`.
+- **Enlaces simbólicos relativos** (el repo sigue funcionando si se mueve); copia como respaldo.
+- **Telemetría desactivada** al llamar a `skills`. Versiones exactas (nunca `@latest`) y con al menos 14 días.
+- **`--dry-run` real**: cero escrituras y cero procesos externos.
+
+## 13. Criterios de aceptación (tests del CLI)
+
+| # | Prueba | Esperado |
+|---|---|---|
+| 1 | `init` en carpeta vacía, por cada stack | Sin errores; `make help` lista ≥ 25 objetivos |
+| 2 | `init` dos veces seguidas | La segunda solo muestra `=` y "al día"; `git status` queda vacío |
+| 3 | Proyecto con `AGENTS.md` y `Makefile` propios | Contenido original intacto; bloque añadido; `Makefile.basekit` |
+| 4 | `--dry-run` | `git status` vacío después |
+| 5 | `--stack foo`, `--agents x`, `--db mongo` | Error claro, exit ≠ 0 |
+| 6 | `bash .agents/skills/zone-check/scripts/check_zones.sh --owners` justo después de `init` | `0 sin dueño` |
+| 7 | `make env` | Sin `__GENERATE__` restantes; permisos 600; secretos distintos entre sí |
+| 8 | `make -n dev`, `make -n verify SCOPE=…`, `make -n migrate`, `make -n prod-up` | Incluye los overlays existentes |
+| 9 | `docker compose -f compose.yaml -f compose.dev.yaml -f compose.db.yaml config` | Válido, y `migrate` recibe `DATABASE_URL` |
+| 10 | Frontmatter de `.opencode/agents/*.md` | YAML válido; `edit` con `"*": deny` y las zonas en `allow` |
+| 11 | Enlaces en `.claude/skills/` y `.hermes/skills/` | Resuelven a `.agents/skills/*` |
+| 12 | `make dev` real (con Docker) por stack, después de `make new-app` | Responde en el healthcheck del stack |
+
+**Estado verificado con un prototipo y estas plantillas:**
+- Pasaron la 1, 3, 4, 5, 6, 7, 8, 10 y 11.
+- La 2 falló en el prototipo: reescribía los archivos generados y el `updatedAt`. Por eso la regla de comparar contenido está arriba.
+- **La 9 y la 12 no las pude ejecutar** porque no tenía Docker: son las primeras que debe correr tu CI.

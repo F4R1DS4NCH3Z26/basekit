@@ -1,0 +1,2 @@
+src/modules/*/router.py
+src/modules/*/dependencies.py

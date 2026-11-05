@@ -1,0 +1,17 @@
+services:
+  app:
+    build:
+      target: prod
+    env_file: [.env.prod]
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SERVER_ERROR_INCLUDE_STACKTRACE: never
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health,info
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    restart: unless-stopped
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+  migrate:
+    env_file: [.env.prod]

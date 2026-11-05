@@ -1,0 +1,14 @@
+pom.xml
+build.gradle*
+settings.gradle*
+gradle/**
+gradle.properties
+mvnw*
+.mvn/**
+src/main/resources/application*
+src/main/java/**/core/**
+src/main/java/**/*Application.java
+src/main/java/**/modules/*/package-info.java
+src/main/java/**/modules/*/*/package-info.java
+src/test/java/**/ArchitectureTest.java
+src/test/resources/**

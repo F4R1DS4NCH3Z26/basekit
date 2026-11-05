@@ -1,0 +1,14 @@
+{
+  "id": "nextjs",
+  "name": "Next.js (App Router) + TypeScript",
+  "port": 3000,
+  "detect": { "files": ["next.config.js", "next.config.mjs", "next.config.ts"], "manifest": "package.json", "contains": "\"next\"" },
+  "appMarker": "package.json",
+  "roles": ["data-writer", "logic-writer", "ui-writer", "qa-writer"],
+  "skills": [
+    ["nextjs-scaffold", "Feature nueva: estructura + contrato"],
+    ["nextjs-patterns", "Antes de escribir cualquier capa; auth en references/auth.md"],
+    ["nextjs-verify", "Lo usa `make verify`"]
+  ],
+  "defaultAuth": "better-auth"
+}

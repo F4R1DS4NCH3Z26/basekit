@@ -1,0 +1,16 @@
+services:
+  app:
+    build:
+      target: prod
+    env_file: [.env.prod]
+    environment:
+      NODE_ENV: production
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    restart: unless-stopped
+    cap_drop: [ALL]
+  migrate:
+    build:
+      target: build
+    env_file: [.env.prod]
+    command: ["npx", "--no-install", "prisma", "migrate", "deploy"]

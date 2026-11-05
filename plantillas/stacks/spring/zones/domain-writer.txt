@@ -1,0 +1,3 @@
+src/main/java/**/modules/*/domain/**
+src/main/java/**/modules/*/infrastructure/**
+src/main/resources/db/migration/**

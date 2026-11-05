@@ -1,0 +1,43 @@
+# Overlay de MySQL 8.4 LTS (activado por infra-setup).
+x-db-env: &db-env
+  DB_DRIVER: mysql
+  DB_CONNECTION: mysql
+  DB_HOST: db
+  DB_PORT: "3306"
+  DB_DATABASE: ${DB_NAME:-app}
+  DB_USERNAME: ${DB_USER:-app}
+  DB_PASSWORD: ${DB_PASSWORD}
+  DATABASE_URL: mysql://${DB_USER:-app}:${DB_PASSWORD}@db:3306/${DB_NAME:-app}
+  SPRING_DATASOURCE_URL: jdbc:mysql://db:3306/${DB_NAME:-app}
+  SPRING_DATASOURCE_USERNAME: ${DB_USER:-app}
+  SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD}
+
+services:
+  db:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: ${DB_NAME:-app}
+      MYSQL_USER: ${DB_USER:-app}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?Define DB_PASSWORD (make env)}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?Define DB_ROOT_PASSWORD (make env)}
+    volumes:
+      - db-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "--silent"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+  app:
+    depends_on:
+      db:
+        condition: service_healthy
+    environment: *db-env
+  migrate:
+    depends_on:
+      db:
+        condition: service_healthy
+    environment: *db-env
+
+volumes:
+  db-data: {}

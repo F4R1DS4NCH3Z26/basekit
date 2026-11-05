@@ -1,0 +1,13 @@
+composer.json
+composer.lock
+config/**
+bootstrap/**
+routes/**
+app/Providers/**
+src/Modules/*/Providers/**
+phpstan.neon*
+pint.json
+phpunit.xml*
+.php-cs-fixer*
+tests/Pest.php
+tests/TestCase.php

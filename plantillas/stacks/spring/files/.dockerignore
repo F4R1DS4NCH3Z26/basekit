@@ -1,0 +1,17 @@
+.git
+target
+build
+.gradle
+.idea
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.jks
+*.p12
+.agents
+.claude
+.opencode
+.hermes
+docs

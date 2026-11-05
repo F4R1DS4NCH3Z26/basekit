@@ -1,0 +1,16 @@
+services:
+  app:
+    build:
+      target: dev
+    env_file: [.env]
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+    ports:
+      - "127.0.0.1:${APP_PORT:-8080}:8080"
+    volumes:
+      - .:/app
+      - m2:/root/.m2
+  migrate:
+    env_file: [.env]
+volumes:
+  m2: {}

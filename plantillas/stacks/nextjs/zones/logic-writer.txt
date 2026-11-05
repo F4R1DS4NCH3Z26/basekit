@@ -1,0 +1,2 @@
+src/features/*/stores.ts
+src/features/*/hooks/**

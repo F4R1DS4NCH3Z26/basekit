@@ -1,0 +1,16 @@
+# Base común. Se combina con compose.dev.yaml o compose.prod.yaml (+ compose.db.yaml / compose.redis.yaml). Usa `make`.
+# migrate: imagen oficial de Flyway sobre src/main/resources/db/migration (la app también migra al arrancar).
+services:
+  app:
+    build:
+      context: .
+    security_opt: ["no-new-privileges:true"]
+  migrate:
+    image: flyway/flyway:11
+    profiles: ["tools"]
+    entrypoint: ["sh", "-c"]
+    command:
+      - 'flyway -url="$$SPRING_DATASOURCE_URL" -user="$$SPRING_DATASOURCE_USERNAME" -password="$$SPRING_DATASOURCE_PASSWORD" -locations=filesystem:/flyway/sql migrate'
+    volumes:
+      - ./src/main/resources/db/migration:/flyway/sql:ro
+    security_opt: ["no-new-privileges:true"]

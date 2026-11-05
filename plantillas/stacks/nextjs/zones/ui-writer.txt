@@ -1,0 +1,9 @@
+src/features/*/components/**
+src/features/*/index.ts
+src/components/**
+src/app/page.tsx
+src/app/**/page.tsx
+src/app/**/layout.tsx
+src/app/**/loading.tsx
+src/app/**/error.tsx
+src/app/**/not-found.tsx

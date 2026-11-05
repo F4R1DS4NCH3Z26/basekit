@@ -1,0 +1,22 @@
+services:
+  app:
+    build:
+      target: dev
+    env_file: [.env]
+    environment:
+      APP_ENV: local
+      APP_DEBUG: "true"
+    ports:
+      - "127.0.0.1:${APP_PORT:-8000}:8000"
+    volumes:
+      - .:/app
+      - vendor:/app/vendor
+  migrate:
+    build:
+      target: dev
+    env_file: [.env]
+    volumes:
+      - .:/app
+      - vendor:/app/vendor
+volumes:
+  vendor: {}

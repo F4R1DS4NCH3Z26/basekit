@@ -1,0 +1,14 @@
+{
+  "id": "spring",
+  "name": "Java · Spring Boot (DDD modular)",
+  "port": 8080,
+  "detect": { "files": [], "manifest": "pom.xml", "contains": "spring-boot" },
+  "appMarker": "pom.xml",
+  "roles": ["domain-writer", "app-writer", "web-writer", "qa-writer"],
+  "skills": [
+    ["java-scaffold", "Dominio nuevo: paquetes + contrato"],
+    ["java-patterns", "Antes de escribir cualquier capa; auth en references/auth.md"],
+    ["java-verify", "Lo usa `make verify` (SCOPE=<dominio>)"]
+  ],
+  "defaultAuth": "spring-jwt"
+}

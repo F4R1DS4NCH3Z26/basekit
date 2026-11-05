@@ -1,0 +1,25 @@
+services:
+  app:
+    build:
+      target: dev
+    env_file: [.env]
+    environment:
+      NODE_ENV: development
+      WATCHPACK_POLLING: "true"
+    ports:
+      - "127.0.0.1:${APP_PORT:-3000}:3000"
+    volumes:
+      - .:/app
+      - node_modules:/app/node_modules
+      - next-cache:/app/.next
+  migrate:
+    build:
+      target: dev
+    env_file: [.env]
+    command: ["npx", "--no-install", "prisma", "migrate", "deploy"]
+    volumes:
+      - .:/app
+      - node_modules:/app/node_modules
+volumes:
+  node_modules: {}
+  next-cache: {}

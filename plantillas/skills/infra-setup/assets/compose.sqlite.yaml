@@ -1,0 +1,19 @@
+# Overlay de SQLite (activado por infra-setup): solo una instancia de la app; sin servicio de BD.
+x-db-env: &db-env
+  DB_DRIVER: sqlite
+  DB_CONNECTION: sqlite
+  DB_DATABASE: /app/data/app.db
+  DATABASE_URL: file:/app/data/app.db
+
+services:
+  app:
+    volumes:
+      - app-data:/app/data
+    environment: *db-env
+  migrate:
+    volumes:
+      - app-data:/app/data
+    environment: *db-env
+
+volumes:
+  app-data: {}
