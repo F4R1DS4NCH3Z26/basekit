@@ -1,0 +1,41 @@
+# basekit CLI
+
+Objective: build the `basekit` CLI described in `02_especificacion_cli.md` (v3 guides) in Node.js + TypeScript, zero runtime dependencies.
+Branch: none yet (`guiade-project` is untracked inside the `~/Documents` repo; no commits without user approval). Delivery: ask-on-risk. Test runner: `npm test` (tsc + `node --test`).
+
+## Specs
+
+- S1. Language: "sí, con Node.js y TypeScript". Spec 02 §1: "Node ≥ 20 sin dependencias" (runtime); TypeScript and `@types/node` are dev-only.
+- S2. Templates are data: "El CLI no debe tener nada específico de un stack en su código." Stacks are read from `plantillas/stacks/*/stack.json`; detection per 02 §6: "se detecta si existe alguno de `detect.files`, o si `detect.manifest` existe y contiene `detect.contains`. Gana el primero que coincida."
+- S3. Commands (02 §2): `init [dir]`, `sync [dir] [--agents a,b]`, `doctor [dir]`, `stacks`. `init` flags: `--stack`, `--agents`, `--context`, `--db` (`auto`, `postgres`, `mysql`, `sqlite`, `none`), `--redis`, `--no-external-skills`, `--force`, `--dry-run`, `--yes`/`-y`.
+- S4. `init` algorithm, mapping, placeholders, managed blocks and manifest exactly as 02 §3–§8. Actions reported with "`+` (creado), `~` (actualizado), `=` (existía, se conserva) o `!` (aviso)".
+- S5. Rules (02 §1): "Determinista", "Idempotente. Ejecutarlo dos veces no cambia nada la segunda vez. … `manifest.updatedAt` solo cambia si cambió algo más.", "Nunca sobrescribe archivos del usuario.", "Opera solo dentro del directorio del proyecto."
+- S6. Security (02 §12): whitelists for stack/agents/db; normalized paths inside the project; "Sin shell con datos del usuario" (`spawn` with argument arrays); "Nunca leer `.env` ni `.env.prod`"; relative symlinks with copy fallback; telemetry off for `skills`; "`--dry-run` real: cero escrituras y cero procesos externos."
+- S7. Adapters per 03 §3 (Claude Code, OpenCode, Gemini CLI, Hermes) and skill links (02 §3 step 11).
+- S8. External skills per 02 §9 (pinned `skills@1.7.4` + commit `5beb35b…`; verify four `SKILL.md`; never abort `init`).
+- S9. `sync` (02 §10) and `doctor` (02 §11).
+- S10. Acceptance tests 02 §13 (1–12); 9 and 12 need Docker (CI).
+
+## Tasks
+
+| ID | Specs | Route | Status | Evidence |
+|---|---|---|---|---|
+| T1 | S1, S2, S3 (`stacks`) | inline | done (uncommitted) | `npm test` 30/30 (L4) |
+| T2 | S3 (`init`), S4, S5, S6 (minus links/skills) — acceptance 1–8 | inline | done (uncommitted) | `npm test` 30/30 (L4) |
+| T3 | S7 — acceptance 10–11 | inline | done (uncommitted) | `npm test` 62/62 (L6) |
+| T4 | S8 | inline | done (uncommitted) | fake-npx tests + one real install (L6) |
+| T5 | S9 | inline | done (uncommitted) | `npm test` 62/62 (L6) |
+| T6 | S10 (9, 12) — CI with Docker | inline | partial: 9 passes locally; 12 fails on a template bug (L7) | `test/docker.test.ts`, `scripts/e2e.sh`, `.github/workflows/ci.yml` |
+| TX | Template fixes from the 2026-11-05 review (7 blockers) | — | not authorized | |
+
+## Log
+
+- L1 (2026-11-05, user): "mi idea es arrcar a construt un cli" · "sí, con Node.js y TypeScript"
+- L2: Templates moved from `guias-basekit/plantillas/` to `plantillas/` (package root). 2026-11-05, user: "elimina a quello archivos que no son de este proyecto" → confirmed: deleted `guias-basekit/` (stack guides moved to `docs/stacks/`), `guias-basekit.zip` and the review's Docker images. Template review findings are tracked as TX, not fixed in this feature.
+- L4 (T1+T2): RED observed (no `src/`), then GREEN: `npm test` → 30 tests, 30 pass. Covers acceptance 1 (4 stacks, `make help` ≥ 25), 2 (second run only `=`, "al día", empty `git status`, same `updatedAt`), 3, 4, 5, 6 (4 stacks), 7, 8, kit-skill `--force`, detection, stack-agnostic `src/`. Decision: `init` reruns `infra.sh` only when `--db` is passed (manifest-derived db does not touch infra); mutation check confirmed the test catches it. Decision: stack/agents/db/redis default to the manifest on reruns. Kit skills and `Makefile` are hash-tracked in `manifest.files` so local edits are kept unless `--force`. Not done: steps 10–12 (adapters, links, external skills) — T3/T4; `sync`/`doctor` print "todavía no está implementado".
+- L5: New template finding for TX: `infra.sh` reports `+ compose.db.yaml` / `~ .env.example` on every rerun although nothing changes (`git status` empty).
+- L6 (2026-11-05, user: "sigue con las tareas") T3–T5: RED 18/62 failing, then GREEN 62/62. Adapters derive from the project's `.agents/roles` + `.agents/zones` (template fallback only for dry-run). Deviation from 02 §3 order: skill links (step 11) run after external skills (step 12) so they also cover the external ones; existing links (e.g. made by `skills`) are kept. External skills are installed only if a `SKILL.md` is missing, or for agents added by `sync --agents`. Each command rejects options it does not use (exit 2). Real `npx skills@1.7.4` install verified once: 4 skills, links, `skills-lock.json`; rerun → "Todo al día" and empty `git status`.
+- L7 (T6): acceptance 9 runs in `npm test` when Docker is available (11 stack×db combos, Spring without SQLite) and passes. Acceptance 12 via `scripts/e2e.sh <stack>` (CI matrix). Local run for nextjs FAILED in `make new-app`: the template runs `docker run --user "$(id -u):$(id -g)"` and create-next-app crashes in `os.userInfo()` (`uv_os_get_passwd returned ENOENT`) because the host uid has no passwd entry in `node:22-alpine`. Template bug → TX. Other stacks not run locally.
+- L8 (2026-11-05, user: "sí, mejora las preguntas interactivas"): `src/prompt.ts` (`Prompter`): numbered lists of stacks and agents, defaults marked, numbers or ids, re-asks on invalid/empty stack, names unrecognised agents, defaults on Enter/EOF, EOF on the stack question fails with a `--stack` hint. One async line iterator so piped/pasted answers are not lost. RED (module missing) → GREEN. A `script`-based pty test was dropped as timing-dependent (macOS `script` drops input sent at once); replaced by in-process `init()` tests fed through streams. Manual pty run with paced input confirmed the TTY wiring.
+- L9: Independent verifier (whole feature): S1, S2, S4, S7, S8, S9 PASS; blockers B1 (writes escaped the project through a symlinked dir, `src/project.ts` `path()` without realpath) and B2 (`sync -y` accepted and ignored). One correction batch: `Project.escapes()` (realpath of the deepest existing ancestor) guards every write and link with a `!` warning, and external skills are not installed if `.agents/skills` or a chosen agent's skills dir escapes; `sync` no longer accepts `--yes`. Also fixed advisories: a start marker without its end marker is left untouched with a warning (no user text lost); `walk()` sorts by code point instead of `localeCompare`. Recheck of the two repros: fixed. `npm test` 75/75. Open advisories: copy fallback for links untested; `doctor` stops early without a manifest; ANSI from `skills` passes into the log; stale adapters for removed roles/agents are kept; CI actions not pinned by SHA.
+- L3: Commit policy: user memory "nunca hacer git commit sin aprobación explícita" overrides ODD work-unit commits. Engram mirror pending (mem_save blocked by a hook in auto mode).
