@@ -7,7 +7,7 @@ TEST_CMD    := pytest -q
 LINT_CMD    := ruff check .
 MAKE_MIGRATION_CMD = alembic revision --autogenerate -m "$$NAME"
 VERIFY_CMD  = bash .agents/skills/py-verify/scripts/verify.sh "$${SCOPE:-src}"
-UV_IMAGE    ?= ghcr.io/astral-sh/uv:0.13.4-python3.12-bookworm-slim
+UV_IMAGE    ?= ghcr.io/astral-sh/uv:0.13.4-python3.12-trixie-slim
 
 new-app: ## Genera uv.lock en Docker (el esqueleto lo dejó basekit)
 	@[ -f pyproject.toml ] || { echo "Falta pyproject.toml (ejecuta npx basekit init)"; exit 1; }

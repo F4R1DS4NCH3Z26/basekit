@@ -19,5 +19,6 @@ new-app: ## Crea la app Spring Boot con Initializr en Docker (SPRING_DB=postgres
 	docker run --rm -e UID_GID="$$(id -u):$$(id -g)" -v "$$PWD":/work -w /tmp alpine:3.20 sh -c "\
 	  apk add --no-cache curl unzip >/dev/null && \
 	  curl -fsSL 'https://start.spring.io/starter.zip?type=maven-project&language=java&javaVersion=21&groupId=$(SPRING_PKG)&artifactId=app&name=app&packageName=$(SPRING_PKG)&dependencies='$$deps -o app.zip && \
-	  unzip -q app.zip -d app && rm -f app/HELP.md && cp -Rn app/. /work/ && chown -R \$$UID_GID /work"
+	  unzip -q -n app.zip -x HELP.md -d /work && chown -R \$$UID_GID /work"
+	@[ -f pom.xml ] || { echo "ERROR: Initializr no dejó pom.xml"; exit 1; }
 	@echo "App creada. Siguiente: make env && make dev"

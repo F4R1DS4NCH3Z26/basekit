@@ -27,7 +27,7 @@ Cada acción se reporta con `+` (creado), `~` (actualizado), `=` (existía, se c
 | Adaptadores (Claude Code, OpenCode, Gemini CLI, Hermes) y enlaces de skills | Hecho |
 | Skills externas fijadas (`grill-me`, `grill-with-docs`, `grilling`, `domain-modeling`) | Hecho |
 | Prueba 9 (`docker compose config` con overlays) | Pasa en `npm test` si hay Docker |
-| Prueba 12 (`make new-app` + `make dev` reales) | `scripts/e2e.sh <stack>`; hoy falla en Next.js por un bug de la plantilla (`make new-app`) |
+| Prueba 12 (`make new-app` + `make dev` reales) | `scripts/e2e.sh <stack> [db]`; pasa en los 4 stacks (Spring con `postgres`) |
 
 ## Comandos
 
@@ -40,5 +40,6 @@ Cada acción se reporta con `+` (creado), `~` (actualizado), `=` (existía, se c
 ```bash
 npm install
 npm test                    # compila con tsc y corre node --test (las pruebas de compose se ejecutan si hay Docker)
-npm run build && bash scripts/e2e.sh nextjs   # prueba 12 real (necesita Docker; la usa el CI)
+npm run build && bash scripts/e2e.sh nextjs            # prueba 12 real (necesita Docker; la usa el CI)
+bash scripts/e2e.sh spring postgres                     # con base de datos (Spring la necesita para arrancar)
 ```

@@ -43,7 +43,7 @@ Skills: `py-scaffold`, `py-verify` (la usa `make verify`), `py-patterns` (+ `ref
 | `deps-prod` → `prod` | `uv sync --frozen --no-dev`; imagen limpia con el venv copiado, usuario `app` (1001), `read_only` + `tmpfs`, healthcheck con `urllib` |
 
 - **El venv vive en `/opt/venv`**, fuera del bind mount: `make install` reconstruye la imagen.
-- **`make new-app`** genera `uv.lock` con `ghcr.io/astral-sh/uv:0.13.4-python3.12-bookworm-slim`.
+- **`make new-app`** genera `uv.lock` con `ghcr.io/astral-sh/uv:0.13.4-python3.12-trixie-slim`.
 - **`make deps-add PKGS="…" [DEV=1]`** ejecuta `uv add` dentro de Docker y reconstruye.
 - **`migrate`** ejecuta `alembic upgrade head` con el target del entorno. Por eso **Alembic es una dependencia de runtime**, no de desarrollo.
 

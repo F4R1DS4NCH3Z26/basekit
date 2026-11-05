@@ -26,14 +26,20 @@ jobs:
       - run: npm test
 
   e2e:
-    name: make dev real (${{ matrix.stack }})
+    name: make dev real (${{ matrix.stack }}${{ matrix.db && format(' + {0}', matrix.db) || '' }})
     needs: test
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        stack: [fastapi, laravel, nextjs, spring]
+        include:
+          - stack: fastapi
+          - stack: laravel
+          - stack: nextjs
+          # Spring's new-app adds data-jpa (SPRING_DB=postgresql by default): it needs a database to start.
+          - stack: spring
+            db: postgres
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -41,4 +47,4 @@ jobs:
           node-version: 24
       - run: npm ci && npm run build
       # Acceptance 12: make new-app + make dev, answering on the stack healthcheck.
-      - run: bash scripts/e2e.sh ${{ matrix.stack }}
+      - run: bash scripts/e2e.sh ${{ matrix.stack }} ${{ matrix.db }}
