@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Activa la base de datos y/o Redis del proyecto. Sin red; idempotente; no sobrescribe overlays distintos.
-# Uso: infra.sh --db postgres|mysql|sqlite|none [--redis] [--force]
+# Uso: ver la variable usage (la única fuente del texto de ayuda).
 set -euo pipefail
 db=""; redis=0; force=0
 usage="Uso: infra.sh --db postgres|mysql|sqlite|none [--redis] [--force]"
@@ -27,16 +27,18 @@ place() { # origen destino: + creado, ~ reemplazado (con --force), = sin cambios
     cp "$1" "$2"; echo "  + $2"
   fi
 }
-env_block() { # nombre contenido: reemplaza o agrega el bloque en .env.example (conserva sus permisos)
-  local name=$1 body=$2 tmp; tmp=$(mktemp)
-  awk -v s="# >>> $name" -v e="# <<< $name" '$0==s{skip=1;next} $0==e{skip=0;next} !skip' .env.example > "$tmp"
-  if [ -n "$body" ]; then printf '%s\n%s\n%s\n' "# >>> $name" "$body" "# <<< $name" >> "$tmp"; fi
-  if cmp -s "$tmp" .env.example; then
+env_block() { # nombre contenido: reemplaza o agrega el bloque en .env.example (atómico; conserva sus permisos)
+  local name=$1 body=$2 new tmp; new=$(mktemp)
+  awk -v s="# >>> $name" -v e="# <<< $name" '$0==s{skip=1;next} $0==e{skip=0;next} !skip' .env.example > "$new"
+  if [ -n "$body" ]; then printf '%s\n%s\n%s\n' "# >>> $name" "$body" "# <<< $name" >> "$new"; fi
+  if cmp -s "$new" .env.example; then
     echo "  = .env.example [$name]"
   else
-    cat "$tmp" > .env.example; echo "  ~ .env.example [$name]"
+    # cp -p copia permisos (y dueño), cat cambia solo el contenido y mv reemplaza en un paso: nunca queda a medias.
+    tmp=$(mktemp ./.env.example.XXXXXX); cp -p .env.example "$tmp"; cat "$new" > "$tmp"; mv "$tmp" .env.example
+    echo "  ~ .env.example [$name]"
   fi
-  rm -f "$tmp"
+  rm -f "$new"
 }
 
 if [ "$db" = none ]; then
