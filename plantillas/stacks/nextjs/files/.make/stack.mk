@@ -27,7 +27,7 @@ _new-app:
 	  apk add --no-cache coreutils >/dev/null && \
 	  npx --yes create-next-app@$(CREATE_NEXT_VERSION) app --ts --eslint --app --src-dir --tailwind \
 	    --import-alias "@/*" --use-npm --yes --skip-install && \
-	  cp -R --update=none /tmp/app/. /work/ && cd /work && npm install --no-audit --no-fund && \
+	  cp -R --update=none /tmp/app/. /work/ && test -f /work/package.json && cd /work && npm install --no-audit --no-fund && \
 	  npm install --no-audit --no-fund zod server-only && \
 	  npm install --no-audit --no-fund -D vitest @testing-library/react @testing-library/jest-dom jsdom @types/node@^22 && \
 	  chown -R "$$UID_GID" /work'

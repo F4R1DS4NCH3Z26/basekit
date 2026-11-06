@@ -130,3 +130,37 @@ describe("make new-app authenticates composer downloads", () => {
     assert.ok(!(fake.calls() + r.stdout + r.stderr).includes("tok-123"), "the token must not reach argv or the log");
   });
 });
+
+describe("fixes shared with the Go implementation", () => {
+  it("make env keeps the last value of an env file that has no final newline", () => {
+    const d = scratch();
+    assert.equal(init(d, "--stack", "nextjs").code, 0);
+    assert.equal(sh("make", ["env"], d).code, 0);
+    writeFileSync(join(d, ".env"), read(d, ".env").replace(/\n$/, "") + "\nLAST=kept");
+    sh("bash", [".agents/skills/infra-setup/scripts/infra.sh", "--db", "postgres"], d);
+    const r = sh("make", ["env"], d);
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    assert.match(read(d, ".env"), /^LAST=kept$/m);
+    assert.match(read(d, ".env"), /^DB_PASSWORD=[0-9a-f]{64}$/m);
+  });
+
+  it("spring: SPRING_DB follows compose.db.yaml and is none without a database", () => {
+    // `make -n` prints the recipe with SPRING_DB expanded (macOS make 3.81 has no --eval).
+    const value = (dir: string) => /case "([a-z]*)" in/.exec(sh("make", ["-n", "_new-app"], dir).stdout)?.[1];
+    const none = scratch();
+    assert.equal(init(none, "--stack", "spring").code, 0);
+    assert.equal(value(none), "none");
+    const pg = scratch();
+    assert.equal(init(pg, "--stack", "spring", "--db", "postgres").code, 0);
+    assert.equal(value(pg), "postgresql");
+    const my = scratch();
+    assert.equal(init(my, "--stack", "spring", "--db", "mysql").code, 0);
+    assert.equal(value(my), "mysql");
+  });
+
+  it("nextjs: new-app stops when the copy produced no package.json", () => {
+    const d = scratch();
+    assert.equal(init(d, "--stack", "nextjs").code, 0);
+    assert.match(sh("make", ["-n", "_new-app"], d).stdout, /cp -R --update=none \/tmp\/app\/\. \/work\/ && test -f \/work\/package\.json && cd \/work/);
+  });
+});

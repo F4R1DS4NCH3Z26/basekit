@@ -1,7 +1,9 @@
 {
   "id": "spring",
   "name": "Java · Spring Boot (DDD modular)",
+  "language": "Java",
   "port": 8080,
+  "health": "/actuator/health",
   "detect": { "files": [], "manifest": "pom.xml", "contains": "spring-boot" },
   "appMarker": "pom.xml",
   "roles": ["domain-writer", "app-writer", "web-writer", "qa-writer"],

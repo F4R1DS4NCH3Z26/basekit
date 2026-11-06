@@ -139,3 +139,16 @@ describe(".gitignore block", () => {
     }
   });
 });
+
+describe("infra.sh: block placement", () => {
+  it("replaces an existing block where it is, keeping the order of .env.example", () => {
+    const d = scratch();
+    assert.equal(init(d, "--db", "postgres").code, 0);
+    writeFileSync(join(d, ".env.example"), `${read(d, ".env.example")}AFTER=1\n`);
+    const r = infra(d, "--db", "mysql", "--force");
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    const text = read(d, ".env.example");
+    assert.match(text, /DB_ROOT_PASSWORD=__GENERATE__/);
+    assert.ok(text.indexOf("# <<< db") < text.indexOf("AFTER=1"), "the db block moved below later lines");
+  });
+});

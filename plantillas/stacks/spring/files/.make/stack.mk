@@ -8,7 +8,8 @@ LINT_CMD    := ./mvnw -q -B -DskipTests verify
 MAKE_MIGRATION_CMD = sh -c 'n=$$(ls src/main/resources/db/migration 2>/dev/null | sed -n "s/^V\([0-9]*\)__.*/\1/p" | sort -n | tail -1); f="src/main/resources/db/migration/V$$((n+1))__$$NAME.sql"; mkdir -p "$$(dirname "$$f")"; printf -- "-- %s\n" "$$NAME" > "$$f"; echo "+ $$f"'
 VERIFY_CMD  = bash .agents/skills/java-verify/scripts/verify.sh $${SCOPE:-}
 VERIFY_ENV  := -e OFFLINE=0
-SPRING_DB   ?= postgresql
+# Engine chosen by the bootstrap (infra-setup writes compose.db.yaml); without a DB the app gets no JPA.
+SPRING_DB   ?= $(if $(shell grep -s 'image: *postgres' compose.db.yaml),postgresql,$(if $(shell grep -s 'image: *mysql' compose.db.yaml),mysql,none))
 SPRING_PKG  ?= com.app
 
 # The guard and the work live in one shell decision: an `exit 0` on its own recipe line would only end that line.

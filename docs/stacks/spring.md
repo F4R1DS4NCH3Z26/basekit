@@ -48,7 +48,7 @@ Skills: `java-scaffold` (detecta el paquete base), `java-verify` (la usa `make v
 | Parámetro | Valores | Por defecto |
 |---|---|---|
 | `SPRING_PKG` | paquete base (validado) | `com.app` |
-| `SPRING_DB` | `postgresql`, `mysql`, `none` | `postgresql` |
+| `SPRING_DB` | `postgresql`, `mysql`, `none` | Según `compose.db.yaml` (`none` si no hay base de datos) |
 
 Con base de datos, las dependencias son `web`, `validation`, `security`, `oauth2-resource-server`, `actuator`, `devtools`, `data-jpa`, `flyway` y el driver. Con `none`, se omiten las tres últimas.
 
