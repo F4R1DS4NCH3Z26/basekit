@@ -21,6 +21,8 @@ bash $S --owners                     # 4. al cerrar: todo archivo cambiado tiene
 
 Códigos de salida: `0` OK, `1` violaciones, `2` error de uso o de entorno.
 
+Un renombrado (`git mv`) cuenta como borrado de la ruta vieja + archivo nuevo: ambas rutas deben estar en la zona del agente.
+
 ## Si hay violaciones
 
 No las corrijas tú en silencio. Revierte el archivo (`git checkout -- <archivo>` si estaba versionado) o reasigna la tarea al agente dueño. Si la zona está mal definida, edita `.agents/zones/<agente>.txt` (es zona del orquestador).
