@@ -151,4 +151,16 @@ describe("infra.sh: block placement", () => {
     assert.match(text, /DB_ROOT_PASSWORD=__GENERATE__/);
     assert.ok(text.indexOf("# <<< db") < text.indexOf("AFTER=1"), "the db block moved below later lines");
   });
+
+  it("collapses a block that appears twice into one, without duplicating keys", () => {
+    const d = scratch();
+    assert.equal(init(d, "--db", "postgres").code, 0);
+    const block = /# >>> db\n[\s\S]*?# <<< db\n/.exec(read(d, ".env.example"))![0];
+    writeFileSync(join(d, ".env.example"), `${read(d, ".env.example")}${block}`);
+    const r = infra(d, "--db", "mysql", "--force");
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    const text = read(d, ".env.example");
+    assert.equal(text.match(/^# >>> db$/gm)?.length, 1, text);
+    assert.equal(text.match(/^DB_PASSWORD=/gm)?.length, 1, text);
+  });
 });

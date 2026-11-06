@@ -41,10 +41,10 @@ place() { # origen destino: + creado, ~ reemplazado (con --force), = sin cambios
 # Temporary files of env_block, removed on any exit (also when cp, cat or mv fail under set -e).
 ENV_NEW=""; ENV_TMP=""
 trap 'rm -f "${ENV_NEW:-}" "${ENV_TMP:-}"' EXIT
-env_block() { # nombre contenido: reemplaza el bloque en su lugar o lo agrega al final (atómico; conserva permisos y orden)
+env_block() { # nombre contenido: reemplaza el bloque en su lugar (un duplicado se elimina) o lo agrega al final (atómico; conserva permisos y orden)
   local name=$1 body=$2; ENV_NEW=$(mktemp)
   BODY="$body" awk -v s="# >>> $name" -v e="# <<< $name" '
-    $0==s { skip=1; if (ENVIRON["BODY"] != "") { print s; print ENVIRON["BODY"]; print e }; found=1; next }
+    $0==s { skip=1; if (!found && ENVIRON["BODY"] != "") { print s; print ENVIRON["BODY"]; print e }; found=1; next }
     $0==e { skip=0; next }
     !skip { print }
     END { if (!found && ENVIRON["BODY"] != "") { print s; print ENVIRON["BODY"]; print e } }' .env.example > "$ENV_NEW"

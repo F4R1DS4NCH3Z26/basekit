@@ -137,7 +137,8 @@ describe("fixes shared with the Go implementation", () => {
     assert.equal(init(d, "--stack", "nextjs").code, 0);
     assert.equal(sh("make", ["env"], d).code, 0);
     writeFileSync(join(d, ".env"), read(d, ".env").replace(/\n$/, "") + "\nLAST=kept");
-    sh("bash", [".agents/skills/infra-setup/scripts/infra.sh", "--db", "postgres"], d);
+    const setup = sh("bash", [".agents/skills/infra-setup/scripts/infra.sh", "--db", "postgres"], d);
+    assert.equal(setup.code, 0, setup.stdout + setup.stderr);
     const r = sh("make", ["env"], d);
     assert.equal(r.code, 0, r.stdout + r.stderr);
     assert.match(read(d, ".env"), /^LAST=kept$/m);
@@ -150,12 +151,33 @@ describe("fixes shared with the Go implementation", () => {
     const none = scratch();
     assert.equal(init(none, "--stack", "spring").code, 0);
     assert.equal(value(none), "none");
+    assert.equal(sh("make", ["help"], none).stderr, "", "a missing compose.db.yaml must not print errors");
     const pg = scratch();
     assert.equal(init(pg, "--stack", "spring", "--db", "postgres").code, 0);
     assert.equal(value(pg), "postgresql");
     const my = scratch();
     assert.equal(init(my, "--stack", "spring", "--db", "mysql").code, 0);
     assert.equal(value(my), "mysql");
+  });
+
+  it("spring: SPRING_DB reads the active image line, whatever its spelling", () => {
+    const value = (dir: string) => /case "([a-z]*)" in/.exec(sh("make", ["-n", "_new-app"], dir).stdout)?.[1];
+    const d = scratch();
+    assert.equal(init(d, "--stack", "spring").code, 0);
+    const cases: [string, string][] = [
+      ['    image: "postgres:17-alpine"', "postgresql"],
+      ["    image: 'mysql:8.4'", "mysql"],
+      ["    image: docker.io/library/postgres:17", "postgresql"],
+      ["    image: registry.local:5000/team/postgres:17@sha256:abc", "postgresql"],
+      ["    image: mariadb:11", "mysql"],
+      ["    image: postgres:17 # pinned", "postgresql"],
+      ["    # image: postgres:17\n    image: mysql:8.4", "mysql"],
+      ["    # image: postgres:17", "none"],
+    ];
+    for (const [line, want] of cases) {
+      writeFileSync(join(d, "compose.db.yaml"), `services:\n  db:\n${line.replace("\\n", "\n")}\n`);
+      assert.equal(value(d), want, line);
+    }
   });
 
   it("nextjs: new-app stops when the copy produced no package.json", () => {
