@@ -8,6 +8,8 @@ LINT_CMD    := npx --no-install eslint .
 MAKE_MIGRATION_CMD = npx --no-install prisma migrate dev --name "$$NAME"
 VERIFY_CMD  = bash .agents/skills/nextjs-verify/scripts/verify.sh "$${SCOPE:-src}"
 # 16.4.3: newest release that is at least 14 days old (2026-10-23); 16.0.x lacks the RSC security fixes.
+# Bump it only to a release at least 14 days old: npm_config_before (below) applies to exact versions too,
+# so a newer one makes `make new-app` fail with ETARGET until it is 14 days old.
 CREATE_NEXT_VERSION ?= 16.4.3
 
 # The guard and the work live in one shell decision: an `exit 0` on its own recipe line would only end that line.
