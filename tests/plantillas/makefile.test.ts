@@ -1,7 +1,6 @@
 import { after, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { basekit, cleanup, hasDocker, scratch, sh } from "../helpers.js";
 
@@ -12,7 +11,7 @@ const init = (dir: string, ...extra: string[]) => basekit(["init", dir, "--yes",
 
 /** A directory with fake executables that log their calls to `calls.log`. */
 function fakeBin(names: Record<string, string>): { path: string; calls: () => string } {
-  const bin = mkdtempSync(join(tmpdir(), "basekit-test-bin-"));
+  const bin = scratch(); // removed by cleanup()
   for (const [name, body] of Object.entries(names)) {
     writeFileSync(join(bin, name), `#!/bin/sh\nprintf '%s %s\\n' "${name}" "$*" >> "${bin}/calls.log"\n${body}\n`, { mode: 0o755 });
   }
