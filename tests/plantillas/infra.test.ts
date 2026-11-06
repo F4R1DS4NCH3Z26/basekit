@@ -38,8 +38,8 @@ describe("infra.sh", () => {
   it("keeps the mode of .env.example when it updates the block", () => {
     const d = scratch();
     assert.equal(init(d).code, 0);
+    // The initial mode depends on the developer's umask: only "unchanged" is asserted.
     const before = statSync(join(d, ".env.example")).mode & 0o777;
-    assert.equal(before, 0o644);
     const r = infra(d, "--db", "mysql");
     assert.equal(r.code, 0, r.stdout + r.stderr);
     assert.equal(statSync(join(d, ".env.example")).mode & 0o777, before);
@@ -70,12 +70,15 @@ describe("infra.sh", () => {
 });
 
 describe(".gitignore block", () => {
-  it("ignores every env file except .env.example, and keys", () => {
+  it("ignores the secret env files and keys, and nothing else that starts with .env", () => {
     const d = scratch();
     assert.equal(init(d).code, 0);
-    for (const f of [".env", ".env.local", ".env.production", ".env.prod", ".env.prod.bak", "x.pem", "x.key"]) {
+    for (const f of [".env", ".env.local", ".env.development.local", ".env.production", ".env.prod", ".env.prod.bak", "x.pem", "x.key"]) {
       assert.equal(sh("git", ["check-ignore", "-q", f], d).code, 0, `${f} must be ignored`);
     }
-    assert.equal(sh("git", ["check-ignore", "-q", ".env.example"], d).code, 1, ".env.example must stay tracked");
+    // Committed, non-secret config that projects keep next to .env.
+    for (const f of [".env.example", ".env.sample", ".env.template", ".env.test", ".env.development", ".envrc"]) {
+      assert.equal(sh("git", ["check-ignore", "-q", f], d).code, 1, `${f} must stay tracked`);
+    }
   });
 });

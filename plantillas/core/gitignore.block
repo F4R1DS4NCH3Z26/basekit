@@ -1,6 +1,12 @@
 # >>> basekit
-.env*
-!.env.example
+# Secretos: nunca se commitean. .env.example, .env.sample, .env.template, .env.test, .env.development y .envrc
+# no son secretos y siguen en git.
+.env
+.env.local
+.env.*.local
+.env.prod
+.env.prod.*
+.env.production
 *.pem
 *.key
 # <<< basekit
