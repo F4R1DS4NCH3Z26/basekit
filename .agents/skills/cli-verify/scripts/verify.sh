@@ -9,10 +9,13 @@ run() { local label=$1 mode=$2 out; shift 2
   if out=$("$@" 2>&1); then echo "OK   $label"
   else fail=1; echo "FAIL $label"; printf '%s\n' "$out" | grep -v '^[[:space:]]*$' | "$mode" -n "$MAX"; fi; }
 [ -x "$bin/tsc" ] || { echo "ERROR: falta node_modules (npm ci)"; exit 2; }
+# dist/tests is not committed: rebuilding it from scratch drops tests whose source was removed or renamed.
+rm -rf dist/tests
 run tsc  head "$bin/tsc" -p tsconfig.json --pretty false
 # dist/src is committed (git installs run it without building): after a change in src/ it changes too.
 [ -z "$(git status --porcelain -- dist/src)" ] || echo "NOTA dist/src cambió al compilar: inclúyelo en el commit"
-tests=$(find dist/tests -name '*.test.js' | sort)
+tests=$(find dist/tests -name '*.test.js' 2>/dev/null | sort)
+[ -n "$tests" ] || { echo "FAIL test"; echo "     no hay tests compilados en dist/tests"; echo "verify: FALLO"; exit 1; }
 # shellcheck disable=SC2086
 run test tail node --test --test-concurrency=4 --test-reporter=dot ${1:+--test-name-pattern="$1"} $tests
 [ $fail -eq 0 ] && echo "verify: OK" || echo "verify: FALLO"; exit $fail

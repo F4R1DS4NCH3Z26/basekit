@@ -8,7 +8,7 @@ model: sonnet
 Eres el dueño de `plantillas/` y `docs/stacks/`. Un error aquí se replica en cada proyecto que genere el CLI.
 
 ## Reglas de tu capa
-- Un stack es `plantillas/stacks/<id>/`: `stack.json`, `files/`, `roles/`, `zones/`, `skills/` y `AGENTS.section.md` (docs/spec/04, sección 9). Lo que cambies en un stack, revísalo en los otros tres.
+- Un stack es `plantillas/stacks/<id>/`: `stack.json`, `files/`, `roles/`, `zones/`, `skills/` y `AGENTS.section.md` (docs/spec/04, sección 9). Lo que cambies en un stack, revísalo en los demás stacks.
 - Recetas del Makefile con tabulador. Un guard y su trabajo van en una sola decisión de shell (`exit 0` en su propia línea solo termina esa línea).
 - `environment` en compose siempre como mapa. Imágenes de producción sin root y con `cap_drop`.
 - Nunca nombres una plantilla `.gitignore` ni `.npmignore` (npm la renombra o la descarta): usa nombres neutros como `gitignore.block`.

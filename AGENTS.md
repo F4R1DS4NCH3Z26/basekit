@@ -15,14 +15,14 @@ CLI en Node + TypeScript (cero dependencias de runtime) que prepara proyectos pa
 ## Zonas (`.agents/zones/<rol>.txt`)
 | Rol | Zona |
 |---|---|
-| orquestador (sesión principal) | `AGENTS.md`, `CLAUDE.md`, `README.md`, `docs/**` (salvo `docs/stacks/`), `.agents/**`, `.claude/**`, `odd/**`, `package*.json`, `tsconfig.json`, `.github/**`, `.gitattributes`, `.gitignore` |
+| orquestador (sesión principal) | `AGENTS.md`, `CLAUDE.md`, `README.md`, `GLOSSARY.md`, `skills-lock.json`, `docs/spec/**`, `docs/specs/**`, `docs/adr/**`, `.agents/**`, `.claude/**`, `odd/**`, `package*.json`, `tsconfig.json`, `.github/**`, `.gitattributes`, `.gitignore`, `.atl/**` |
 | kit-writer | `src/kit/**` |
 | infra-writer | `src/infra/**` |
 | commands-writer | `src/cli.ts`, `src/commands/**`, `src/ui/**` |
 | templates-writer | `plantillas/**`, `docs/stacks/**` |
 | qa-writer | `tests/**`, `scripts/**` |
 
-Cada writer de `src/` también es dueño de su salida compilada en `dist/src/`.
+Cada writer de `src/` también es dueño de su salida compilada en `dist/src/`. La tabla es copia de `.agents/zones/`, que es lo que se aplica: una carpeta nueva necesita su línea en una zona (`tests/agents.test.ts` exige exactamente un dueño por archivo).
 
 ## Flujo de una feature
 1. El orquestador fija la especificación (`odd/tasks/<feature>.md`, o un contrato en `docs/specs/`) citando `docs/spec/`.
@@ -39,7 +39,10 @@ Cada writer de `src/` también es dueño de su salida compilada en `dist/src/`.
 - Commits: Conventional Commits, sin atribución a IA, solo con aprobación del usuario.
 
 ## Verificación
-`bash .agents/skills/cli-verify/scripts/verify.sh [patrón]`: compila, comprueba que `dist/src` esté al día y corre los tests (todos o los que coincidan con el patrón).
+`bash .agents/skills/cli-verify/scripts/verify.sh [patrón]`: compila, avisa si `dist/src` cambió (va en el mismo commit que `src/`) y corre los tests (todos o los que coincidan con el patrón).
+
+## Skills (`.agents/skills/`, enlazadas en `.claude/skills/`)
+`cli-verify` y `zone-check` son del repo. `grill-me` y `grill-with-docs` (con `grilling` y `domain-modeling`) son externas, fijadas en `skills-lock.json`: el orquestador las usa para cerrar una especificación con el usuario.
 
 ## Reporte de cada subagente (5 líneas)
 ```

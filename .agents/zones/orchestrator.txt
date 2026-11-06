@@ -2,6 +2,8 @@
 AGENTS.md
 CLAUDE.md
 README.md
+GLOSSARY.md
+skills-lock.json
 docs/spec/**
 docs/specs/**
 docs/adr/**

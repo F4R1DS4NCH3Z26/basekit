@@ -23,7 +23,7 @@ function parse(file: string): { fields: Record<string, string>; body: string } {
 function zoneLines(role: string): RegExp[] {
   return readFileSync(join(ZONES, `${role}.txt`), "utf8").split("\n")
     .map((l) => l.replace(/#.*/, "").trim()).filter(Boolean)
-    .map((g) => new RegExp(`^${g.replace(/[.+^${}()|[\]\\?]/g, "\\$&").replace(/\*+/g, ".*")}$`));
+    .map((g) => new RegExp(`^${g.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*+/g, ".*").replace(/\?/g, ".")}$`));
 }
 
 describe("development agents", () => {
@@ -46,6 +46,7 @@ describe("development agents", () => {
   it("every tracked file has exactly one owner zone", () => {
     const zones = names(ZONES, ".txt").map((z) => ({ z, lines: zoneLines(z) }));
     const files = sh("git", ["ls-files"], REPO).stdout.split("\n").filter(Boolean);
+    assert.ok(files.length > 100, `git ls-files returned ${files.length} files`);
     for (const f of files) {
       const owners = zones.filter(({ lines }) => lines.some((re) => re.test(f))).map(({ z }) => z);
       assert.equal(owners.length, 1, `${f}: owners ${JSON.stringify(owners)}`);
