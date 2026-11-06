@@ -57,7 +57,7 @@ describe("install: interactive menu", () => {
     assert.equal(r.code, 0);
     assert.match(r.out, /1\) Global .*npm install -g/);
     assert.match(r.out, /2\) Este proyecto .*npm install -D/);
-    assert.deepEqual(r.runner.calls, [{ kind: "run", cmd: "npm", args: ["install", "-g", "--no-audit", "--no-fund", SOURCE], cwd: d }]);
+    assert.deepEqual(r.runner.calls, [{ kind: "run", cmd: "npm", args: ["install", "-g", "--install-links", "--no-audit", "--no-fund", SOURCE], cwd: d }]);
     assert.match(r.log, /basekit init/);
   });
 
@@ -89,7 +89,7 @@ describe("install: interactive menu", () => {
     const d = scratch();
     const r = await run({ dir: d, mode: "global" }, undefined, new FakeRunner(false));
     assert.equal(r.code, 1);
-    assert.match(r.log, /Reinténtalo con: npm install -g github:F4R1DS4NCH3Z26\/basekit/);
+    assert.match(r.log, /Reinténtalo con: npm install -g --install-links github:F4R1DS4NCH3Z26\/basekit/);
   });
 
   it("--from replaces the source", async () => {

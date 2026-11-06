@@ -25,9 +25,11 @@ export async function install(o, ctx) {
     const mode = o.mode ?? (await chooseMode(ctx));
     const project = new Project(resolveRoot(o.dir), false, ctx.log, ctx.fs);
     if (mode === "global") {
-        ctx.log(`· npm install -g ${spec}`);
-        if (!ctx.runner.run(ctx.log, "npm", ["install", "-g", ...NPM_FLAGS, spec], project.root)) {
-            ctx.log(`No se pudo instalar. Reinténtalo con: npm install -g ${spec}`);
+        // --install-links: without it npm 11 installs a global git package as a link to a temporary clone,
+        // which npm deletes right after, leaving `basekit` pointing at nothing.
+        ctx.log(`· npm install -g --install-links ${spec}`);
+        if (!ctx.runner.run(ctx.log, "npm", ["install", "-g", "--install-links", ...NPM_FLAGS, spec], project.root)) {
+            ctx.log(`No se pudo instalar. Reinténtalo con: npm install -g --install-links ${spec}`);
             return 1;
         }
         ctx.log("+ basekit instalado globalmente");

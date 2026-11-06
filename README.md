@@ -28,7 +28,7 @@ A mano también funciona:
 **Global**: un `basekit` para todos tus proyectos.
 
 ```bash
-npm install -g github:F4R1DS4NCH3Z26/basekit
+npm install -g --install-links github:F4R1DS4NCH3Z26/basekit
 basekit init mi-proyecto --stack nextjs --context "Reservas de canchas de pádel"
 ```
 

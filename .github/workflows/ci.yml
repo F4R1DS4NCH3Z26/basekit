@@ -48,10 +48,15 @@ jobs:
           git config --global --add url."https://x-access-token:${TOKEN}@github.com/".insteadOf "git@github.com:"
       - name: npm install -g github:…
         run: |
-          npm install -g --no-audit --no-fund "github:${{ github.repository }}#${{ github.sha }}"
+          npm install -g --install-links --no-audit --no-fund "github:${{ github.repository }}#${{ github.sha }}"
           basekit stacks
           basekit init "$RUNNER_TEMP/global-app" -y --no-external-skills --stack nextjs
           test -f "$RUNNER_TEMP/global-app/AGENTS.md"
+      - name: the installer through npx (what users run)
+        run: |
+          npm uninstall -g basekit
+          npx -y "github:${{ github.repository }}#${{ github.sha }}" install --global --from "github:${{ github.repository }}#${{ github.sha }}"
+          basekit stacks
       - name: npm install -D github:… in a project
         working-directory: ${{ runner.temp }}
         run: |
