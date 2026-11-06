@@ -1,11 +1,15 @@
 #!/usr/bin/env node
 import { parseArgs } from "node:util";
-import { AGENTS } from "./agents.js";
-import { doctor } from "./doctor.js";
-import { init, type Ui } from "./init.js";
-import { Prompter } from "./prompt.js";
-import { sync } from "./sync.js";
-import { loadStacks, UsageError, VERSION } from "./templates.js";
+import type { Context } from "./commands/context.js";
+import { doctor } from "./commands/doctor/index.js";
+import { init } from "./commands/init/index.js";
+import { stacks } from "./commands/stacks/index.js";
+import { sync } from "./commands/sync/index.js";
+import { nodeFileSystem } from "./infra/file-system.js";
+import { processRunner } from "./infra/runner.js";
+import { UsageError } from "./kit/errors.js";
+import { VERSION } from "./kit/templates.js";
+import { Prompter } from "./ui/prompt.js";
 
 /** Options each command accepts; anything else is an error instead of being silently ignored. */
 const ALLOWED: Record<string, string[]> = {
@@ -40,22 +44,17 @@ Opciones de sync:
   --dry-run               Muestra lo que haría sin escribir nada
 `;
 
-function makeUi(interactive: boolean): Ui {
+/** The real environment: stdout, the disk and real processes; questions only in an interactive session. */
+function makeContext(interactive: boolean): Context {
   return {
     log: (line) => process.stdout.write(`${line}\n`),
     prompt: interactive ? new Prompter(process.stdin, process.stdout) : undefined,
+    fs: nodeFileSystem,
+    runner: processRunner,
   };
 }
 
-function stacksCommand(): number {
-  const stacks = loadStacks();
-  const width = Math.max(...stacks.map((s) => s.id.length));
-  process.stdout.write("Stacks:\n");
-  for (const s of stacks) process.stdout.write(`  ${s.id.padEnd(width)}  ${s.name} (puerto ${s.port})\n`);
-  process.stdout.write(`Agentes: ${AGENTS.map((a) => a.id).join(", ")}\n`);
-  return 0;
-}
-
+/** Parses the arguments and routes to a command. Nothing else lives here. */
 async function main(argv: string[]): Promise<number> {
   const { values, positionals } = parseArgs({
     args: argv,
@@ -93,37 +92,35 @@ async function main(argv: string[]): Promise<number> {
 
   switch (command) {
     case "stacks":
-      return stacksCommand();
-    case "init": {
-      const ui = makeUi(process.stdin.isTTY === true && !values.yes);
-      try {
-        return await init(
-        {
-          dir,
-          stack: values.stack,
-          agents: values.agents,
-          context: values.context,
-          db: values.db,
-          redis: values.redis,
-          externalSkills: !values["no-external-skills"],
-          force: values.force ?? false,
-          dryRun: values["dry-run"] ?? false,
-        },
-        ui,
-        );
-      } finally {
-        ui.prompt?.close();
-      }
-    }
+      return stacks(makeContext(false));
+    case "doctor":
+      return doctor(dir, makeContext(false));
     case "sync":
       return sync(
         { dir, agents: values.agents, externalSkills: !values["no-external-skills"], dryRun: values["dry-run"] ?? false },
-        makeUi(false),
+        makeContext(false),
       );
-    case "doctor":
-      return doctor(dir, makeUi(false));
-    default:
-      throw new UsageError(`Comando desconocido: ${command}. Usa \`basekit help\``);
+    default: {
+      const ctx = makeContext(process.stdin.isTTY === true && !values.yes);
+      try {
+        return await init(
+          {
+            dir,
+            stack: values.stack,
+            agents: values.agents,
+            context: values.context,
+            db: values.db,
+            redis: values.redis,
+            externalSkills: !values["no-external-skills"],
+            force: values.force ?? false,
+            dryRun: values["dry-run"] ?? false,
+          },
+          ctx,
+        );
+      } finally {
+        ctx.prompt?.close();
+      }
+    }
   }
 }
 

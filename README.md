@@ -35,6 +35,20 @@ Cada acción se reporta con `+` (creado), `~` (actualizado), `=` (existía, se c
 - `sync [dir] [--agents a,b] [--no-external-skills] [--dry-run]`: regenera el bloque de `AGENTS.md`, los subagentes de `.claude/agents/` y `.opencode/agents/` desde `.agents/roles/` y `.agents/zones/`, y los enlaces de skills. Con `--agents`, los agentes nuevos reciben adaptadores, enlaces y skills externas.
 - `doctor [dir]`: imprime `OK` o `FALTA` con la sugerencia; sale con código 1 si falta algo. Nunca lee `.env`.
 
+## Estructura
+
+```text
+src/
+├── cli.ts          solo enruta: flags → comando
+├── commands/       un slice por comando (init, sync, doctor, stacks); afuera solo se importa su index.ts
+├── kit/            reglas del kit compartidas: stacks, adaptadores, manifest, AGENTS.md, skills externas, Project
+├── infra/          puertos de I/O con su implementación real: FileSystem (disco) y Runner (procesos)
+└── ui/             preguntas interactivas
+tests/              espejo de src/ (commands/, kit/, ui/), más plantillas/ (Makefile y compose) y architecture.test.ts
+```
+
+Las dependencias van en un solo sentido: `cli → commands → kit → infra`. Un comando nunca importa a otro, y `kit` nunca importa `commands`. `tests/architecture.test.ts` lo hace cumplir, y también que `src/` no nombre ningún stack. Todo lo que se escribe en el proyecto destino pasa por `kit/project.ts`: no sale del proyecto, no reescribe lo que no cambió, `--dry-run` no escribe nada y nunca lee `.env`.
+
 ## Desarrollo
 
 ```bash
