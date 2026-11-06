@@ -70,7 +70,10 @@ describe("Claude Code adapter", () => {
     assert.ok(lines.includes("model: sonnet"));
     assert.ok(body.endsWith(roleBody), "role body copied as is");
     const settings = JSON.parse(read(d, ".claude/settings.json"));
-    assert.ok(settings.permissions.deny.includes("Read(./.env)"));
+    for (const f of [".env", ".env.prod", ".env.local", ".env.production", ".env.development.local"]) {
+      assert.ok(settings.permissions.deny.includes(`Read(./${f})`) || (f.endsWith(".local") && settings.permissions.deny.includes("Read(./.env.*.local)")), f);
+    }
+    for (const f of [".env", ".env.prod", ".env.local", ".env.production"]) assert.ok(settings.permissions.deny.includes(`Edit(./${f})`), `Edit ${f}`);
     assert.ok(!settings.permissions.deny.includes("Read(./.env.*)"), "must not block .env.example");
     assert.ok(settings.permissions.allow.includes("Bash(bash .agents/skills/php-scaffold/scripts/scaffold.sh:*)"));
     assert.ok(!existsSync(join(d, "opencode.json")));

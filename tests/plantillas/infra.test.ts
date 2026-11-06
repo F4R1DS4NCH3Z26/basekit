@@ -1,0 +1,81 @@
+import { after, describe, it } from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
+import { basekit, cleanup, gitCommitAll, scratch, sh } from "../helpers.js";
+
+after(cleanup);
+
+const INFRA = ".agents/skills/infra-setup/scripts/infra.sh";
+const read = (dir: string, f: string) => readFileSync(join(dir, f), "utf8");
+const init = (dir: string, ...extra: string[]) =>
+  basekit(["init", dir, "--yes", "--no-external-skills", "--stack", "nextjs", ...extra]);
+const infra = (dir: string, ...args: string[]) => sh("bash", [INFRA, ...args], dir);
+
+describe("infra.sh", () => {
+  it("reports = and changes nothing when rerun with the same database", () => {
+    const d = scratch();
+    assert.equal(init(d, "--db", "postgres").code, 0);
+    gitCommitAll(d);
+    const r = infra(d, "--db", "postgres");
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    assert.doesNotMatch(r.stdout, /^\s*[+~] /m, "nothing was created or changed");
+    assert.match(r.stdout, /^\s*= compose\.db\.yaml$/m);
+    assert.match(r.stdout, /^\s*= \.env\.example \[db\]$/m);
+    assert.equal(sh("git", ["status", "--porcelain"], d).stdout, "");
+  });
+
+  it("reports + and ~ when it activates a database", () => {
+    const d = scratch();
+    assert.equal(init(d).code, 0);
+    const r = infra(d, "--db", "mysql");
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /^\s*\+ compose\.db\.yaml$/m);
+    assert.match(r.stdout, /^\s*~ \.env\.example \[db\]$/m);
+    assert.match(read(d, ".env.example"), /^DB_ROOT_PASSWORD=__GENERATE__$/m);
+  });
+
+  it("keeps the mode of .env.example when it updates the block", () => {
+    const d = scratch();
+    assert.equal(init(d).code, 0);
+    const before = statSync(join(d, ".env.example")).mode & 0o777;
+    assert.equal(before, 0o644);
+    const r = infra(d, "--db", "mysql");
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    assert.equal(statSync(join(d, ".env.example")).mode & 0o777, before);
+  });
+
+  it("prints the usage and exits 2 when --db has no value", () => {
+    const d = scratch();
+    assert.equal(init(d).code, 0);
+    const r = infra(d, "--db");
+    assert.equal(r.code, 2, r.stdout + r.stderr);
+    assert.match(r.stdout + r.stderr, /Uso: infra\.sh --db postgres\|mysql\|sqlite\|none/);
+  });
+
+  it("replaces a different overlay only with --force", () => {
+    const d = scratch();
+    assert.equal(init(d, "--db", "postgres").code, 0);
+    const overlay = read(d, "compose.db.yaml");
+    const refused = infra(d, "--db", "mysql");
+    assert.equal(refused.code, 1);
+    assert.match(refused.stdout, /compose\.db\.yaml ya existe con otro contenido/);
+    assert.equal(read(d, "compose.db.yaml"), overlay);
+
+    const forced = infra(d, "--db", "mysql", "--force");
+    assert.equal(forced.code, 0, forced.stdout + forced.stderr);
+    assert.match(forced.stdout, /^\s*~ compose\.db\.yaml$/m);
+    assert.notEqual(read(d, "compose.db.yaml"), overlay);
+  });
+});
+
+describe(".gitignore block", () => {
+  it("ignores every env file except .env.example, and keys", () => {
+    const d = scratch();
+    assert.equal(init(d).code, 0);
+    for (const f of [".env", ".env.local", ".env.production", ".env.prod", ".env.prod.bak", "x.pem", "x.key"]) {
+      assert.equal(sh("git", ["check-ignore", "-q", f], d).code, 0, `${f} must be ignored`);
+    }
+    assert.equal(sh("git", ["check-ignore", "-q", ".env.example"], d).code, 1, ".env.example must stay tracked");
+  });
+});

@@ -3,12 +3,13 @@
 # Uso: infra.sh --db postgres|mysql|sqlite|none [--redis] [--force]
 set -euo pipefail
 db=""; redis=0; force=0
+usage="Uso: infra.sh --db postgres|mysql|sqlite|none [--redis] [--force]"
 while [ $# -gt 0 ]; do
   case "$1" in
-    --db) db="${2:-}"; shift 2 ;;
+    --db) [ $# -ge 2 ] || { echo "$usage"; exit 2; }; db=$2; shift 2 ;;
     --redis) redis=1; shift ;;
     --force) force=1; shift ;;
-    *) echo "Uso: infra.sh --db postgres|mysql|sqlite|none [--redis] [--force]"; exit 2 ;;
+    *) echo "$usage"; exit 2 ;;
   esac
 done
 case "$db" in postgres|mysql|sqlite|none) ;; *) echo "ERROR: --db debe ser postgres, mysql, sqlite o none"; exit 2 ;; esac
@@ -17,17 +18,25 @@ root=$(git rev-parse --show-toplevel 2>/dev/null || pwd); cd "$root"
 assets="$(cd "$(dirname "$0")/.." && pwd)/assets"
 mkdir -p .make
 
-place() { # origen destino
-  if [ -f "$2" ] && ! cmp -s "$1" "$2"; then
+place() { # origen destino: + creado, ~ reemplazado (con --force), = sin cambios
+  if [ -f "$2" ]; then
+    if cmp -s "$1" "$2"; then echo "  = $2"; return; fi
     [ $force -eq 1 ] || { echo "ERROR: $2 ya existe con otro contenido (usa --force para reemplazarlo)"; exit 1; }
+    cp "$1" "$2"; echo "  ~ $2"
+  else
+    cp "$1" "$2"; echo "  + $2"
   fi
-  cp "$1" "$2"; echo "  + $2"
 }
-env_block() { # nombre contenido: reemplaza o agrega el bloque en .env.example
+env_block() { # nombre contenido: reemplaza o agrega el bloque en .env.example (conserva sus permisos)
   local name=$1 body=$2 tmp; tmp=$(mktemp)
   awk -v s="# >>> $name" -v e="# <<< $name" '$0==s{skip=1;next} $0==e{skip=0;next} !skip' .env.example > "$tmp"
   if [ -n "$body" ]; then printf '%s\n%s\n%s\n' "# >>> $name" "$body" "# <<< $name" >> "$tmp"; fi
-  mv "$tmp" .env.example; echo "  ~ .env.example [$name]"
+  if cmp -s "$tmp" .env.example; then
+    echo "  = .env.example [$name]"
+  else
+    cat "$tmp" > .env.example; echo "  ~ .env.example [$name]"
+  fi
+  rm -f "$tmp"
 }
 
 if [ "$db" = none ]; then

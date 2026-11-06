@@ -1,7 +1,6 @@
 # >>> basekit
-.env
-.env.prod
-.env.*.local
+.env*
+!.env.example
 *.pem
 *.key
 # <<< basekit
