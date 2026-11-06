@@ -22,7 +22,7 @@ npx github:F4R1DS4NCH3Z26/basekit
 #   ↑/↓ mover · Enter elegir
 ```
 
-Los menús se mueven con ↑/↓ (o `k`/`j`), un número salta a esa opción y Enter elige. En la elección de agentes, espacio marca y desmarca. Ctrl+C, Ctrl+D o Esc cancelan y salen con código 130, igual que si se cierra la terminal. Si la entrada no es una terminal (redirigida, CI), los mismos menús se responden con el número de la opción.
+Los menús se mueven con ↑/↓ (o `k`/`j`), un número del 1 al 9 salta a esa opción y Enter elige. Si una opción no entra en el ancho de la terminal, su descripción se recorta con «…». En la elección de agentes, espacio marca y desmarca. Ctrl+C, Ctrl+D o Esc cancelan y salen con código 130, igual que si se cierra la terminal. Si la entrada no es una terminal (redirigida, CI), los mismos menús se responden con el número de la opción.
 
 Si eliges "Este proyecto" y no hay `package.json`, pregunta antes de crearlo (en un proyecto Python, PHP o Java suele convenir la instalación global). Después ofrece preparar el proyecto con `init`. Sin terminal (CI, scripts) usa `basekit install --global` o `basekit install --project`. `--from` instala otro origen: un fork, una etiqueta o un `.tgz`.
 
