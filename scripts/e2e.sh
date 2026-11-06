@@ -29,10 +29,13 @@ work="$(mktemp -d)"
 app="$work/e2e-$stack-$env"   # unique compose project name, so runs can go in parallel
 env_file=".env"
 [ "$env" = prod ] && env_file=".env.prod"
+# Same project name as the Makefile (asked to the Makefile itself, so the rule lives in one place).
+project_args=()
 compose() {
   local files=(-f compose.yaml -f "compose.$env.yaml") f
   for f in compose.db.yaml compose.redis.yaml; do [ -f "$f" ] && files+=(-f "$f"); done
-  docker compose --env-file "$env_file" "${files[@]}" "$@"
+  # ${a[@]+"${a[@]}"}: an empty array under `set -u` is an error in bash 3.2 (macOS).
+  docker compose ${project_args[@]+"${project_args[@]}"} --env-file "$env_file" "${files[@]}" "$@"
 }
 cleanup() {
   if [ -f "$app/compose.yaml" ]; then (cd "$app" && compose down -v --rmi local --remove-orphans >/dev/null 2>&1) || true; fi
@@ -44,6 +47,8 @@ trap cleanup EXIT
 
 node "$repo/dist/src/cli.js" init "$app" -y --no-external-skills --stack "$stack" --agents codex ${db:+--db "$db"}
 cd "$app"
+project="$(make -s _compose-project ENV="$env")"
+[ -n "$project" ] && project_args=(-p "$project")
 # new-app is idempotent: it creates whatever the framework still lacks (the app, or uv.lock next to the starter).
 make new-app
 if [ "$env" = prod ]; then

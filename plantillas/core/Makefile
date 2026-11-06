@@ -15,7 +15,14 @@ include .make/stack.mk
 
 ENV_FILE := $(if $(filter prod,$(ENV)),.env.prod,.env)
 OVERLAYS := $(wildcard compose.db.yaml compose.redis.yaml)
-DC = docker compose --env-file $(ENV_FILE) -f compose.yaml -f compose.$(ENV).yaml $(foreach f,$(OVERLAYS),-f $(f))
+# Dev and prod never share a Compose project, so `make clean` (down -v) on a server that also has .env cannot
+# delete production volumes. Prod keeps Compose's default name (the directory, normalized), so existing
+# deployments keep their volumes. Dev is "<name>-dev-<checksum of this checkout's path>": the name is normalized
+# like Compose does (lowercase, [a-z0-9_-], no leading - or _), and the checksum keeps it from matching the prod
+# project of another directory (a sibling called "<name>-dev", for instance).
+DEV_PROJECT := $(shell n=$$(basename "$(CURDIR)" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9_-' | sed 's/^[-_]*//'); \
+  printf '%s-dev-%s' "$${n:-app}" "$$(printf '%s' "$(CURDIR)" | cksum | cut -d ' ' -f 1)")
+DC = docker compose $(if $(filter dev,$(ENV)),-p $(DEV_PROJECT),) --env-file $(ENV_FILE) -f compose.yaml -f compose.$(ENV).yaml $(foreach f,$(OVERLAYS),-f $(f))
 
 # Valores por defecto; .make/stack.mk puede sobrescribirlos.
 INSTALL      ?= $(DC) run --rm $(APP) $(INSTALL_CMD)
@@ -136,4 +143,8 @@ fix-perms: ## Devuelve a tu usuario los archivos creados por contenedores (Linux
 
 _env-check:
 	@[ -f $(ENV_FILE) ] || { echo "Falta $(ENV_FILE). Ejecuta: make env$(if $(filter prod,$(ENV)), ENV=prod,)"; exit 1; }
+
+# Compose project name of this ENV (dev: DEV_PROJECT; prod: empty = Compose's default). For scripts and CI.
+_compose-project:
+	@echo "$(if $(filter dev,$(ENV)),$(DEV_PROJECT),)"
 

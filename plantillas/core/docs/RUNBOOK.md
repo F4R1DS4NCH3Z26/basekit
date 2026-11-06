@@ -17,7 +17,7 @@
 - Para rotarlos: edita `.env.prod`, ejecuta `make prod-up` y, si cambia el secreto de auth, todas las sesiones se invalidan.
 
 ## Base de datos
-- Backup: <completar según el motor; ej. `docker compose exec db pg_dump -U app app > backup.sql`>
+- Backup: <completar según el motor; ej. con PostgreSQL en producción, con los mismos archivos que usa `make ENV=prod`: `docker compose --env-file .env.prod -f compose.yaml -f compose.prod.yaml -f compose.db.yaml exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' > backup.sql`. `make -n ps ENV=prod` muestra el comando exacto de tu proyecto>
 - Restauración: <completar>
 - En producción, valora una base de datos gestionada; en ese caso elimina `compose.db.yaml` del servidor y define la conexión en `.env.prod`.
 

@@ -21,10 +21,15 @@ Regla: **todo corre en Docker y el `Makefile` es la única interfaz**, igual par
 ENV ?= dev                                   # solo dev | prod (otro valor aborta)
 ENV_FILE := $(if $(filter prod,$(ENV)),.env.prod,.env)
 OVERLAYS := $(wildcard compose.db.yaml compose.redis.yaml)
-DC = docker compose --env-file $(ENV_FILE) -f compose.yaml -f compose.$(ENV).yaml $(foreach f,$(OVERLAYS),-f $(f))
+DEV_PROJECT := <nombre normalizado>-dev-<cksum de la ruta del checkout>   # ver plantillas/core/Makefile
+DC = docker compose $(if $(filter dev,$(ENV)),-p $(DEV_PROJECT),) --env-file $(ENV_FILE) -f compose.yaml -f compose.$(ENV).yaml $(foreach f,$(OVERLAYS),-f $(f))
 ```
 
 `--env-file` alimenta la interpolación (`${DB_PASSWORD}`). El `env_file:` de cada servicio pasa las variables al contenedor.
+
+**Dev y prod nunca comparten proyecto de Compose.** Prod usa el nombre por defecto de Compose (el del directorio, normalizado), así los despliegues existentes conservan sus volúmenes. Dev usa `<nombre>-dev-<checksum de la ruta del checkout>`: el checksum evita que coincida con el proyecto de prod de otro directorio (por ejemplo, un hermano llamado `<nombre>-dev` que corre como staging). Por eso `make clean` (que hace `down -v` en dev) no puede borrar volúmenes de producción, aunque el servidor también tenga un `.env`. Si mueves la carpeta, dev pasa a otro proyecto y arranca con datos vacíos; los de prod no cambian. `make _compose-project` imprime el nombre que se usa.
+
+Si tenías contenedores de dev creados antes de este cambio, quedaron bajo el nombre viejo (el mismo que usa prod) y siguen ocupando el puerto; sus datos de dev se quedan en esos volúmenes viejos. **Solo en tu máquina de desarrollo, nunca en un servidor con producción**, bájalos una vez con `docker compose --env-file .env -f compose.yaml -f compose.dev.yaml down` (más los overlays que uses) antes del próximo `make dev`.
 
 ## 3. Objetivos del Makefile (contrato)
 
@@ -41,7 +46,7 @@ DC = docker compose --env-file $(ENV_FILE) -f compose.yaml -f compose.$(ENV).yam
 | `migration NAME=x` | `$(MAKE_MIGRATION_CMD)`; `NAME` validado (`^[a-z0-9_]{3,60}$`) y pasado con `-e NAME` |
 | `db-shell` | `exec db $(DB_SHELL_CMD)` |
 | `prod-build` / `prod-up` / `prod-down` / `prod-logs` / `prod-migrate` | Alias con `ENV=prod` |
-| `clean` | `down -v`; exige `CONFIRM=1` y está prohibido con `ENV=prod` |
+| `clean` | `down -v` del proyecto de dev (`<nombre>-dev`); exige `CONFIRM=1`, está prohibido con `ENV=prod` y nunca alcanza los volúmenes de prod |
 | `fix-perms` | Devuelve la propiedad de los archivos creados por contenedores (Linux) |
 | `new-app` | Definido por cada stack: crea la app del framework **dentro de Docker** |
 
