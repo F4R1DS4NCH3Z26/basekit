@@ -17,9 +17,12 @@ Se instala desde este repositorio (todavía no está publicado en npm). El repos
 ```bash
 npx github:F4R1DS4NCH3Z26/basekit
 # basekit — ¿cómo quieres instalarlo?
-#   1) Global         un `basekit` para todos tus proyectos (npm install -g)
-#   2) Este proyecto  devDependency del package.json de este directorio (npm install -D)
+# ❯ Global         un `basekit` para todos tus proyectos (npm install -g)
+#   Este proyecto  devDependency del package.json de este directorio (npm install -D)
+#   ↑/↓ mover · Enter elegir
 ```
+
+Los menús se mueven con ↑/↓ (o `k`/`j`), un número salta a esa opción y Enter elige. En la elección de agentes, espacio marca y desmarca. Ctrl+C cancela y sale con código 130. Si la entrada no es una terminal (redirigida, CI), los mismos menús se responden con el número de la opción.
 
 Si eliges "Este proyecto" y no hay `package.json`, pregunta antes de crearlo (en un proyecto Python, PHP o Java suele convenir la instalación global). Después ofrece preparar el proyecto con `init`. Sin terminal (CI, scripts) usa `basekit install --global` o `basekit install --project`. `--from` instala otro origen: un fork, una etiqueta o un `.tgz`.
 
@@ -40,6 +43,27 @@ npx --no-install basekit init . --stack nextjs
 ```
 
 > **Nunca uses `npx basekit` a secas.** El nombre `basekit` en npm es de otro paquete, y `npx` sin instalación local lo descargaría y lo ejecutaría. `npx --no-install basekit` usa solo la instalación local o la global, y si no encuentra ninguna falla sin descargar nada. Es lo que escriben `AGENTS.md` y los adaptadores generados.
+
+### Windows
+
+Hay dos formas, según dónde vayas a trabajar:
+
+1. **Dentro de WSL2 (recomendado).** Los proyectos que genera basekit corren con Docker y `make`, y en Windows eso se hace en WSL2 (Docker Desktop con el backend de WSL2). Abre tu distribución de WSL e instala basekit ahí con los mismos comandos de Linux. Todo, `init` y también `make dev`, queda en el mismo entorno.
+2. **En PowerShell (Windows nativo).** Sirve para instalar y preparar proyectos (`init`, `sync`, `doctor`). Para `make` y Docker igual necesitas WSL2. Requiere [Node.js 20 o superior](https://nodejs.org) y [Git for Windows](https://git-scm.com/download/win), autenticado con una cuenta que tenga acceso al repositorio.
+
+   ```powershell
+   npx github:F4R1DS4NCH3Z26/basekit                                   # el instalador: global o este proyecto
+   npm install -g --install-links github:F4R1DS4NCH3Z26/basekit        # o global, directo
+   basekit init C:\proyectos\mi-app --stack nextjs
+   ```
+
+Detalles que ya están resueltos para Windows:
+
+- **Finales de línea.** Git for Windows convierte LF en CRLF al clonar (`core.autocrlf=true`), y CRLF rompe los scripts, el `Makefile` y los `.env` dentro de WSL y Docker (`bash: $'\r': command not found`). El `.gitattributes` de basekit fuerza LF en sus plantillas, e `init` le deja al proyecto generado su propio `.gitattributes` con `* text=auto eol=lf`. Si un proyecto viejo ya tiene CRLF, ejecuta `git add --renormalize .` y commitea.
+- **Enlaces de skills.** Si Windows no permite crear enlaces simbólicos (sin modo desarrollador), basekit copia la carpeta y lo avisa en la salida.
+- **`npm` y `npx`** se ejecutan a través de sus `.cmd`, con argumentos validados.
+
+El CI prueba todo esto en `windows-latest` con `core.autocrlf=true`: el instalador vía `npx`, `init`, `sync`, la instalación por proyecto y que no quede ningún CRLF en lo que corre dentro de WSL o Docker.
 
 ## Uso
 
@@ -64,7 +88,7 @@ Cada acción se reporta con `+` (creado), `~` (actualizado), `=` (existía, se c
 
 ## Comandos
 
-- `init [dir]`: crea la base. Sin flags reutiliza lo guardado en `.agents/manifest.json`; `infra.sh` solo corre si pasas `--db`. En una terminal (sin `-y`) pregunta solo lo que no resolvió con flags, manifest o detección: el stack (lista numerada; acepta número o id y vuelve a preguntar si no es válido), los agentes (varios separados por comas; Enter usa `claude-code,opencode`) y, en la primera corrida, de qué trata el proyecto.
+- `init [dir]`: crea la base. Sin flags reutiliza lo guardado en `.agents/manifest.json`; `infra.sh` solo corre si pasas `--db`. En una terminal (sin `-y`) pregunta solo lo que no resolvió con flags, manifest o detección: el stack (menú con flechas), los agentes (casillas: espacio marca, Enter confirma; arrancan marcados `claude-code` y `opencode`) y, en la primera corrida, de qué trata el proyecto.
 - `sync [dir] [--agents a,b] [--no-external-skills] [--dry-run]`: regenera el bloque de `AGENTS.md`, los subagentes de `.claude/agents/` y `.opencode/agents/` desde `.agents/roles/` y `.agents/zones/`, y los enlaces de skills. Con `--agents`, los agentes nuevos reciben adaptadores, enlaces y skills externas.
 - `doctor [dir]`: imprime `OK` o `FALTA` con la sugerencia; sale con código 1 si falta algo. Nunca lee `.env`.
 

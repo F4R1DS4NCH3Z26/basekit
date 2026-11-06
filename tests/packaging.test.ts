@@ -27,6 +27,18 @@ before(() => {
 
 const PKG = JSON.parse(readFileSync(join(REPO, "package.json"), "utf8")) as { name: string; scripts?: Record<string, string> };
 
+describe("Windows", () => {
+  it("a clone with core.autocrlf=true (Git for Windows' default) still gets LF templates", () => {
+    const clone = join(scratch(), "clone");
+    const r = sh("git", ["-c", "core.autocrlf=true", "clone", "-q", gitUrl.replace(/^git\+/, ""), clone], REPO);
+    assert.equal(r.code, 0, r.stderr);
+    const files = sh("git", ["ls-files", "plantillas"], clone).stdout.split("\n").filter(Boolean);
+    assert.ok(files.length > 100);
+    const crlf = files.filter((f) => readFileSync(join(clone, f), "utf8").includes("\r"));
+    assert.deepEqual(crlf, [], "these templates would break in WSL/Docker with CRLF line endings");
+  });
+});
+
 describe("package.json", () => {
   it("has none of the scripts that make npm prepare a git dependency", () => {
     // pacote (npm) runs `npm install` inside the clone when any of these exist. That inner install inherits

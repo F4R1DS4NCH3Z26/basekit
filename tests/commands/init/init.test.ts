@@ -248,6 +248,27 @@ describe("kit skills modified locally", () => {
   });
 });
 
+describe("line endings (Windows)", () => {
+  it("creates a .gitattributes that keeps LF, so scripts survive a clone with core.autocrlf=true", () => {
+    const d = scratch();
+    assert.equal(init(d, "--stack", "nextjs").code, 0);
+    assert.match(read(d, ".gitattributes"), /^\* text=auto eol=lf$/m);
+    gitCommitAll(d);
+    const clone = join(scratch(), "clone");
+    assert.equal(sh("git", ["-c", "core.autocrlf=true", "clone", "-q", d, clone], d).code, 0);
+    for (const f of [".agents/skills/zone-check/scripts/check_zones.sh", "Makefile", ".make/stack.mk", ".env.example"]) {
+      assert.ok(!read(clone, f).includes("\r"), `${f} got CRLF`);
+    }
+  });
+
+  it("keeps an existing .gitattributes", () => {
+    const d = scratch();
+    writeFileSync(join(d, ".gitattributes"), "*.png binary\n");
+    assert.equal(init(d, "--stack", "nextjs").code, 0);
+    assert.equal(read(d, ".gitattributes"), "*.png binary\n");
+  });
+});
+
 describe("symlinks that point outside the project", () => {
   it("never writes through them: warns and leaves the outside directory untouched", () => {
     const base = scratch();

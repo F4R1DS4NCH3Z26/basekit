@@ -1,0 +1,3 @@
+# Keep LF everywhere, also on Windows clones (Git for Windows defaults to core.autocrlf=true):
+# the templates are shell scripts, Makefiles and env files that run inside WSL and Docker.
+* text=auto eol=lf

@@ -16,9 +16,8 @@ jobs:
       matrix:
         node: [20, 22, 24]
     steps:
-      # Pin these actions by commit SHA before relying on this workflow for releases.
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: ${{ matrix.node }}
       - run: npm ci
@@ -35,7 +34,7 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: 24
       # The repository is private: let git (used by npm for github: URLs) authenticate with the workflow token.
@@ -65,6 +64,60 @@ jobs:
           npx --no-install basekit init . -y --no-external-skills --stack fastapi
           test -f AGENTS.md
 
+  windows:
+    name: Windows (PowerShell, core.autocrlf=true)
+    needs: test
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 24
+      # Git for Windows' usual default, and the private-repo credentials from the workflow token.
+      - name: git config
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          git config --global core.autocrlf true
+          git config --global url."https://x-access-token:$($env:TOKEN)@github.com/".insteadOf "https://github.com/"
+          git config --global --add url."https://x-access-token:$($env:TOKEN)@github.com/".insteadOf "ssh://git@github.com/"
+          git config --global --add url."https://x-access-token:$($env:TOKEN)@github.com/".insteadOf "git@github.com:"
+      - name: the installer through npx, global
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          npx -y "github:${{ github.repository }}#${{ github.sha }}" install --global --from "github:${{ github.repository }}#${{ github.sha }}"
+          basekit --version
+          basekit stacks
+      - name: init, and no CRLF in what runs inside WSL/Docker
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          $app = Join-Path $env:RUNNER_TEMP "win-app"
+          basekit init $app -y --no-external-skills --stack nextjs
+          foreach ($f in "AGENTS.md", ".gitattributes", "Makefile", ".claude/skills/zone-check/SKILL.md") {
+            if (-not (Test-Path (Join-Path $app $f))) { throw "missing $f" }
+          }
+          $crlf = Get-ChildItem -Path $app -Recurse -File -Force |
+            Where-Object { $_.FullName -notmatch '\\.git\\' -and ($_.Name -like "*.sh" -or $_.Name -like "*.mk" -or $_.Name -in "Makefile", ".env.example", "Dockerfile") } |
+            Where-Object { (Get-Content -Raw -LiteralPath $_.FullName) -match "`r" }
+          if ($crlf) { $crlf | ForEach-Object { $_.FullName }; throw "CRLF line endings would break these files in WSL/Docker" }
+          Push-Location $app
+          npx --no-install basekit sync --no-external-skills
+          Pop-Location
+      - name: per project (npm install -D)
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          $p = Join-Path $env:RUNNER_TEMP "win-project"
+          New-Item -ItemType Directory -Path $p | Out-Null
+          Set-Content -Path (Join-Path $p "package.json") -Value '{ "name": "app", "private": true }'
+          Push-Location $p
+          npm install -D --no-audit --no-fund "github:${{ github.repository }}#${{ github.sha }}"
+          npx --no-install basekit init . -y --no-external-skills --stack fastapi
+          if (-not (Test-Path "AGENTS.md")) { throw "init did not run" }
+          Pop-Location
+
   e2e:
     name: e2e ${{ matrix.env || 'dev' }} (${{ matrix.stack }}${{ matrix.db && format(' + {0}', matrix.db) || '' }})
     needs: test
@@ -86,8 +139,8 @@ jobs:
           - { stack: nextjs, db: sqlite, env: prod }
           - { stack: spring, db: postgres, env: prod }
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: 24
       - run: npm ci && npm run compile

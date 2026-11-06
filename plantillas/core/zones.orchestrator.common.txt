@@ -22,4 +22,5 @@ compose.*.yaml
 .dockerignore
 .env.example
 .gitignore
+.gitattributes
 .editorconfig

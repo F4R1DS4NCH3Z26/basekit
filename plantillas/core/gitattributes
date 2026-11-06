@@ -1,0 +1,3 @@
+# Generado por basekit. Mantiene LF en todos los sistemas (también en Windows con core.autocrlf=true):
+# los scripts, el Makefile y los .env se ejecutan dentro de WSL y Docker, donde CRLF los rompe.
+* text=auto eol=lf

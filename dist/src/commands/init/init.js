@@ -102,6 +102,8 @@ export async function init(o, ctx) {
         }
     }
     project.block(".gitignore", template("core/gitignore.block"), (l) => l.trim() === "# >>> basekit", "# <<< basekit");
+    // LF for everyone: a Windows clone with core.autocrlf=true would otherwise break the scripts in WSL/Docker.
+    project.create(".gitattributes", template("core/gitattributes"));
     // 9 · Documentation (GLOSSARY.md and docs/adr/ are created later by domain-modeling).
     const vars = templateVars(stack, root, context);
     project.create("README.md", render(template("core/README.tpl.md"), vars));
