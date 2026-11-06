@@ -1,6 +1,6 @@
 # basekit CLI
 
-Objective: build the `basekit` CLI described in `02_especificacion_cli.md` (v3 guides) in Node.js + TypeScript, zero runtime dependencies.
+Objective: build the `basekit` CLI described in `docs/spec/02_especificacion_cli.md` (v3 guides, moved from the repo root on 2026-11-06) in Node.js + TypeScript, zero runtime dependencies.
 Branch: none yet (`guiade-project` is untracked inside the `~/Documents` repo; no commits without user approval). Delivery: ask-on-risk. Test runner: `npm test` (tsc + `node --test`).
 
 ## Specs

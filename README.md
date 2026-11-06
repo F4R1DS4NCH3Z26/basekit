@@ -2,7 +2,7 @@
 
 CLI que prepara la base de un proyecto para trabajar con agentes de código (Claude Code, OpenCode, Codex, Cursor, Gemini CLI, Copilot, Hermes): `AGENTS.md`, roles y zonas en `.agents/`, Docker + `Makefile` para dev y prod, y la documentación inicial. El CLI **prepara**; el agente **decide** (base de datos, auth) con la skill `project-bootstrap`.
 
-La especificación completa está en `00_LEEME.md` … `05_bootstrap_bd_auth.md`, y las guías por stack en `docs/stacks/`. Las plantillas que copia el CLI están en `plantillas/`: el código no tiene nada específico de un stack.
+La especificación completa está en `docs/spec/` (`00_LEEME.md` … `05_bootstrap_bd_auth.md`), y las guías por stack en `docs/stacks/`. Las plantillas que copia el CLI están en `plantillas/`: el código no tiene nada específico de un stack.
 
 ## Requisitos
 
@@ -102,6 +102,7 @@ src/
 ├── infra/          puertos de I/O con su implementación real: FileSystem (disco) y Runner (procesos)
 └── ui/             preguntas interactivas
 tests/              espejo de src/ (commands/, kit/, ui/), más plantillas/ (Makefile y compose) y architecture.test.ts
+docs/spec/          la especificación v3 (00_LEEME.md … 05_bootstrap_bd_auth.md); docs/stacks/: guías por stack
 ```
 
 Las dependencias van en un solo sentido: `cli → commands → kit → infra`. Un comando nunca importa a otro, y `kit` nunca importa `commands`. `tests/architecture.test.ts` lo hace cumplir, y también que `src/` no nombre ningún stack. Todo lo que se escribe en el proyecto destino pasa por `kit/project.ts`: no sale del proyecto, no reescribe lo que no cambió, `--dry-run` no escribe nada y nunca lee `.env`.

@@ -17,8 +17,8 @@ Objetivo del CLI: que en cualquier proyecto baste con instalarlo y decirle al ag
 | `03_agentes_agnosticos.md` | Cómo lee cada herramienta y el formato exacto de cada adaptador que genera el CLI |
 | `04_docker_make.md` | Contrato del `Makefile`, de compose y de los overlays, el servicio `migrate`, endurecimiento y cómo añadir un stack |
 | `05_bootstrap_bd_auth.md` | Flujo del agente: entrevista → decisiones de BD y auth → documentación → infraestructura |
-| `stacks/*.md` | Next.js, FastAPI, Laravel y Spring: arquitectura, roles, Docker y auth |
-| `plantillas/` | **Los archivos que el CLI copia**, tal cual. El CLI no debe contener nada específico de un stack: todo sale de aquí |
+| `../stacks/*.md` (en `docs/stacks/`) | Next.js, FastAPI, Laravel y Spring: arquitectura, roles, Docker y auth |
+| `plantillas/` (en la raíz del repo) | **Los archivos que el CLI copia**, tal cual. El CLI no debe contener nada específico de un stack: todo sale de aquí |
 
 ## Estructura de `plantillas/`
 
