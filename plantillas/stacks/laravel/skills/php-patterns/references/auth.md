@@ -41,7 +41,7 @@ RateLimiter::for('login', fn (Request $r) =>
     Limit::perMinute(5)->by(mb_strtolower((string) $r->input('email')).'|'.$r->ip()));
 ```
 
-`App\Models\User`: `use HasApiTokens;`, `$fillable = ['name', 'email', 'password']`, `casts(): ['password' => 'hashed']`.
+`App\Models\User`: `use HasApiTokens;`, `$fillable = ['name', 'email', 'password']`, `casts(): ['password' => 'hashed']`, y una columna `role` (string, fuera de `$fillable`) si emites tokens con abilities.
 
 ## Módulo `src/Modules/Auth/` (con `php-scaffold Auth`, delegado por roles)
 
@@ -77,17 +77,59 @@ final class IssueTokenController
     public function __invoke(IssueTokenRequest $request): JsonResponse
     {
         $data = $request->validated();   // email, password, device_name (max:100)
-        $user = User::query()->where('email', mb_strtolower($data['email']))->first();
 
-        if (! $user || ! Hash::check($data['password'], $user->password)) {
+        // Timebox (Illuminate\Support\Timebox), como Auth::attempt: un fallo tarda siempre lo mismo,
+        // exista o no el email. El presupuesto debe superar el peor caso de Hash::check con tu coste.
+        $user = (new Timebox)->call(function (Timebox $timebox) use ($data): ?User {
+            $user = User::query()->where('email', mb_strtolower($data['email']))->first();
+            if ($user !== null && Hash::check($data['password'], $user->password)) {
+                $timebox->returnEarly();   // el éxito no necesita esperar
+                return $user;
+            }
+            return null;
+        }, 400_000);   // microsegundos
+
+        if ($user === null) {
             throw ValidationException::withMessages(['email' => __('auth.failed')]);
         }
-        $token = $user->createToken($data['device_name'], ['*'], now()->addDays(30));
+        $token = $user->createToken(
+            $data['device_name'],
+            TokenAbilities::for($user),                                  // mínimo privilegio, nunca ['*']
+            // expires_at siempre fijado. Si sanctum.expiration quedó en null (el valor por defecto de Laravel),
+            // (int) null sería 0 y todos los tokens nacerían vencidos: se usa un tope de 30 días.
+            now()->addMinutes((int) (config('sanctum.expiration') ?? 60 * 24 * 30)),
+        );
 
         return response()->json(['token' => $token->plainTextToken, 'type' => 'Bearer'], 201);
     }
 }
 ```
+
+`Support/TokenAbilities.php` (app-writer): cada rol se traduce a abilities explícitas. Ajusta los nombres a tus recursos; un rol desconocido no recibe ninguna.
+
+```php
+final class TokenAbilities
+{
+    private const BY_ROLE = [
+        'member' => ['orders.read', 'orders.create'],
+        'admin'  => ['orders.read', 'orders.create', 'orders.delete', 'users.manage'],
+    ];
+
+    /** @return list<string> */
+    public static function for(User $user): array
+    {
+        return self::BY_ROLE[$user->role] ?? [];
+    }
+}
+```
+
+Comprobación:
+- En la ruta: `->middleware(['auth:sanctum', 'abilities:orders.create'])`. Registra los alias en `bootstrap/app.php`: `$middleware->alias(['abilities' => CheckAbilities::class, 'ability' => CheckForAnyAbility::class]);` (namespace `Laravel\Sanctum\Http\Middleware`).
+- En la Policy: `$user->tokenCan('orders.delete')`. Con la cookie del SPA, `tokenCan()` siempre es `true`, así que la Policy también comprueba el rol o la propiedad del recurso.
+
+Caducidad:
+- `sanctum.expiration` (minutos) es el tope global.
+- El tercer argumento de `createToken()` fija el `expires_at` de cada token. No lo dejes en `null`.
 
 Revocación: `$request->user()->currentAccessToken()->delete();` (logout del dispositivo) o `$user->tokens()->delete();` (de todos).
 
@@ -105,5 +147,6 @@ Revocación: `$request->user()->currentAccessToken()->delete();` (logout del dis
 - Login fallido: 422 con el mismo mensaje exista o no el email.
 - Sexto intento en un minuto: 429.
 - Token expirado o revocado: 401.
+- Token sin la ability que exige la ruta: 403.
 - Ruta protegida sin auth: 401.
 - Recurso ajeno: 404.

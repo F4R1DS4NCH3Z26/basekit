@@ -33,10 +33,11 @@ class SecurityConfig {
     SecurityFilterChain api(HttpSecurity http) throws Exception {
         return http
             .csrf(c -> c.disable()) // API sin estado con Bearer: no hay cookie de sesión que proteger
-            .cors(Customizer.withDefaults())
+            .cors(Customizer.withDefaults()) // usa el bean llamado `corsConfigurationSource` (ver abajo)
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(a -> a
-                .requestMatchers("/actuator/health", "/api/auth/login", "/api/auth/register", "/api/auth/refresh").permitAll()
+                .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll() // un 500 no se convierte en 401
+                .requestMatchers("/error", "/actuator/health", "/api/auth/login", "/api/auth/register", "/api/auth/refresh").permitAll()
                 .anyRequest().authenticated())
             .oauth2ResourceServer(o -> o.jwt(j -> j.jwtAuthenticationConverter(SecurityConfig::toCurrentUser)))
             .build();
@@ -66,9 +67,9 @@ class SecurityConfig {
     JwtDecoder jwtDecoder(SecretKey key, @Value("${app.jwt.issuer}") String issuer,
                           @Value("${app.jwt.audience}") String audience) {
         NimbusJwtDecoder decoder = NimbusJwtDecoder.withSecretKey(key).macAlgorithm(MacAlgorithm.HS256).build();
-        OAuth2TokenValidator<Jwt> aud = jwt -> jwt.getAudience().contains(audience)
-            ? OAuth2TokenValidatorResult.success()
-            : OAuth2TokenValidatorResult.failure(new OAuth2Error("invalid_token", "aud inválido", null));
+        // Null-safe: un token sin `aud` da 401, no un NPE (500).
+        OAuth2TokenValidator<Jwt> aud = new JwtClaimValidator<List<String>>(JwtClaimNames.AUD,
+            a -> a != null && a.contains(audience));
         decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(JwtValidators.createDefaultWithIssuer(issuer), aud));
         return decoder;
     }
@@ -78,8 +79,9 @@ class SecurityConfig {
         return PasswordEncoderFactories.createDelegatingPasswordEncoder(); // bcrypt; prefijo {id} permite migrar a argon2
     }
 
+    /** El nombre del método importa: `.cors(...)` busca el bean `corsConfigurationSource`; con otro nombre se ignora y los preflight dan 401. */
     @Bean
-    CorsConfigurationSource cors(@Value("${app.cors-origins}") List<String> origins) {
+    CorsConfigurationSource corsConfigurationSource(@Value("${app.cors-origins}") List<String> origins) {
         var c = new CorsConfiguration();
         c.setAllowedOrigins(origins);
         c.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE"));
@@ -128,13 +130,18 @@ public class TokenService {
 
 **app-writer**: `AuthService`.
 - `login(email, password)`:
-  - Si el usuario no existe, ejecuta `passwordEncoder.matches(password, DUMMY_HASH)` para que el tiempo sea el mismo.
-  - Lanza `InvalidCredentialsException` con un mensaje único.
-- `refresh(raw)`:
-  - Busca por `sha256(raw)`.
-  - Si está vencido o no existe → inválido.
-  - Si ya estaba revocado → revoca toda la familia (`familyId`) y falla.
-  - Si no, lo revoca y emite un par nuevo en la misma familia.
+  - `DUMMY_HASH` se genera **una vez al arrancar** con el mismo encoder: `passwordEncoder.encode(UUID.randomUUID().toString())`. Así lleva el prefijo `{bcrypt}`/`{argon2}`. Un hash escrito a mano sin prefijo hace que `DelegatingPasswordEncoder.matches` lance `IllegalArgumentException` (500) solo para los emails que no existen, y eso los delata.
+  - Siempre ejecuta `passwordEncoder.matches(password, user != null ? user.passwordHash() : DUMMY_HASH)`. Recién después decide: usuario inexistente, cuenta deshabilitada (`!enabled`) o contraseña incorrecta lanzan la misma `InvalidCredentialsException`, con un mensaje único.
+- `refresh(raw)`, sin leer y luego escribir, porque dos refresh simultáneos con el mismo token pasarían los dos:
+  - Revoca de forma atómica en el repositorio y usa el número de filas afectadas:
+    ```java
+    @Modifying
+    @Query("update RefreshToken t set t.revokedAt = :now where t.tokenHash = :hash and t.revokedAt is null and t.expiresAt > :now")
+    int revokeIfActive(@Param("hash") String hash, @Param("now") Instant now);
+    ```
+  - Dentro de una transacción (`@Transactional`): si `revokeIfActive(sha256(raw), now) != 1`, el token no existe, venció o **ya se usó**. Si existe y estaba revocado, es reutilización: revoca toda su familia (`familyId`). En los tres casos falla con el mismo 401.
+  - Si la fila se revocó, carga el usuario y verifica `enabled`. Si la cuenta está deshabilitada, revoca la familia y falla.
+  - Solo entonces emite el par nuevo en la misma familia, en la misma transacción.
 - `logout(raw)`: revoca ese token.
 
 **web-writer**: `AuthController` en `/api/auth`.
@@ -148,8 +155,75 @@ public class TokenService {
 
 `GlobalExceptionHandler` (orquestador) traduce `InvalidCredentialsException` → 401 `ProblemDetail` "Credenciales inválidas".
 
-**Rate limit** en `/api/auth/login` y `/refresh`: Bucket4j (requiere aprobación) o el proxy inverso. Documenta cuál en `docs/AUTH.md`.
+**Rate limit** en `/api/auth/login` y `/refresh` (orquestador): `core/security/AuthRateLimiter.java`, en memoria y sin dependencias. Va en el controlador y no en un filtro porque el email viaja en el cuerpo JSON, que un filtro no puede leer sin consumirlo.
+
+```java
+@Component
+public class AuthRateLimiter {
+    private static final int MAX_ATTEMPTS = 5;
+    private static final long WINDOW_MS = Duration.ofMinutes(1).toMillis();
+    private static final int PURGE_ABOVE = 10_000;
+    private final ConcurrentHashMap<String, Window> windows = new ConcurrentHashMap<>();
+
+    private record Window(long start, AtomicInteger hits) {}
+
+    /** Ventana fija por clave; al pasar el límite responde 429. */
+    public void check(String key) {
+        long now = System.currentTimeMillis();
+        if (windows.size() > PURGE_ABOVE) windows.values().removeIf(w -> now - w.start() >= WINDOW_MS);
+        Window w = windows.compute(key, (k, old) ->
+            old == null || now - old.start() >= WINDOW_MS ? new Window(now, new AtomicInteger()) : old);
+        if (w.hits().incrementAndGet() > MAX_ATTEMPTS) {
+            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Demasiados intentos");
+        }
+    }
+}
+```
+
+En `AuthController`:
+
+```java
+@PostMapping("/login")
+TokenPairResponse login(@Valid @RequestBody LoginRequest body, HttpServletRequest http) {
+    rateLimiter.check("login|" + http.getRemoteAddr() + "|" + body.email().toLowerCase(Locale.ROOT));
+    return authService.login(body.email(), body.password());
+}
+
+@PostMapping("/refresh")
+TokenPairResponse refresh(@Valid @RequestBody RefreshRequest body, HttpServletRequest http) {
+    rateLimiter.check("refresh|" + http.getRemoteAddr());   // el refresh es opaco: se limita por IP
+    return authService.refresh(body.refreshToken());
+}
+```
+
+- Detrás de un proxy, `getRemoteAddr()` es la IP del proxy. Activa `server.forward-headers-strategy=native` y fija `server.tomcat.remoteip.internal-proxies` con las IPs del proxy de confianza. Nunca leas `X-Forwarded-For` a mano: lo falsifica cualquiera.
+- El contador vive en cada instancia. Con varias réplicas, usa el límite del proxy inverso o Bucket4j con Redis (requiere aprobación). Documenta cuál en `docs/AUTH.md`.
 
 ## Tests obligatorios (qa-writer)
-- `@WebMvcTest` con `jwt()` de `spring-security-test`: sin token → 401; token con otra `aud` o vencido → 401; con rol insuficiente en `@PreAuthorize` → 403.
-- `AuthService` (unitario): reutilizar un refresh rotado revoca la familia; login con email inexistente y con contraseña incorrecta dan la misma excepción.
+
+**Validación del token, con tokens reales.** `jwt()` de `spring-security-test` se salta el `JwtDecoder` y sus validadores, así que no prueba `aud` ni `exp`. Su principal es un `Jwt`, así que `@AuthenticationPrincipal CurrentUser` llega `null`.
+
+- Usa `@WebMvcTest` con `@Import({SecurityConfig.class, TokenService.class})`, o `@SpringBootTest` + `@AutoConfigureMockMvc`.
+- Firma tokens con el `JwtEncoder` y el `TokenService` de la app y envíalos como `Authorization: Bearer <token>`:
+  - válido (`tokenService.issueAccess(...)`) → 200 en `GET /api/auth/me`, con el `id` del `CurrentUser`;
+  - sin token → 401;
+  - con otra `aud`, sin `aud` o vencido → 401.
+- Preflight `OPTIONS` con `Origin` permitido → 200 con `Access-Control-Allow-Origin`.
+
+```java
+String mint(String aud, Instant exp) {   // vencido: exp más de 60 s en el pasado (margen de reloj por defecto)
+    var claims = JwtClaimsSet.builder().issuer(issuer).audience(List.of(aud)).subject(UUID.randomUUID().toString())
+        .issuedAt(exp.minus(Duration.ofMinutes(15))).expiresAt(exp).build();
+    return encoder.encode(JwtEncoderParameters.from(JwsHeader.with(MacAlgorithm.HS256).build(), claims)).getTokenValue();
+}
+// mockMvc.perform(get("/api/auth/me").header("Authorization", "Bearer " + mint("otra-app", Instant.now().plusSeconds(600))))
+//        .andExpect(status().isUnauthorized());
+```
+
+**Autorización.** `jwt()` sirve solo donde no hace falta validar el token: rol insuficiente en `@PreAuthorize` → 403. Si el endpoint usa `@AuthenticationPrincipal CurrentUser`, envía un token real.
+
+**`AuthService` (unitario).**
+- Reutilizar un refresh rotado revoca la familia.
+- Login con email inexistente y con contraseña incorrecta dan la misma excepción.
+
+**Rate limit.** Sexto login en un minuto con la misma IP y email → 429.
