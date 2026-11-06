@@ -70,14 +70,15 @@ describe("infra.sh", () => {
 });
 
 describe(".gitignore block", () => {
-  it("ignores the secret env files and keys, and nothing else that starts with .env", () => {
+  it("ignores every env file by default and keeps only the secret-free templates tracked", () => {
     const d = scratch();
     assert.equal(init(d).code, 0);
-    for (const f of [".env", ".env.local", ".env.development.local", ".env.production", ".env.prod", ".env.prod.bak", "x.pem", "x.key"]) {
+    // Deny by default: any env variant can hold secrets (staging, backups, direnv...).
+    for (const f of [".env", ".env.local", ".env.development.local", ".env.production", ".env.production.bak", ".env.prod",
+      ".env.prod.bak", ".env.staging", ".env.dev", ".env.bak", ".env.test", ".env.development", ".envrc", "x.pem", "x.key"]) {
       assert.equal(sh("git", ["check-ignore", "-q", f], d).code, 0, `${f} must be ignored`);
     }
-    // Committed, non-secret config that projects keep next to .env.
-    for (const f of [".env.example", ".env.sample", ".env.template", ".env.test", ".env.development", ".envrc"]) {
+    for (const f of [".env.example", ".env.sample", ".env.template"]) {
       assert.equal(sh("git", ["check-ignore", "-q", f], d).code, 1, `${f} must stay tracked`);
     }
   });
