@@ -28,16 +28,32 @@ DB_SHELL_CMD ?=
 help: ## Lista los comandos disponibles
 	@grep -hE '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*## "}{printf "  \033[36m%-14s\033[0m %s\n",$$1,$$2}'
 
-env: ## Crea .env (o .env.prod con ENV=prod) desde .env.example con secretos aleatorios
-	@if [ -f $(ENV_FILE) ]; then echo "$(ENV_FILE) ya existe; no se sobrescribe"; exit 0; fi; \
+# env never rewrites an existing value: on a second run it only appends the keys .env.example gained
+# (e.g. after infra-setup). It writes to a temp file and moves it at the end, so a failure leaves nothing
+# half written. `set -euo pipefail` is repeated here because GNU Make 3.81 (macOS) ignores .SHELLFLAGS.
+env: ## Crea .env (o .env.prod con ENV=prod) desde .env.example con secretos aleatorios; si ya existe, solo agrega las variables nuevas
+	@set -euo pipefail; \
 	command -v openssl >/dev/null || { echo "Falta openssl"; exit 1; }; \
-	umask 077; \
+	[ -f .env.example ] || { echo "Falta .env.example"; exit 1; }; \
+	umask 077; target="$(ENV_FILE)"; exists=0; [ -f "$$target" ] && exists=1; \
+	tmp="$$(mktemp "$$target.XXXXXX")"; trap 'rm -f "$$tmp"' EXIT; \
+	if [ $$exists = 1 ]; then cat "$$target" > "$$tmp"; fi; \
+	added=0; \
 	while IFS= read -r line || [ -n "$$line" ]; do \
-	  if [[ $$line == *__GENERATE_B64__* ]]; then line="$${line//__GENERATE_B64__/$$(openssl rand -base64 32)}"; fi; \
-	  if [[ $$line == *__GENERATE__* ]]; then line="$${line//__GENERATE__/$$(openssl rand -hex 32)}"; fi; \
-	  echo "$$line"; \
-	done < .env.example > $(ENV_FILE); \
-	echo "$(ENV_FILE) creado (permisos 600). Revisa los valores marcados con CAMBIAR."
+	  if [[ $$line =~ ^([A-Za-z_][A-Za-z0-9_]*)= ]]; then \
+	    key="$${BASH_REMATCH[1]}"; \
+	    if [ $$exists = 1 ] && grep -q "^$$key=" "$$target"; then continue; fi; \
+	    while [[ $$line == *__GENERATE_B64__* ]]; do line="$${line/__GENERATE_B64__/$$(openssl rand -base64 32)}"; done; \
+	    while [[ $$line == *__GENERATE__* ]]; do line="$${line/__GENERATE__/$$(openssl rand -hex 32)}"; done; \
+	    printf '%s\n' "$$line" >> "$$tmp"; added=$$((added + 1)); \
+	  elif [ $$exists = 0 ]; then \
+	    printf '%s\n' "$$line" >> "$$tmp"; \
+	  fi; \
+	done < .env.example; \
+	chmod 600 "$$tmp"; mv "$$tmp" "$$target"; trap - EXIT; \
+	if [ $$exists = 0 ]; then echo "$$target creado (permisos 600). Revisa los valores marcados con CAMBIAR."; \
+	elif [ $$added -gt 0 ]; then echo "$$target: $$added variables nuevas agregadas (las existentes no se tocan)"; \
+	else echo "$$target al día: no faltaba ninguna variable"; fi
 
 doctor: ## Revisa docker, compose, archivos de entorno y overlays activos
 	@for c in docker git openssl; do command -v $$c >/dev/null && echo "OK    $$c" || echo "FALTA $$c"; done; \
@@ -90,8 +106,9 @@ migration: _env-check ## Crea una migración: make migration NAME=create_orders
 	@[[ "$${NAME:-}" =~ ^[a-z0-9_]{3,60}$$ ]] || { echo "Uso: make migration NAME=snake_case"; exit 2; }
 	$(DC) run --rm -e NAME $(APP) $(MAKE_MIGRATION_CMD)
 
+# The check is done by make: DB_SHELL_CMD contains quotes and container variables that must not reach the host shell.
 db-shell: _env-check ## Consola de la base de datos
-	@[ -n "$(DB_SHELL_CMD)" ] || { echo "No hay base de datos configurada (skill infra-setup)"; exit 1; }
+	$(if $(strip $(DB_SHELL_CMD)),,@echo "No hay base de datos configurada (skill infra-setup)"; exit 1)
 	$(DC) exec db $(DB_SHELL_CMD)
 
 prod-build: ## Construye las imágenes de producción

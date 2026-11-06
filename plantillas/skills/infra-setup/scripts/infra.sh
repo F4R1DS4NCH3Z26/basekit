@@ -46,6 +46,6 @@ if [ $redis -eq 1 ]; then
   place "$assets/compose.redis.yaml" compose.redis.yaml; env_block redis 'REDIS_PASSWORD=__GENERATE__'
 fi
 for f in .env .env.prod; do
-  [ -f "$f" ] && echo "AVISO: $f ya existe; agrega a mano las variables nuevas de .env.example (no se tocan secretos existentes)"
+  [ -f "$f" ] && echo "AVISO: $f ya existe; ejecuta make env$([ "$f" = .env.prod ] && echo ' ENV=prod') para agregar solo las variables nuevas (no toca los secretos existentes)"
 done
 echo "infra OK: db=$db redis=$redis → siguiente: make env (si no existe) y make dev"

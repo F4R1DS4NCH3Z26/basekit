@@ -45,7 +45,7 @@ Skills: `nextjs-scaffold`, `nextjs-verify` (la usa `make verify`), `nextjs-patte
 En dev, `node_modules` y `.next` van en **volúmenes con nombre**, para que el bind mount no los oculte; `make install` vuelve a ejecutar `npm ci` en el volumen. Se activa `WATCHPACK_POLLING` para que el hot reload funcione en Docker Desktop y WSL.
 
 `make new-app` (si no hay `package.json`):
-1. Corre `create-next-app@16.0.0` (TypeScript, ESLint, App Router, `src/`, Tailwind, alias `@/*`) dentro de `node:22-alpine` con tu uid.
+1. Corre `create-next-app@16.4.3` (TypeScript, ESLint, App Router, `src/`, Tailwind, alias `@/*`) dentro de `node:22-alpine` como root y al final devuelve los archivos a tu uid (`create-next-app` falla con un uid sin usuario en la imagen).
 2. Copia el resultado sin pisar archivos del kit.
 3. Instala `zod`, `server-only` y Vitest + Testing Library.
 4. Añade `output: "standalone"` a `next.config`.

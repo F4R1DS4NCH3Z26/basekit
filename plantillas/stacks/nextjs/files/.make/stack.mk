@@ -7,13 +7,17 @@ TEST_CMD    := npx --no-install vitest run
 LINT_CMD    := npx --no-install eslint .
 MAKE_MIGRATION_CMD = npx --no-install prisma migrate dev --name "$$NAME"
 VERIFY_CMD  = bash .agents/skills/nextjs-verify/scripts/verify.sh "$${SCOPE:-src}"
-CREATE_NEXT_VERSION ?= 16.0.0
+# 16.4.3: newest release that is at least 14 days old (2026-10-23); 16.0.x lacks the RSC security fixes.
+CREATE_NEXT_VERSION ?= 16.4.3
 
-# new-app runs as root and hands the files back at the end: create-next-app calls os.userInfo(), which
+# The guard and the work live in one shell decision: an `exit 0` on its own recipe line would only end that line.
+new-app: ## Crea la app Next.js en Docker (solo si no existe package.json)
+	@if [ -f package.json ]; then echo "Ya existe package.json; nada que hacer"; else $(MAKE) --no-print-directory _new-app; fi
+
+# _new-app runs as root and hands the files back at the end: create-next-app calls os.userInfo(), which
 # fails for a host uid that has no passwd entry in the image. GNU cp because busybox `cp -Rn` skips the
 # whole tree when /work already exists.
-new-app: ## Crea la app Next.js en Docker (solo si no existe package.json)
-	@[ ! -f package.json ] || { echo "Ya existe package.json; nada que hacer"; exit 0; }
+_new-app:
 	docker run --rm -e UID_GID="$$(id -u):$$(id -g)" -e HOME=/tmp -e npm_config_cache=/tmp/.npm -e NEXT_TELEMETRY_DISABLED=1 \
 	  -v "$$PWD":/work -w /tmp node:22-alpine sh -c '\
 	  apk add --no-cache coreutils >/dev/null && \

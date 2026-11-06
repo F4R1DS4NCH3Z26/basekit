@@ -9,9 +9,13 @@ MAKE_MIGRATION_CMD = alembic revision --autogenerate -m "$$NAME"
 VERIFY_CMD  = bash .agents/skills/py-verify/scripts/verify.sh "$${SCOPE:-src}"
 UV_IMAGE    ?= ghcr.io/astral-sh/uv:0.13.4-python3.12-trixie-slim
 
+# The guard and the work live in one shell decision: an `exit 0` on its own recipe line would only end that line.
 new-app: ## Genera uv.lock en Docker (el esqueleto lo dejó basekit)
-	@[ -f pyproject.toml ] || { echo "Falta pyproject.toml (ejecuta npx basekit init)"; exit 1; }
-	@[ ! -f uv.lock ] || { echo "Ya existe uv.lock; nada que hacer"; exit 0; }
+	@if [ ! -f pyproject.toml ]; then echo "Falta pyproject.toml (ejecuta npx basekit init)"; exit 1; \
+	elif [ -f uv.lock ]; then echo "Ya existe uv.lock; nada que hacer"; \
+	else $(MAKE) --no-print-directory _new-app; fi
+
+_new-app:
 	docker run --rm --user "$$(id -u):$$(id -g)" -e HOME=/tmp -e UV_CACHE_DIR=/tmp/uv -v "$$PWD":/app -w /app $(UV_IMAGE) uv lock
 	@echo "uv.lock creado. Siguiente: make env && make dev"
 

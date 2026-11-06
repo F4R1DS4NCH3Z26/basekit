@@ -25,9 +25,12 @@ FROM base AS prod
 RUN cp "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini" && adduser -D -u 1001 app
 COPY --from=vendor /app/vendor ./vendor
 COPY . .
+# setcap -r: the frankenphp binary ships with a CAP_NET_BIND_SERVICE file capability, and with cap_drop: [ALL]
+# the kernel refuses to exec it. Port 8000 does not need it. /app/data is the SQLite volume, owned by the app user.
 RUN composer dump-autoload --optimize --classmap-authoritative --no-dev \
- && mkdir -p storage/framework/cache storage/framework/sessions storage/framework/views storage/logs bootstrap/cache \
- && chown -R app:app storage bootstrap/cache
+ && mkdir -p storage/framework/cache storage/framework/sessions storage/framework/views storage/logs bootstrap/cache data \
+ && chown -R app:app storage bootstrap/cache data \
+ && apk add --no-cache libcap-utils && setcap -r /usr/local/bin/frankenphp && apk del libcap-utils
 USER app
 EXPOSE 8000
 HEALTHCHECK --interval=15s --timeout=3s --start-period=20s --retries=3 CMD wget -qO- http://127.0.0.1:8000/up >/dev/null || exit 1

@@ -31,7 +31,7 @@ DC = docker compose --env-file $(ENV_FILE) -f compose.yaml -f compose.$(ENV).yam
 | Objetivo | Qué hace |
 |---|---|
 | `help` | Lista los objetivos con `##` (incluidos los de `stack.mk`) |
-| `env` | `.env` (o `.env.prod` con `ENV=prod`) desde `.env.example`; reemplaza `__GENERATE__` por `openssl rand -hex 32` y `__GENERATE_B64__` por `openssl rand -base64 32`; `umask 077`; nunca sobrescribe |
+| `env` | `.env` (o `.env.prod` con `ENV=prod`) desde `.env.example`; reemplaza `__GENERATE__` por `openssl rand -hex 32` y `__GENERATE_B64__` por `openssl rand -base64 32`; `umask 077`; nunca sobrescribe un valor: si el archivo ya existe, solo agrega las claves nuevas de `.env.example` (p. ej., después de `infra.sh`); escribe en un temporal y lo mueve al final, así un fallo no deja un archivo a medias |
 | `doctor` | docker, compose v2, git, openssl, archivo de entorno, overlays activos |
 | `dev` / `up` / `down` / `restart` / `logs` / `ps` / `sh` / `build` | Ciclo de vida (`logs S=servicio`) |
 | `install` | Dependencias dentro del contenedor (`$(INSTALL)`) |
@@ -126,7 +126,7 @@ Lo que cambia entre entornos (debug, perfil) lo fija **compose**, no `.env`: as�
 | Java | `eclipse-temurin:21-jdk` / `-jre` | LTS |
 | BD | `postgres:17-alpine`, `mysql:8.4` (LTS), `redis:7.4-alpine` | Postgres 18 cambia la ruta del volumen: si subes, ajusta el montaje |
 | Migraciones Spring | `flyway/flyway:11` | Fija el minor exacto al adoptar |
-| Generadores | `create-next-app@16.0.0`, `laravel/laravel:^12.0`, Spring Initializr | Actualiza a versiones con ≥ 14 días |
+| Generadores | `create-next-app@16.4.3`, `laravel/laravel:^12.0`, Spring Initializr | Actualiza a versiones con ≥ 14 días |
 
 Para producción seria, fija **por digest** (`image@sha256:…`) y deja que Renovate o Dependabot lo actualicen.
 

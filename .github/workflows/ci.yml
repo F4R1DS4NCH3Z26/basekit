@@ -26,7 +26,7 @@ jobs:
       - run: npm test
 
   e2e:
-    name: make dev real (${{ matrix.stack }}${{ matrix.db && format(' + {0}', matrix.db) || '' }})
+    name: e2e ${{ matrix.env || 'dev' }} (${{ matrix.stack }}${{ matrix.db && format(' + {0}', matrix.db) || '' }})
     needs: test
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -40,6 +40,11 @@ jobs:
           # Spring's new-app adds data-jpa (SPRING_DB=postgresql by default): it needs a database to start.
           - stack: spring
             db: postgres
+          # Production images: non-root users, cap_drop and the SQLite volume must work together.
+          - { stack: fastapi, db: sqlite, env: prod }
+          - { stack: laravel, db: sqlite, env: prod }
+          - { stack: nextjs, db: sqlite, env: prod }
+          - { stack: spring, db: postgres, env: prod }
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -47,4 +52,4 @@ jobs:
           node-version: 24
       - run: npm ci && npm run build
       # Acceptance 12: make new-app + make dev, answering on the stack healthcheck.
-      - run: bash scripts/e2e.sh ${{ matrix.stack }} ${{ matrix.db }}
+      - run: bash scripts/e2e.sh ${{ matrix.stack }} ${{ matrix.db }} ${{ matrix.env == 'prod' && '--prod' || '' }}

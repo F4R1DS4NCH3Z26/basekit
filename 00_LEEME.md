@@ -53,7 +53,7 @@ plantillas/
   - `make new-app` en los cuatro stacks.
   - Los healthchecks.
 - **Versiones a confirmar al adoptar**:
-  - `create-next-app@16.0.0`.
+  - `create-next-app@16.4.3` (la versión fijada en `.make/stack.mk`).
   - `flyway/flyway:11`.
   - La clave `context.fileName` de Gemini CLI.
   - Los tags de FrankenPHP y uv (ver guía 04, sección 8).

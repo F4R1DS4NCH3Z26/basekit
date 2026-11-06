@@ -12,8 +12,11 @@ LARAVEL_VERSION ?= ^12.0
 # PHP, and without this the lock would pick packages that require it.
 PHP_PLATFORM    ?= 8.3.0
 
+# The guard and the work live in one shell decision: an `exit 0` on its own recipe line would only end that line.
 new-app: ## Crea la app Laravel en Docker (solo si no existe composer.json) y mapea src/Modules
-	@[ ! -f composer.json ] || { echo "Ya existe composer.json; nada que hacer"; exit 0; }
+	@if [ -f composer.json ]; then echo "Ya existe composer.json; nada que hacer"; else $(MAKE) --no-print-directory _new-app; fi
+
+_new-app:
 	docker run --rm --user "$$(id -u):$$(id -g)" -e HOME=/tmp -e COMPOSER_HOME=/tmp/composer \
 	  -v "$$PWD":/work -w /tmp composer:2 sh -c '\
 	  composer create-project laravel/laravel:"$(LARAVEL_VERSION)" app --prefer-dist --no-interaction --no-scripts --no-install && \

@@ -21,6 +21,8 @@ FROM deps AS build
 COPY . .
 ENV NODE_ENV=production
 RUN mkdir -p public && if [ -d prisma ]; then npx --no-install prisma generate; fi && npm run build
+# migrate uses this stage as uid 1001: the SQLite volume (/app/data) takes its owner from the image.
+RUN mkdir -p /app/data && chown 1001:1001 /app/data
 
 FROM node:${NODE_VERSION}-alpine AS prod
 WORKDIR /app
@@ -29,6 +31,7 @@ RUN addgroup -S -g 1001 nodejs && adduser -S -u 1001 -G nodejs nextjs
 COPY --from=build --chown=nextjs:nodejs /app/public ./public
 COPY --from=build --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=build --chown=nextjs:nodejs /app/.next/static ./.next/static
+RUN mkdir -p /app/data && chown nextjs:nodejs /app/data
 USER nextjs
 EXPOSE 3000
 HEALTHCHECK --interval=15s --timeout=3s --start-period=20s --retries=3 \

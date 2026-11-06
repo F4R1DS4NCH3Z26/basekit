@@ -12,5 +12,9 @@ services:
   migrate:
     build:
       target: build
+    # Same uid as the app, so the SQLite file it creates stays writable by the app.
+    user: "1001:1001"
     env_file: [.env.prod]
+    environment:
+      HOME: /tmp
     command: ["npx", "--no-install", "prisma", "migrate", "deploy"]

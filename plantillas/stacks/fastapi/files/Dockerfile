@@ -29,6 +29,8 @@ RUN useradd --system --uid 1001 --no-create-home app
 WORKDIR /app
 COPY --from=deps-prod /opt/venv /opt/venv
 COPY --chown=app:app . .
+# The SQLite volume (/app/data) takes its owner from the image.
+RUN mkdir -p /app/data && chown app:app /app/data
 USER app
 EXPOSE 8000
 HEALTHCHECK --interval=15s --timeout=3s --start-period=10s --retries=3 \
