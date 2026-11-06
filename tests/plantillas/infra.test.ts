@@ -1,6 +1,6 @@
 import { after, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, statSync } from "node:fs";
+import { lstatSync, readdirSync, readFileSync, renameSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { basekit, cleanup, gitCommitAll, scratch, sh } from "../helpers.js";
 
@@ -11,6 +11,7 @@ const read = (dir: string, f: string) => readFileSync(join(dir, f), "utf8");
 const init = (dir: string, ...extra: string[]) =>
   basekit(["init", dir, "--yes", "--no-external-skills", "--stack", "nextjs", ...extra]);
 const infra = (dir: string, ...args: string[]) => sh("bash", [INFRA, ...args], dir);
+const infraWith = (dir: string, env: NodeJS.ProcessEnv, ...args: string[]) => sh("bash", [INFRA, ...args], dir, env);
 
 describe("infra.sh", () => {
   it("reports = and changes nothing when rerun with the same database", () => {
@@ -66,6 +67,29 @@ describe("infra.sh", () => {
     assert.equal(forced.code, 0, forced.stdout + forced.stderr);
     assert.match(forced.stdout, /^\s*~ compose\.db\.yaml$/m);
     assert.notEqual(read(d, "compose.db.yaml"), overlay);
+  });
+});
+
+describe("infra.sh: .env.example replacement", () => {
+  it("writes through a symlinked .env.example instead of replacing the link", () => {
+    const d = scratch();
+    assert.equal(init(d).code, 0);
+    renameSync(join(d, ".env.example"), join(d, "shared.env.example"));
+    symlinkSync("shared.env.example", join(d, ".env.example"));
+    const r = infra(d, "--db", "postgres");
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    assert.ok(lstatSync(join(d, ".env.example")).isSymbolicLink(), "the link was replaced by a regular file");
+    assert.match(read(d, "shared.env.example"), /^DB_PASSWORD=__GENERATE__$/m);
+  });
+
+  it("a failure while replacing it leaves no temporary copy behind", () => {
+    const d = scratch();
+    assert.equal(init(d).code, 0);
+    const bin = scratch();
+    writeFileSync(join(bin, "mv"), "#!/bin/sh\nexit 1\n", { mode: 0o755 });
+    const r = infraWith(d, { PATH: `${bin}:${process.env.PATH}` }, "--db", "postgres");
+    assert.notEqual(r.code, 0, "the failing mv must stop the script");
+    assert.deepEqual(readdirSync(d).filter((f) => f.startsWith(".env.example.")), []);
   });
 });
 

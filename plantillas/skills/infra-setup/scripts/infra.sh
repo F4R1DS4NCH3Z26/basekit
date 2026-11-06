@@ -27,18 +27,24 @@ place() { # origen destino: + creado, ~ reemplazado (con --force), = sin cambios
     cp "$1" "$2"; echo "  + $2"
   fi
 }
+# Temporary files of env_block, removed on any exit (also when cp, cat or mv fail under set -e).
+ENV_NEW=""; ENV_TMP=""
+trap 'rm -f "${ENV_NEW:-}" "${ENV_TMP:-}"' EXIT
 env_block() { # nombre contenido: reemplaza o agrega el bloque en .env.example (atómico; conserva sus permisos)
-  local name=$1 body=$2 new tmp; new=$(mktemp)
-  awk -v s="# >>> $name" -v e="# <<< $name" '$0==s{skip=1;next} $0==e{skip=0;next} !skip' .env.example > "$new"
-  if [ -n "$body" ]; then printf '%s\n%s\n%s\n' "# >>> $name" "$body" "# <<< $name" >> "$new"; fi
-  if cmp -s "$new" .env.example; then
+  local name=$1 body=$2; ENV_NEW=$(mktemp)
+  awk -v s="# >>> $name" -v e="# <<< $name" '$0==s{skip=1;next} $0==e{skip=0;next} !skip' .env.example > "$ENV_NEW"
+  if [ -n "$body" ]; then printf '%s\n%s\n%s\n' "# >>> $name" "$body" "# <<< $name" >> "$ENV_NEW"; fi
+  if cmp -s "$ENV_NEW" .env.example; then
     echo "  = .env.example [$name]"
+  elif [ -L .env.example ]; then
+    # Un enlace simbólico apunta a un archivo compartido: se escribe a través del enlace en vez de reemplazarlo.
+    cat "$ENV_NEW" > .env.example; echo "  ~ .env.example [$name]"
   else
     # cp -p copia permisos (y dueño), cat cambia solo el contenido y mv reemplaza en un paso: nunca queda a medias.
-    tmp=$(mktemp ./.env.example.XXXXXX); cp -p .env.example "$tmp"; cat "$new" > "$tmp"; mv "$tmp" .env.example
+    ENV_TMP=$(mktemp ./.env.example.XXXXXX); cp -p .env.example "$ENV_TMP"; cat "$ENV_NEW" > "$ENV_TMP"; mv "$ENV_TMP" .env.example; ENV_TMP=""
     echo "  ~ .env.example [$name]"
   fi
-  rm -f "$new"
+  rm -f "$ENV_NEW"; ENV_NEW=""
 }
 
 if [ "$db" = none ]; then
