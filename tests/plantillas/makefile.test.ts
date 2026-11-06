@@ -117,3 +117,16 @@ describe("make new-app resolves dependencies at least 14 days old", () => {
     assert.ok(dry.stdout.indexOf("npm_config_before") < dry.stdout.indexOf("create-next-app"), "must be set before any npx/npm call");
   });
 });
+
+describe("make new-app authenticates composer downloads", () => {
+  it("laravel: forwards COMPOSER_AUTH by name, never its value on the command line", () => {
+    const d = scratch();
+    assert.equal(init(d, "--stack", "laravel").code, 0);
+    const fake = fakeBin({ docker: "exit 0" });
+    const secret = '{"github-oauth":{"github.com":"tok-123"}}';
+    const r = sh("make", ["_new-app"], d, { PATH: `${fake.path}:${process.env.PATH}`, COMPOSER_AUTH: secret });
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    assert.match(fake.calls(), /^docker run .*-e COMPOSER_AUTH .*composer:2 /m);
+    assert.ok(!(fake.calls() + r.stdout + r.stderr).includes("tok-123"), "the token must not reach argv or the log");
+  });
+});
