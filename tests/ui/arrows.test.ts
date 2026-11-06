@@ -13,7 +13,7 @@ const SPACE = " ";
 const CTRL_C = "\x03";
 
 /** A fake terminal: a TTY input with raw mode, and an output that records what was drawn. */
-function terminal() {
+function terminal(columns?: number) {
   const input = new PassThrough() as PassThrough & { isTTY: boolean; isRaw: boolean; setRawMode: (raw: boolean) => void };
   input.isTTY = true;
   input.isRaw = false;
@@ -22,7 +22,8 @@ function terminal() {
     input.isRaw = raw;
     modes.push(raw);
   };
-  const out = new PassThrough();
+  const out = new PassThrough() as PassThrough & { columns?: number };
+  if (columns) out.columns = columns;
   let text = "";
   out.on("data", (c: Buffer) => (text += c.toString("utf8")));
   const p = new Prompter(input, out);
@@ -96,6 +97,19 @@ describe("arrow-key menus in a terminal", { timeout: 5000 }, () => {
     await assert.rejects(t.p.choose("¿Dónde?", OPTIONS), CancelledError);
     assert.deepEqual(t.modes, [true, false]);
     assert.match(t.output(), /\x1b\[\?25h/);
+    t.p.close();
+  });
+
+  it("rows never wrap: each one is cut to the terminal width, so the redraw stays in place", async () => {
+    const t = terminal(30);
+    t.type(DOWN, ENTER);
+    const long = [
+      { id: "a", label: "Global", hint: "una pista muy larga que en una terminal angosta ocuparía dos líneas" },
+      { id: "b", label: "Este proyecto", hint: "otra pista igual de larga para la segunda opción del menú" },
+    ];
+    assert.equal(await t.p.choose("¿Dónde?", long), "b");
+    const visible = t.output().replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "").split("\n");
+    for (const line of visible) assert.ok([...line].length <= 30, `wider than 30: ${JSON.stringify(line)}`);
     t.p.close();
   });
 

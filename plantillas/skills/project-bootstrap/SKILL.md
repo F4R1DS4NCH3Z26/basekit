@@ -1,6 +1,6 @@
 ---
 name: project-bootstrap
-description: Convierte la descripción de un proyecto ("esto trata de…") en la base lista para desarrollar - entrevista de diseño, decisión de base de datos y autenticación con ADRs, documentación inicial, infraestructura Docker activada y módulo de auth planificado. Úsala SIEMPRE que docs/PROJECT.md diga "Estado: sin definir", cuando el usuario describa un proyecto nuevo o pida "inicializa", "arranca" o "crea la base del proyecto".
+description: "Convierte la descripción de un proyecto (\"esto trata de…\") en la base lista para desarrollar - entrevista de diseño, decisión de base de datos y autenticación con ADRs, documentación inicial, infraestructura Docker activada y módulo de auth planificado. Úsala SIEMPRE que docs/PROJECT.md diga \"Estado: sin definir\", cuando el usuario describa un proyecto nuevo o pida \"inicializa\", \"arranca\" o \"crea la base del proyecto\"."
 ---
 
 # project-bootstrap

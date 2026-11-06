@@ -44,7 +44,7 @@ env: ## Crea .env (o .env.prod con ENV=prod) desde .env.example con secretos ale
 	[ -f .env.example ] || { echo "Falta .env.example"; exit 1; }; \
 	umask 077; target="$(ENV_FILE)"; exists=0; [ -f "$$target" ] && exists=1; \
 	tmp="$$(mktemp "$$target.XXXXXX")"; trap 'rm -f "$$tmp"' EXIT; \
-	if [ $$exists = 1 ]; then cat "$$target" > "$$tmp"; fi; \
+	if [ $$exists = 1 ]; then cat "$$target" > "$$tmp"; [ -z "$$(tail -c 1 "$$tmp")" ] || printf '\n' >> "$$tmp"; fi; \
 	added=0; \
 	while IFS= read -r line || [ -n "$$line" ]; do \
 	  if [[ $$line =~ ^([A-Za-z_][A-Za-z0-9_]*)= ]]; then \
@@ -147,4 +147,3 @@ _env-check:
 # Compose project name of this ENV (dev: DEV_PROJECT; prod: empty = Compose's default). For scripts and CI.
 _compose-project:
 	@echo "$(if $(filter dev,$(ENV)),$(DEV_PROJECT),)"
-

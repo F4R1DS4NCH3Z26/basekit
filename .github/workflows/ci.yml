@@ -146,3 +146,7 @@ jobs:
       - run: npm ci && npm run compile
       # Acceptance 12: make new-app + make dev, answering on the stack healthcheck.
       - run: bash scripts/e2e.sh ${{ matrix.stack }} ${{ matrix.db }} ${{ matrix.env == 'prod' && '--prod' || '' }}
+        env:
+          # Laravel's make new-app downloads ~110 package zips from api.github.com; anonymous requests from
+          # shared runners get 504s. Only the Laravel jobs receive the (read-only) workflow token.
+          COMPOSER_AUTH: ${{ matrix.stack == 'laravel' && format('{{"github-oauth":{{"github.com":"{0}"}}}}', secrets.GITHUB_TOKEN) || '' }}

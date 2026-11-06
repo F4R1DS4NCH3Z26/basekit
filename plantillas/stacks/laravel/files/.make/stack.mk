@@ -16,8 +16,10 @@ PHP_PLATFORM    ?= 8.3.0
 new-app: ## Crea la app Laravel en Docker (solo si no existe composer.json) y mapea src/Modules
 	@if [ -f composer.json ]; then echo "Ya existe composer.json; nada que hacer"; else $(MAKE) --no-print-directory _new-app; fi
 
+# COMPOSER_AUTH is forwarded by name, so a GitHub token never shows up on the command line: composer then
+# downloads package zips from api.github.com authenticated (anonymous requests get rate limits and 504s).
 _new-app:
-	docker run --rm --user "$$(id -u):$$(id -g)" -e HOME=/tmp -e COMPOSER_HOME=/tmp/composer \
+	docker run --rm --user "$$(id -u):$$(id -g)" -e HOME=/tmp -e COMPOSER_HOME=/tmp/composer -e COMPOSER_AUTH \
 	  -v "$$PWD":/work -w /tmp composer:2 sh -c '\
 	  composer create-project laravel/laravel:"$(LARAVEL_VERSION)" app --prefer-dist --no-interaction --no-scripts --no-install && \
 	  rm -f app/.env.example app/.env && cp -Rn app/. /work/ && cd /work && \

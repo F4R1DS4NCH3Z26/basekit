@@ -141,7 +141,8 @@ public class TokenService {
     @Query("update RefreshToken t set t.revokedAt = :now where t.tokenHash = :hash and t.revokedAt is null and t.expiresAt > :now")
     int revokeIfActive(@Param("hash") String hash, @Param("now") Instant now);
     ```
-  - Dentro de una transacción (`@Transactional`): si `revokeIfActive(sha256(raw), now) != 1`, el token no existe, venció o **ya se usó**. Si existe y estaba revocado, es reutilización: revoca toda su familia (`familyId`). En los tres casos falla con el mismo 401.
+  - Dentro de una transacción `@Transactional(noRollbackFor = InvalidCredentialsException.class)`: si `revokeIfActive(sha256(raw), now) != 1`, el token no existe, venció o **ya se usó**. Si existe y estaba revocado, es reutilización: revoca toda su familia (`familyId`). En los tres casos falla con el mismo 401.
+  - El `noRollbackFor` es imprescindible: el método termina lanzando `InvalidCredentialsException`, y sin él Spring hace rollback y **deshace la revocación de la familia** que acaba de hacer. El token robado seguiría sirviendo.
   - Si la fila se revocó, carga el usuario y verifica `enabled`. Si la cuenta está deshabilitada, revoca la familia y falla.
   - Solo entonces emite el par nuevo en la misma familia, en la misma transacción.
 - `logout(raw)`: revoca ese token.
@@ -220,6 +221,8 @@ TokenPairResponse refresh(@Valid @RequestBody RefreshRequest body, HttpServletRe
 }
 ```
 
+- **Contrapartidas del límite por cuenta.** Frenar los intentos por email también permite que alguien bloquee a propósito el login de otra persona (le basta con fallar 5 veces con su email). Es el precio de cortar los ataques distribuidos contra una cuenta. Si te afecta: usa un límite por cuenta más alto que el de IP, o pide un captcha o un segundo factor tras N fallos en vez de bloquear.
+- **Contrapartida de fallar cerrado.** Si muchas IPs distintas llenan las 100.000 claves dentro de una ventana, las claves nuevas reciben 429 hasta que venzan. Se eligió así porque la alternativa (descartar ventanas activas) le reiniciaría el contador a un atacante. El limitador vive en la memoria de una instancia: para producción con tráfico real o varias réplicas, limita en el proxy o usa Bucket4j con Redis.
 - Detrás de un proxy, `getRemoteAddr()` es la IP del proxy. Activa `server.forward-headers-strategy=native` y fija `server.tomcat.remoteip.internal-proxies` con las IPs del proxy de confianza. Es una expresión regular: escapa los puntos (`10\\.0\\.0\\.5`), o `10.0.0.5` también aceptaría `10a0b0c5`. Nunca leas `X-Forwarded-For` a mano: lo falsifica cualquiera.
 - El contador vive en cada instancia. Con varias réplicas, usa el límite del proxy inverso o Bucket4j con Redis (requiere aprobación). Documenta cuál en `docs/AUTH.md`.
 

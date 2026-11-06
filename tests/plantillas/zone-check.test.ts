@@ -2,7 +2,7 @@ import { after, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { basekit, cleanup, gitCommitAll, scratch, sh } from "../helpers.js";
+import { basekit, cleanup, gitCommitAll, REPO, scratch, sh } from "../helpers.js";
 
 after(cleanup);
 
@@ -81,5 +81,16 @@ describe("zone-check script", () => {
     assert.equal(bad.code, 1, bad.stdout + bad.stderr);
     assert.match(bad.stdout, /^FUERA DE ZONA: src\/lib\/auth\.ts$/m);
     assert.match(bad.stdout, /zone-check \[data-writer\]: 1 cambios nuevos, 1 fuera de zona/);
+  });
+});
+
+describe("skill front matter", () => {
+  it("quotes every description that contains ': ' (strict YAML loaders reject it unquoted)", () => {
+    const found = sh("find", ["plantillas", "-name", "SKILL.md"], REPO).stdout.split("\n").filter(Boolean);
+    assert.ok(found.length > 5);
+    for (const f of found) {
+      const desc = /^description: (.*)$/m.exec(readFileSync(join(REPO, f), "utf8"))?.[1] ?? "";
+      if (desc.includes(": ")) assert.match(desc, /^["']/, `${f}: unquoted description with ": "`);
+    }
   });
 });

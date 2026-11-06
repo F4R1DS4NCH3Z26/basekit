@@ -1,0 +1,6 @@
+src/cli.ts
+src/commands/**
+src/ui/**
+dist/src/cli.js
+dist/src/commands/**
+dist/src/ui/**

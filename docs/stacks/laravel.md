@@ -50,6 +50,8 @@ Skills: `php-scaffold`, `php-verify` (la usa `make verify`), `php-patterns` (+ `
 2. Copia el resultado sin pisar el kit; descarta el `.env.example` de Laravel y conserva el del kit.
 3. Agrega el autoload `App\Modules\` con `.make/laravel-autoload.php` y ejecuta `dump-autoload`.
 
+Composer descarga los paquetes desde la API de GitHub. Si las descargas fallan con `504` o por límite de peticiones, exporta un token antes de ejecutar `make new-app`: `export COMPOSER_AUTH='{"github-oauth":{"github.com":"<token>"}}'`. `make new-app` lo pasa al contenedor por nombre, así que el token no queda en la línea de comandos.
+
 ## Auth: Sanctum (detalle en `php-patterns/references/auth.md`)
 
 1. Instalación, dentro de `make sh`: `php artisan install:api` (Sanctum, `routes/api.php` y la tabla de tokens), y opcionalmente `composer require laravel/fortify`. Después, `make migrate`.

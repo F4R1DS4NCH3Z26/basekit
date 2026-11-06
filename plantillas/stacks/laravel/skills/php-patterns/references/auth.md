@@ -45,6 +45,8 @@ RateLimiter::for('login', fn (Request $r) => [
 ]);
 ```
 
+**Contrapartidas del límite por cuenta.** Frenar los intentos por email también permite que alguien bloquee a propósito el login de otra persona (le basta con fallar 5 veces con su email). Es el precio de cortar los ataques distribuidos contra una cuenta. Si te afecta: usa un límite por cuenta más alto que el de IP, o pide un captcha o un segundo factor tras N fallos en vez de bloquear.
+
 `App\Models\User`: `use HasApiTokens;`, `$fillable = ['name', 'email', 'password']`, `casts(): ['password' => 'hashed']`, y una columna `role` (string, fuera de `$fillable`) si emites tokens con abilities.
 
 ## Módulo `src/Modules/Auth/` (con `php-scaffold Auth`, delegado por roles)

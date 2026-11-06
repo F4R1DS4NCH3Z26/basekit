@@ -1,0 +1,19 @@
+# Orquestador (sesión principal): reglas, especificación, configuración y entrega.
+AGENTS.md
+CLAUDE.md
+README.md
+GLOSSARY.md
+skills-lock.json
+docs/spec/**
+docs/specs/**
+docs/adr/**
+.agents/**
+.claude/**
+odd/**
+package.json
+package-lock.json
+tsconfig.json
+.github/**
+.gitattributes
+.gitignore
+.atl/**

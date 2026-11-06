@@ -14,6 +14,7 @@
 
 ## Secretos
 - Se generan con `make env [ENV=prod]`. Nunca se commitean (`.gitignore`).
+- El bloque de basekit en `.gitignore` ignora **todo** archivo `.env*` y solo deja en git `.env.example`, `.env.sample` y `.env.template`: cualquier otra variante (`.env.staging`, un `.bak`) puede tener secretos. Si tu framework versiona archivos sin secretos como `.env.development` o `.env.test`, vuelve a incluirlos **debajo** del bloque (git aplica la última regla que coincide): `!.env.development`.
 - Para rotarlos: edita `.env.prod`, ejecuta `make prod-up` y, si cambia el secreto de auth, todas las sesiones se invalidan.
 
 ## Base de datos

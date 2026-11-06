@@ -6,6 +6,9 @@ import type { Stack } from "../kit/stacks.js";
 /** A readable stream that may be a terminal (process.stdin, or a test double). */
 type Input = NodeJS.ReadableStream & { isTTY?: boolean; isRaw?: boolean; setRawMode?: (raw: boolean) => unknown };
 
+/** `text` cut to `max` characters, with "…" when it had to be shortened. */
+const cut = (text: string, max: number) => ([...text].length <= max ? text : `${[...text].slice(0, Math.max(0, max - 1)).join("")}…`);
+
 interface Item {
   label: string;
   hint: string;
@@ -24,7 +27,8 @@ const dim = (s: string) => (color ? `${ESC}2m${s}${ESC}22m` : s);
 /**
  * Interactive questions. In a real terminal the menus move with the arrow keys (raw mode, no
  * dependencies); otherwise, and for text answers, it reads whole lines through one async iterator,
- * so answers that arrive before the question is printed (pasted or piped) are never lost.
+ * so piped answers and lines typed before a text question are kept. Keys typed in a terminal
+ * before a menu is drawn are discarded: the menu reads keys, not lines.
  */
 export class Prompter {
   private rl: Interface | undefined;
@@ -59,7 +63,7 @@ export class Prompter {
   }
 
   /**
-   * Arrow-key menu: ↑/↓ (or k/j) move, a number jumps, Enter chooses; with `multi`, space toggles.
+   * Arrow-key menu: ↑/↓ (or k/j) move, 1–9 jump to that option, Enter chooses; with `multi`, space toggles.
    * Returns the chosen indexes. Ctrl+C, Ctrl+D, Esc or the end of the input restore the terminal and throw CancelledError.
    */
   private select(question: string, items: Item[], multi: boolean, checked: number[] = []): Promise<number[]> {
@@ -72,13 +76,18 @@ export class Prompter {
     let cursor = 0;
     let warning = "";
     const help = multi ? "↑/↓ mover · espacio marcar · Enter confirmar" : "↑/↓ mover · Enter elegir";
+    // Every row must fit on one line: the redraw moves the cursor up one line per row.
+    const columns = Math.max(20, ((this.out as { columns?: number }).columns ?? 80) - 1);
     const row = (i: number) => {
       const here = i === cursor;
       const box = multi ? (picked.has(i) ? "◉ " : "◯ ") : "";
-      const text = `${items[i]!.label.padEnd(width)}  ${dim(items[i]!.hint)}`;
+      const label = cut(items[i]!.label.padEnd(width), columns - 2 - box.length);
+      const room = columns - 2 - box.length - label.length - 2;
+      const hint = room > 1 ? cut(items[i]!.hint, room) : "";
+      const text = hint ? `${label}  ${dim(hint)}` : label;
       return `${here ? accent("❯") : " "} ${box}${here ? accent(text) : text}`;
     };
-    const footer = () => (warning ? `  ${warning}` : `  ${dim(help)}`);
+    const footer = () => `  ${warning ? cut(warning, columns - 2) : dim(cut(help, columns - 2))}`;
     const draw = (again: boolean) => {
       if (again) this.out.write(`${ESC}${n + 1}A`);
       for (let i = 0; i < n; i++) this.out.write(`${ESC}2K${row(i)}\n`);
