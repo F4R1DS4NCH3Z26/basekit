@@ -1,3 +1,5 @@
 node_modules/
-dist/
+# dist/src is committed: installs from git (npm install -g github:…) use it as is, without building.
+dist/*
+!dist/src/
 .DS_Store

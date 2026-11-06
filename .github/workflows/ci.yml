@@ -24,6 +24,41 @@ jobs:
       - run: npm ci
       # Includes acceptance 1-11; the compose tests (9) run because the runner has Docker.
       - run: npm test
+      # dist/src is committed (git installs use it as is): it must match a fresh build of src/.
+      - name: dist/src matches src/
+        run: |
+          git diff --exit-code -- dist/src
+          test -z "$(git status --porcelain -- dist/src)" || { git status --short -- dist/src; echo "Run npm run build and commit dist/src"; exit 1; }
+
+  install:
+    name: real install from GitHub (global and per project)
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      # The repository is private: let git (used by npm for github: URLs) authenticate with the workflow token.
+      - name: git credentials for this repository
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          git config --global url."https://x-access-token:${TOKEN}@github.com/".insteadOf "https://github.com/"
+          git config --global --add url."https://x-access-token:${TOKEN}@github.com/".insteadOf "ssh://git@github.com/"
+          git config --global --add url."https://x-access-token:${TOKEN}@github.com/".insteadOf "git@github.com:"
+      - name: npm install -g github:…
+        run: |
+          npm install -g --no-audit --no-fund "github:${{ github.repository }}#${{ github.sha }}"
+          basekit stacks
+          basekit init "$RUNNER_TEMP/global-app" -y --no-external-skills --stack nextjs
+          test -f "$RUNNER_TEMP/global-app/AGENTS.md"
+      - name: npm install -D github:… in a project
+        working-directory: ${{ runner.temp }}
+        run: |
+          mkdir project && cd project && echo '{ "name": "app", "private": true }' > package.json
+          npm install -D --no-audit --no-fund "github:${{ github.repository }}#${{ github.sha }}"
+          npx --no-install basekit init . -y --no-external-skills --stack fastapi
+          test -f AGENTS.md
 
   e2e:
     name: e2e ${{ matrix.env || 'dev' }} (${{ matrix.stack }}${{ matrix.db && format(' + {0}', matrix.db) || '' }})

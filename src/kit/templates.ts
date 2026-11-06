@@ -8,9 +8,23 @@ import { fileURLToPath } from "node:url";
  */
 export const TEMPLATES = fileURLToPath(new URL("../../../plantillas/", import.meta.url));
 
-export const VERSION: string = JSON.parse(
-  readFileSync(new URL("../../../package.json", import.meta.url), "utf8"),
-).version;
+const PACKAGE = JSON.parse(readFileSync(new URL("../../../package.json", import.meta.url), "utf8")) as {
+  version: string;
+  repository?: { url?: string } | string;
+};
+
+export const VERSION: string = PACKAGE.version;
+
+/**
+ * Where `basekit install` installs from: this package's own GitHub repository (`github:owner/repo`),
+ * taken from package.json. Never the npm name `basekit`, which belongs to another package.
+ */
+export const INSTALL_SOURCE: string = (() => {
+  const url = typeof PACKAGE.repository === "string" ? PACKAGE.repository : (PACKAGE.repository?.url ?? "");
+  const m = /github\.com[/:]([\w.-]+)\/([\w.-]+?)(?:\.git)?$/.exec(url);
+  if (!m) throw new Error("package.json no tiene un repository de GitHub");
+  return `github:${m[1]}/${m[2]}`;
+})();
 
 /** Text of a template file, `rel` being relative to `plantillas/`. */
 export const template = (rel: string) => readFileSync(join(TEMPLATES, rel), "utf8");

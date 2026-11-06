@@ -10,7 +10,20 @@ Node ≥ 20 (sin dependencias en tiempo de ejecución) y git. Para usar el proye
 
 ## Instalación
 
-Se instala desde este repositorio (todavía no está publicado en npm). Al instalar, npm compila el CLI con el script `prepare`.
+Se instala desde este repositorio (todavía no está publicado en npm). El repositorio incluye el CLI ya compilado (`dist/src`), así que instalar no compila nada.
+
+**Con el instalador** (recomendado): ejecútalo una vez sin instalarlo y te pregunta dónde lo quieres.
+
+```bash
+npx github:F4R1DS4NCH3Z26/basekit
+# basekit — ¿cómo quieres instalarlo?
+#   1) Global         un `basekit` para todos tus proyectos (npm install -g)
+#   2) Este proyecto  devDependency del package.json de este directorio (npm install -D)
+```
+
+Si eliges "Este proyecto" y no hay `package.json`, pregunta antes de crearlo (en un proyecto Python, PHP o Java suele convenir la instalación global). Después ofrece preparar el proyecto con `init`. Sin terminal (CI, scripts) usa `basekit install --global` o `basekit install --project`. `--from` instala otro origen: un fork, una etiqueta o un `.tgz`.
+
+A mano también funciona:
 
 **Global**: un `basekit` para todos tus proyectos.
 
@@ -77,3 +90,5 @@ npm test                    # compila con tsc y corre node --test (las pruebas d
 npm run build && bash scripts/e2e.sh nextjs            # prueba 12 real (necesita Docker; la usa el CI)
 bash scripts/e2e.sh spring postgres                     # con base de datos (Spring la necesita para arrancar)
 ```
+
+`dist/src` se commitea: después de cambiar `src/`, ejecuta `npm run build` y commitea `dist/src` junto con el cambio. El CI falla si no coinciden.

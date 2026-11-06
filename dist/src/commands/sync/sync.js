@@ -1,0 +1,35 @@
+import { linkSkills, writeAdapters } from "../../kit/adapters.js";
+import { parseAgents } from "../../kit/agents.js";
+import { writeAgentsMd } from "../../kit/agents-md.js";
+import { installExternalSkills } from "../../kit/external-skills.js";
+import { MANIFEST, readManifest, writeManifest } from "../../kit/manifest.js";
+import { Project, resolveRoot } from "../../kit/project.js";
+import { findStack, loadStacks } from "../../kit/stacks.js";
+/** Spec 02 §10: regenerates the AGENTS.md block, the adapters and the links from `.agents/`. */
+export async function sync(o, ctx) {
+    const project = new Project(resolveRoot(o.dir), o.dryRun, ctx.log, ctx.fs);
+    const prev = readManifest(project);
+    if (!prev?.stack)
+        throw new Error(`No existe ${MANIFEST} en ${project.root}: ejecuta \`basekit init\` primero`);
+    const stack = findStack(loadStacks(), prev.stack);
+    const saved = prev.agents ?? [];
+    const agents = o.agents !== undefined ? parseAgents(o.agents) : saved.length > 0 ? parseAgents(saved.join(",")) : [];
+    const added = agents.filter((a) => !saved.includes(a));
+    if (o.dryRun)
+        ctx.log(`(dry-run: no se escribe nada en ${project.root})`);
+    writeAgentsMd(project, stack, "");
+    writeAdapters(project, stack, agents);
+    if (o.externalSkills && agents.length > 0)
+        installExternalSkills(project, agents, ctx.log, ctx.runner, added.length > 0);
+    linkSkills(project, stack, agents);
+    writeManifest(project, prev, {
+        stack: stack.id,
+        agents,
+        db: prev.options?.db ?? "auto",
+        redis: prev.options?.redis ?? false,
+        files: prev.files ?? {},
+    });
+    ctx.log("");
+    ctx.log(project.changed ? "Sincronizado." : "Todo al día: no había nada que cambiar.");
+    return 0;
+}

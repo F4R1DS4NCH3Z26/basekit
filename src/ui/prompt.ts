@@ -64,4 +64,33 @@ export class Prompter {
   async context(): Promise<string> {
     return (await this.line("¿De qué trata el proyecto? (una o dos frases; Enter para dejarlo vacío): ")) ?? "";
   }
+
+  /**
+   * Numbered menu; returns the chosen option's `id`. Enter takes the first option.
+   * Asks again after an invalid answer; fails when the input ends.
+   */
+  async choose(question: string, options: { id: string; label: string; hint: string }[]): Promise<string> {
+    const width = Math.max(...options.map((o) => o.label.length));
+    this.say(question);
+    options.forEach((o, i) => this.say(`  ${i + 1}) ${o.label.padEnd(width)}  ${o.hint}`));
+    for (;;) {
+      const answer = await this.line("Número [1]: ");
+      if (answer === undefined) throw new UsageError("No se eligió ninguna opción.");
+      if (answer === "") return options[0]!.id;
+      const chosen = /^\d+$/.test(answer) ? options[Number(answer) - 1] : undefined;
+      if (chosen) return chosen.id;
+      this.say(`  «${answer}» no es una opción válida.`);
+    }
+  }
+
+  /** Yes/no question; Enter (or the end of the input) takes the default. */
+  async confirm(question: string, byDefault: boolean): Promise<boolean> {
+    for (;;) {
+      const answer = await this.line(`${question} ${byDefault ? "[S/n]" : "[s/N]"}: `);
+      if (!answer) return byDefault;
+      if (/^(s|si|sí|y|yes)$/i.test(answer)) return true;
+      if (/^(n|no)$/i.test(answer)) return false;
+      this.say("  Responde s o n.");
+    }
+  }
 }

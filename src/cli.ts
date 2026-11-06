@@ -3,6 +3,7 @@ import { parseArgs } from "node:util";
 import type { Context } from "./commands/context.js";
 import { doctor } from "./commands/doctor/index.js";
 import { init } from "./commands/init/index.js";
+import { install, validateInstall } from "./commands/install/index.js";
 import { stacks } from "./commands/stacks/index.js";
 import { sync } from "./commands/sync/index.js";
 import { nodeFileSystem } from "./infra/file-system.js";
@@ -15,6 +16,7 @@ import { Prompter } from "./ui/prompt.js";
 const ALLOWED: Record<string, string[]> = {
   init: ["stack", "agents", "context", "db", "redis", "no-external-skills", "force", "dry-run", "yes"],
   sync: ["agents", "no-external-skills", "dry-run"],
+  install: ["global", "project", "from"],
   doctor: [],
   stacks: [],
 };
@@ -22,6 +24,8 @@ const ALLOWED: Record<string, string[]> = {
 const USAGE = `basekit ${VERSION} — prepara la base de un proyecto para agentes de código
 
 Uso:
+  basekit                         En una terminal: pregunta si instalarlo global o en este proyecto
+  basekit install [dir] [--global|--project] [--from <paquete>]
   basekit init [dir] [opciones]   Crea la base completa en un proyecto nuevo o existente
   basekit sync [dir] [opciones]   Regenera el bloque de AGENTS.md, los adaptadores y los enlaces
   basekit doctor [dir]            Diagnóstico del entorno y del proyecto (OK / FALTA)
@@ -38,6 +42,11 @@ Opciones de init:
   --dry-run               Muestra lo que haría sin escribir nada
   -y, --yes               No interactivo: usa flags y valores por defecto
 
+Opciones de install (instala desde el repositorio de GitHub de basekit, nunca desde el nombre de npm):
+  --global                npm install -g: un basekit para todos tus proyectos
+  --project               npm install -D en el package.json de [dir] (por defecto, este directorio)
+  --from <paquete>        Instala otro origen: un fork, una etiqueta (github:usuario/basekit#v0.2.0) o un .tgz
+
 Opciones de sync:
   --agents <a,b>          Reemplaza la lista de agentes (los nuevos reciben adaptadores, enlaces y skills externas)
   --no-external-skills    No reinstala las skills externas
@@ -52,6 +61,14 @@ function makeContext(interactive: boolean): Context {
     fs: nodeFileSystem,
     runner: processRunner,
   };
+}
+
+async function runInstall(o: Parameters<typeof install>[0], ctx: Context): Promise<number> {
+  try {
+    return await install(o, ctx);
+  } finally {
+    ctx.prompt?.close();
+  }
 }
 
 /** Parses the arguments and routes to a command. Nothing else lives here. */
@@ -70,6 +87,9 @@ async function main(argv: string[]): Promise<number> {
       force: { type: "boolean" },
       "dry-run": { type: "boolean" },
       yes: { type: "boolean", short: "y" },
+      global: { type: "boolean" },
+      project: { type: "boolean" },
+      from: { type: "string" },
       help: { type: "boolean", short: "h" },
       version: { type: "boolean", short: "v" },
     },
@@ -78,6 +98,11 @@ async function main(argv: string[]): Promise<number> {
   if (values.version) {
     process.stdout.write(`${VERSION}\n`);
     return 0;
+  }
+  const interactive = process.stdin.isTTY === true && process.stdout.isTTY === true;
+  // `basekit` alone in a terminal (typically `npx github:…/basekit`) is the installer.
+  if (command === undefined && !values.help && Object.keys(values).length === 0 && interactive) {
+    return runInstall({}, makeContext(true));
   }
   if (values.help || command === undefined || command === "help") {
     process.stdout.write(USAGE);
@@ -91,6 +116,8 @@ async function main(argv: string[]): Promise<number> {
   if (command === "stacks" && dir !== undefined) throw new UsageError(`Argumentos de más: ${dir}`);
 
   switch (command) {
+    case "install":
+      return runInstall({ dir, ...validateInstall(values) }, makeContext(interactive && !values.global && !values.project));
     case "stacks":
       return stacks(makeContext(false));
     case "doctor":

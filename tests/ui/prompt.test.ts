@@ -84,6 +84,40 @@ describe("agents question", () => {
   });
 });
 
+describe("menu and yes/no questions", () => {
+  const options = [
+    { id: "global", label: "Global", hint: "a" },
+    { id: "project", label: "Este proyecto", hint: "b" },
+  ];
+
+  it("choose: number, Enter for the first option, and asks again after an invalid answer", async () => {
+    const a = prompter("2");
+    assert.equal(await a.p.choose("¿Dónde?", options), "project");
+    assert.match(a.output(), /1\) Global +a\n {2}2\) Este proyecto +b/);
+    a.p.close();
+    const b = prompter("");
+    assert.equal(await b.p.choose("¿Dónde?", options), "global");
+    b.p.close();
+    const c = prompter("x", "3", "1");
+    assert.equal(await c.p.choose("¿Dónde?", options), "global");
+    assert.match(c.output(), /«x» no es una opción válida[\s\S]*«3» no es una opción válida/);
+    c.p.close();
+    const d = prompter();
+    await assert.rejects(d.p.choose("¿Dónde?", options), /No se eligió/);
+    d.p.close();
+  });
+
+  it("confirm: s/sí/n/no, Enter or end of input takes the default, anything else asks again", async () => {
+    for (const [answers, byDefault, expected] of [
+      [["s"], false, true], [["Sí"], false, true], [["no"], true, false], [[""], true, true], [[], false, false], [["tal vez", "n"], true, false],
+    ] as [string[], boolean, boolean][]) {
+      const q = prompter(...answers);
+      assert.equal(await q.p.confirm("¿Seguro?", byDefault), expected, answers.join("|"));
+      q.p.close();
+    }
+  });
+});
+
 describe("context question", () => {
   it("returns the trimmed text, or empty on Enter or end of input", async () => {
     const a = prompter("  Reservas de pádel  ");

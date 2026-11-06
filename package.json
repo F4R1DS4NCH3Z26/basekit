@@ -3,6 +3,10 @@
   "version": "0.1.0",
   "description": "Prepara la base de un proyecto (agentes, Docker, Makefile y documentación) para cualquier herramienta de código con IA.",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/F4R1DS4NCH3Z26/basekit.git"
+  },
   "bin": {
     "basekit": "dist/src/cli.js"
   },
@@ -15,7 +19,6 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "prepare": "npm run build",
     "test": "npm run build && node --test --test-concurrency=4 $(find dist/tests -name '*.test.js' | sort)"
   },
   "devDependencies": {
