@@ -89,9 +89,11 @@ describe("infra.sh: .env.example replacement", () => {
     symlinkSync("shared.env.example", join(d, ".env.example"));
     const before = read(d, "shared.env.example");
     const bin = scratch();
-    writeFileSync(join(bin, "mv"), "#!/bin/sh\nexit 1\n", { mode: 0o755 });
+    writeFileSync(join(bin, "mv"), `#!/bin/sh\nprintf '%s\\n' "$*" >> "${bin}/mv.log"\nexit 1\n`, { mode: 0o755 });
     const r = infraWith(d, { PATH: `${bin}:${process.env.PATH}` }, "--db", "postgres");
     assert.notEqual(r.code, 0, "the failing mv must stop the script");
+    // The only mv that ran is the one replacing the link's target: the failure happened in that step.
+    assert.match(readFileSync(join(bin, "mv.log"), "utf8"), /^\S*\/\.env\.example\.\w+ \S*\/shared\.env\.example\n$/);
     assert.equal(read(d, "shared.env.example"), before, "the shared file was left half written");
     assert.deepEqual(readdirSync(d).filter((f) => f.startsWith(".env.example.")), []);
   });
