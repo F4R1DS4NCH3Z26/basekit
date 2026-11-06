@@ -82,6 +82,36 @@ describe("infra.sh: .env.example replacement", () => {
     assert.match(read(d, "shared.env.example"), /^DB_PASSWORD=__GENERATE__$/m);
   });
 
+  it("updates the target of an in-project symlink atomically", () => {
+    const d = scratch();
+    assert.equal(init(d).code, 0);
+    renameSync(join(d, ".env.example"), join(d, "shared.env.example"));
+    symlinkSync("shared.env.example", join(d, ".env.example"));
+    const before = read(d, "shared.env.example");
+    const bin = scratch();
+    writeFileSync(join(bin, "mv"), "#!/bin/sh\nexit 1\n", { mode: 0o755 });
+    const r = infraWith(d, { PATH: `${bin}:${process.env.PATH}` }, "--db", "postgres");
+    assert.notEqual(r.code, 0, "the failing mv must stop the script");
+    assert.equal(read(d, "shared.env.example"), before, "the shared file was left half written");
+    assert.deepEqual(readdirSync(d).filter((f) => f.startsWith(".env.example.")), []);
+  });
+
+  it("refuses a symlinked .env.example that points outside the project and changes nothing", () => {
+    const d = scratch();
+    assert.equal(init(d).code, 0);
+    gitCommitAll(d);
+    const outside = join(scratch(), "team.env.example");
+    writeFileSync(outside, "SHARED=1\n");
+    sh("git", ["rm", "-q", ".env.example"], d);
+    symlinkSync(outside, join(d, ".env.example"));
+    const status = sh("git", ["status", "--porcelain"], d).stdout;
+    const r = infra(d, "--db", "postgres");
+    assert.equal(r.code, 1, r.stdout + r.stderr);
+    assert.match(r.stdout, /ERROR: \.env\.example apunta fuera del proyecto/);
+    assert.equal(readFileSync(outside, "utf8"), "SHARED=1\n", "a file outside the project was modified");
+    assert.equal(sh("git", ["status", "--porcelain"], d).stdout, status, "the project was changed");
+  });
+
   it("a failure while replacing it leaves no temporary copy behind", () => {
     const d = scratch();
     assert.equal(init(d).code, 0);

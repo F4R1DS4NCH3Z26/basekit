@@ -15,6 +15,17 @@ done
 case "$db" in postgres|mysql|sqlite|none) ;; *) echo "ERROR: --db debe ser postgres, mysql, sqlite o none"; exit 2 ;; esac
 root=$(git rev-parse --show-toplevel 2>/dev/null || pwd); cd "$root"
 [ -f compose.yaml ] && [ -f .env.example ] || { echo "ERROR: falta compose.yaml o .env.example (¿proyecto creado con basekit?)"; exit 2; }
+# A symlinked .env.example is updated through the link only when its target lives inside the project:
+# checked before any change, so a refusal leaves everything as it was.
+env_file=.env.example
+if [ -L .env.example ]; then
+  env_file=$(realpath .env.example)
+  case "$env_file" in
+    "$(pwd -P)"/*) ;;
+    *) echo "ERROR: .env.example apunta fuera del proyecto ($env_file) y basekit no escribe fuera del proyecto."
+       echo "       Copia ese archivo dentro del proyecto o agrega a mano los bloques de infra-setup."; exit 1 ;;
+  esac
+fi
 assets="$(cd "$(dirname "$0")/.." && pwd)/assets"
 mkdir -p .make
 
@@ -36,12 +47,11 @@ env_block() { # nombre contenido: reemplaza o agrega el bloque en .env.example (
   if [ -n "$body" ]; then printf '%s\n%s\n%s\n' "# >>> $name" "$body" "# <<< $name" >> "$ENV_NEW"; fi
   if cmp -s "$ENV_NEW" .env.example; then
     echo "  = .env.example [$name]"
-  elif [ -L .env.example ]; then
-    # Un enlace simbólico apunta a un archivo compartido: se escribe a través del enlace en vez de reemplazarlo.
-    cat "$ENV_NEW" > .env.example; echo "  ~ .env.example [$name]"
   else
+    # Se reemplaza el archivo real ($env_file: el destino del enlace, si lo es), así el enlace se conserva.
     # cp -p copia permisos (y dueño), cat cambia solo el contenido y mv reemplaza en un paso: nunca queda a medias.
-    ENV_TMP=$(mktemp ./.env.example.XXXXXX); cp -p .env.example "$ENV_TMP"; cat "$ENV_NEW" > "$ENV_TMP"; mv "$ENV_TMP" .env.example; ENV_TMP=""
+    ENV_TMP=$(mktemp "$(dirname "$env_file")/.env.example.XXXXXX"); cp -p "$env_file" "$ENV_TMP"; cat "$ENV_NEW" > "$ENV_TMP"
+    mv "$ENV_TMP" "$env_file"; ENV_TMP=""
     echo "  ~ .env.example [$name]"
   fi
   rm -f "$ENV_NEW"; ENV_NEW=""
