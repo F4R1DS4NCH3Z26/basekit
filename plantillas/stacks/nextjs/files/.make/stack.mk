@@ -16,10 +16,12 @@ new-app: ## Crea la app Next.js en Docker (solo si no existe package.json)
 
 # _new-app runs as root and hands the files back at the end: create-next-app calls os.userInfo(), which
 # fails for a host uid that has no passwd entry in the image. GNU cp because busybox `cp -Rn` skips the
-# whole tree when /work already exists.
+# whole tree when /work already exists. npm_config_before resolves every dependency as of 14 days ago
+# (guide 04 §8): a release published minutes ago, broken or hijacked, never reaches a new project.
 _new-app:
 	docker run --rm -e UID_GID="$$(id -u):$$(id -g)" -e HOME=/tmp -e npm_config_cache=/tmp/.npm -e NEXT_TELEMETRY_DISABLED=1 \
 	  -v "$$PWD":/work -w /tmp node:22-alpine sh -c '\
+	  export npm_config_before="$$(node -p "new Date(Date.now() - 14 * 864e5).toISOString()")" && \
 	  apk add --no-cache coreutils >/dev/null && \
 	  npx --yes create-next-app@$(CREATE_NEXT_VERSION) app --ts --eslint --app --src-dir --tailwind \
 	    --import-alias "@/*" --use-npm --yes --skip-install && \

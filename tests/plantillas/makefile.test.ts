@@ -106,3 +106,14 @@ describe("make db-shell with GNU make 4 (Linux)", { skip: hasDocker() ? false : 
     assert.match(r.stdout + r.stderr, /No hay base de datos configurada/);
   });
 });
+
+describe("make new-app resolves dependencies at least 14 days old", () => {
+  it("nextjs: every npm/npx in _new-app runs with npm_config_before = now - 14 days", () => {
+    const d = scratch();
+    assert.equal(init(d, "--stack", "nextjs").code, 0);
+    const dry = sh("make", ["-n", "_new-app"], d);
+    assert.equal(dry.code, 0, dry.stderr);
+    assert.match(dry.stdout, /export npm_config_before="\$\(node -p "new Date\(Date\.now\(\) - 14 \* 864e5\)\.toISOString\(\)"\)"/);
+    assert.ok(dry.stdout.indexOf("npm_config_before") < dry.stdout.indexOf("create-next-app"), "must be set before any npx/npm call");
+  });
+});
