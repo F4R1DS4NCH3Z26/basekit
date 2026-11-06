@@ -25,8 +25,10 @@ export async function install(o, ctx) {
     const mode = o.mode ?? (await chooseMode(ctx));
     const project = new Project(resolveRoot(o.dir), false, ctx.log, ctx.fs);
     if (mode === "global") {
-        // --install-links: without it npm 11 installs a global git package as a link to a temporary clone,
-        // which npm deletes right after, leaving `basekit` pointing at nothing.
+        // --install-links: npm copies the package instead of linking it. When a git package gets "prepared"
+        // (package.json with build/prepare/… scripts) npm 11 links the global install to a temporary clone that
+        // it deletes right after. basekit has no such scripts (tests/packaging.test.ts guards it); this is a
+        // second line of defence for forks or older checkouts installed with --from.
         ctx.log(`· npm install -g --install-links ${spec}`);
         if (!ctx.runner.run(ctx.log, "npm", ["install", "-g", "--install-links", ...NPM_FLAGS, spec], project.root)) {
             ctx.log(`No se pudo instalar. Reinténtalo con: npm install -g --install-links ${spec}`);

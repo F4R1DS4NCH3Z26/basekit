@@ -21,7 +21,7 @@ case "$stack" in "" | *[!a-z0-9-]*) usage ;; esac
 repo="$(cd "$(dirname "$0")/.." && pwd)"
 tpl="$repo/plantillas/stacks/$stack"
 [ -f "$tpl/stack.json" ] || { echo "Stack desconocido: $stack" >&2; exit 2; }
-[ -f "$repo/dist/src/cli.js" ] || { echo "Falta dist/: ejecuta npm run build" >&2; exit 2; }
+[ -f "$repo/dist/src/cli.js" ] || { echo "Falta dist/: ejecuta npm run compile" >&2; exit 2; }
 
 port_of_stack() { node -p 'require(process.argv[1]).port' "$tpl/stack.json"; }
 

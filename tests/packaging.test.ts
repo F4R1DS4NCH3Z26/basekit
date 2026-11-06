@@ -7,11 +7,9 @@ import { cleanup, REPO, scratch, sh } from "./helpers.js";
 after(cleanup);
 
 /**
- * The package as a git install gets it: only what the repository holds (no node_modules, no compiled
- * tests, no build step, no devDependencies), packed with `npm pack`. A global `npm install -g github:…`
- * cannot rely on a build at install time (npm prepares git dependencies with the outer --global
- * and skips their devDependencies), so this must already be installable. CI also installs the real
- * `github:` URL.
+ * The package exactly as `npm install [-g] github:…` gets it: a git repository with the working tree's
+ * files (no node_modules, no compiled tests), installed through a `git+file://` URL, which takes the same
+ * path in npm as a GitHub URL. CI also installs the real `github:` URL.
  */
 let gitUrl = "";
 before(() => {
@@ -20,15 +18,25 @@ before(() => {
     recursive: true,
     filter: (src) => !/^(node_modules|dist\/tests|\.git|\.atl)(\/|$)/.test(relative(REPO, src)),
   });
-  const out = scratch();
-  const pack = sh("npm", ["pack", "--pack-destination", out], repo);
-  assert.equal(pack.code, 0, pack.stdout + pack.stderr);
-  const name = pack.stdout.trim().split("\n").at(-1)!;
-  gitUrl = join(out, name);
-  assert.ok(existsSync(gitUrl), `no tarball: ${pack.stdout}`);
+  for (const args of [["init", "-q"], ["add", "-A"], ["-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-qm", "pkg"]]) {
+    const r = sh("git", args, repo);
+    assert.equal(r.code, 0, r.stderr);
+  }
+  gitUrl = `git+file://${repo}`;
 });
 
-const PKG = JSON.parse(readFileSync(join(REPO, "package.json"), "utf8")) as { name: string };
+const PKG = JSON.parse(readFileSync(join(REPO, "package.json"), "utf8")) as { name: string; scripts?: Record<string, string> };
+
+describe("package.json", () => {
+  it("has none of the scripts that make npm prepare a git dependency", () => {
+    // pacote (npm) runs `npm install` inside the clone when any of these exist. That inner install inherits
+    // the outer --global, so a global install from GitHub breaks (ENOTDIR, or a link to a deleted clone).
+    // Keep the build under another name ("compile") and commit dist/src.
+    for (const name of ["build", "install", "preinstall", "postinstall", "prepack", "prepare"]) {
+      assert.ok(!(name in (PKG.scripts ?? {})), `scripts.${name} breaks git installs`);
+    }
+  });
+});
 
 /** A global install with its own prefix: npm and npx use it as their global directory. */
 function globalInstall(): NodeJS.ProcessEnv {
@@ -39,7 +47,7 @@ function globalInstall(): NodeJS.ProcessEnv {
   return env;
 }
 
-describe("installation from the repository contents", () => {
+describe("installation from git", () => {
   it("global: `npm install -g` puts a working `basekit` on the PATH, templates included", () => {
     const env = globalInstall();
     const stacks = sh("basekit", ["stacks"], REPO, env);

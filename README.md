@@ -87,8 +87,10 @@ Las dependencias van en un solo sentido: `cli → commands → kit → infra`. U
 ```bash
 npm install
 npm test                    # compila con tsc y corre node --test (las pruebas de compose se ejecutan si hay Docker)
-npm run build && bash scripts/e2e.sh nextjs            # prueba 12 real (necesita Docker; la usa el CI)
+npm run compile && bash scripts/e2e.sh nextjs            # prueba 12 real (necesita Docker; la usa el CI)
 bash scripts/e2e.sh spring postgres                     # con base de datos (Spring la necesita para arrancar)
 ```
 
-`dist/src` se commitea: después de cambiar `src/`, ejecuta `npm run build` y commitea `dist/src` junto con el cambio. El CI falla si no coinciden.
+`dist/src` se commitea: después de cambiar `src/`, ejecuta `npm run compile` y commitea `dist/src` junto con el cambio. El CI falla si no coinciden.
+
+No agregues a `package.json` scripts llamados `build`, `install`, `preinstall`, `postinstall`, `prepack` o `prepare`. Con cualquiera de ellos, npm "prepara" el paquete al instalarlo desde git y la instalación global se rompe. Por eso el script de compilación se llama `compile`, y `tests/packaging.test.ts` lo vigila.
