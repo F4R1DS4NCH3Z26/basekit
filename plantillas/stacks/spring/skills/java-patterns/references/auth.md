@@ -162,18 +162,27 @@ public class TokenService {
 public class AuthRateLimiter {
     private static final int MAX_ATTEMPTS = 5;
     private static final long WINDOW_MS = Duration.ofMinutes(1).toMillis();
-    private static final int PURGE_ABOVE = 10_000;
-    private final ConcurrentHashMap<String, Window> windows = new ConcurrentHashMap<>();
+    /** Tope de claves en memoria: al superarlo se descarta la menos usada (LRU), en O(1) por request. */
+    private static final int MAX_KEYS = 10_000;
+    private final Map<String, Window> windows = new LinkedHashMap<>(1024, 0.75f, true) {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<String, Window> eldest) {
+            return size() > MAX_KEYS;
+        }
+    };
 
-    private record Window(long start, AtomicInteger hits) {}
+    private record Window(long start, int hits) {}
 
     /** Ventana fija por clave; al pasar el límite responde 429. */
     public void check(String key) {
         long now = System.currentTimeMillis();
-        if (windows.size() > PURGE_ABOVE) windows.values().removeIf(w -> now - w.start() >= WINDOW_MS);
-        Window w = windows.compute(key, (k, old) ->
-            old == null || now - old.start() >= WINDOW_MS ? new Window(now, new AtomicInteger()) : old);
-        if (w.hits().incrementAndGet() > MAX_ATTEMPTS) {
+        Window w;
+        synchronized (windows) {   // LinkedHashMap en orden de acceso no es thread-safe: una sección corta
+            Window old = windows.get(key);
+            w = old == null || now - old.start() >= WINDOW_MS ? new Window(now, 1) : new Window(old.start(), old.hits() + 1);
+            windows.put(key, w);
+        }
+        if (w.hits() > MAX_ATTEMPTS) {
             throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Demasiados intentos");
         }
     }

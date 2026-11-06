@@ -187,7 +187,15 @@ def _as_utc(value: datetime) -> datetime:
     return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
 
 
+def _revoke_family(db: Session, family_id: uuid.UUID, now: datetime) -> None:
+    """Revoca la sesión de un dispositivo (todos los refresh de esa familia)."""
+    db.execute(update(RefreshToken).where(RefreshToken.family_id == family_id,
+                                          RefreshToken.revoked_at.is_(None)).values(revoked_at=now))
+    db.commit()
+
+
 def _revoke_all_sessions(db: Session, user_id: uuid.UUID, now: datetime) -> None:
+    """Revoca todas las sesiones del usuario (cuenta desactivada, cambio de contraseña)."""
     db.execute(update(RefreshToken).where(RefreshToken.user_id == user_id,
                                           RefreshToken.revoked_at.is_(None)).values(revoked_at=now))
     db.commit()
@@ -203,8 +211,10 @@ def rotate(db: Session, raw: str) -> tuple[str, str]:
     claimed = db.execute(update(RefreshToken).where(RefreshToken.id == token.id,
                                                     RefreshToken.revoked_at.is_(None))
                          .values(revoked_at=now)).rowcount
-    if claimed != 1:                                    # reutilización: posible robo → revoca todas sus sesiones
-        _revoke_all_sessions(db, token.user_id, now)
+    if claimed != 1:
+        # Reutilización: posible robo de ese token → revoca su familia (la sesión de ese dispositivo).
+        # No todas las sesiones: un cliente que reintenta tras un timeout no debe cerrar sus otros dispositivos.
+        _revoke_family(db, token.family_id, now)
         raise InvalidCredentials()
     user = token.user
     if not user.is_active:                              # cuenta desactivada: no se renueva nada
