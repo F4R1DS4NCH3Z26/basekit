@@ -37,8 +37,12 @@ make migrate
 `AppServiceProvider::boot()`:
 
 ```php
-RateLimiter::for('login', fn (Request $r) =>
-    Limit::perMinute(5)->by(mb_strtolower((string) $r->input('email')).'|'.$r->ip()));
+// Dos límites independientes: por IP (una IP probando muchos emails) y por cuenta
+// (muchas IPs contra un mismo email). Con una clave "email|ip" ninguno de los dos casos queda cubierto.
+RateLimiter::for('login', fn (Request $r) => [
+    Limit::perMinute(10)->by('ip:'.$r->ip()),
+    Limit::perMinute(5)->by('email:'.mb_strtolower(trim((string) $r->input('email')))),
+]);
 ```
 
 `App\Models\User`: `use HasApiTokens;`, `$fillable = ['name', 'email', 'password']`, `casts(): ['password' => 'hashed']`, y una columna `role` (string, fuera de `$fillable`) si emites tokens con abilities.

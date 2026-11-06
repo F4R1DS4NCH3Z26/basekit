@@ -70,7 +70,9 @@ class SecurityConfig {
         // Null-safe: un token sin `aud` da 401, no un NPE (500).
         OAuth2TokenValidator<Jwt> aud = new JwtClaimValidator<List<String>>(JwtClaimNames.AUD,
             a -> a != null && a.contains(audience));
-        decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(JwtValidators.createDefaultWithIssuer(issuer), aud));
+        // JwtTimestampValidator acepta un token sin `exp`: se exige aparte.
+        OAuth2TokenValidator<Jwt> exp = new JwtClaimValidator<Instant>(JwtClaimNames.EXP, Objects::nonNull);
+        decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(JwtValidators.createDefaultWithIssuer(issuer), aud, exp));
         return decoder;
     }
 
@@ -162,29 +164,41 @@ public class TokenService {
 public class AuthRateLimiter {
     private static final int MAX_ATTEMPTS = 5;
     private static final long WINDOW_MS = Duration.ofMinutes(1).toMillis();
-    /** Tope de claves en memoria: al superarlo se descarta la menos usada (LRU), en O(1) por request. */
-    private static final int MAX_KEYS = 10_000;
-    private final Map<String, Window> windows = new LinkedHashMap<>(1024, 0.75f, true) {
-        @Override
-        protected boolean removeEldestEntry(Map.Entry<String, Window> eldest) {
-            return size() > MAX_KEYS;
-        }
-    };
+    /** Tope de memoria. Una ventana activa nunca se descarta: si se borrara, su contador volvería a cero. */
+    private static final int MAX_KEYS = 100_000;
+    private final Map<String, Window> windows = new HashMap<>();
+    private long lastPurge;
 
     private record Window(long start, int hits) {}
 
-    /** Ventana fija por clave; al pasar el límite responde 429. */
-    public void check(String key) {
+    /**
+     * Ventana fija por clave. Cada clave de `keys` es un bucket independiente (p. ej. uno por IP y otro por
+     * email): basta que uno pase el límite para responder 429. Si la memoria está llena de ventanas
+     * activas, las claves nuevas reciben 429 (falla cerrado) en lugar de desalojar contadores vivos.
+     */
+    public synchronized void check(String... keys) {
         long now = System.currentTimeMillis();
-        Window w;
-        synchronized (windows) {   // LinkedHashMap en orden de acceso no es thread-safe: una sección corta
+        if (windows.size() >= MAX_KEYS && now - lastPurge >= 1_000) {   // como mucho una purga por segundo
+            windows.values().removeIf(w -> now - w.start() >= WINDOW_MS);
+            lastPurge = now;
+        }
+        for (String key : keys) {
             Window old = windows.get(key);
-            w = old == null || now - old.start() >= WINDOW_MS ? new Window(now, 1) : new Window(old.start(), old.hits() + 1);
+            boolean fresh = old == null || now - old.start() >= WINDOW_MS;
+            if (old == null && windows.size() >= MAX_KEYS) throw tooMany();
+            Window w = fresh ? new Window(now, 1) : new Window(old.start(), old.hits() + 1);
             windows.put(key, w);
+            if (w.hits() > MAX_ATTEMPTS) throw tooMany();   // el primer bucket excedido corta: no crea los siguientes
         }
-        if (w.hits() > MAX_ATTEMPTS) {
-            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Demasiados intentos");
-        }
+    }
+
+    private static ResponseStatusException tooMany() {
+        return new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Demasiados intentos");
+    }
+
+    /** La misma normalización que usa AuthService, para que " Ana@x.com" y "ana@x.com" compartan contador. */
+    public static String normalizeEmail(String email) {
+        return email == null ? "" : email.strip().toLowerCase(Locale.ROOT);
     }
 }
 ```
@@ -194,7 +208,8 @@ En `AuthController`:
 ```java
 @PostMapping("/login")
 TokenPairResponse login(@Valid @RequestBody LoginRequest body, HttpServletRequest http) {
-    rateLimiter.check("login|" + http.getRemoteAddr() + "|" + body.email().toLowerCase(Locale.ROOT));
+    // Dos buckets: por IP (una IP probando muchos emails) y por email (muchas IPs contra una cuenta).
+    rateLimiter.check("login-ip|" + http.getRemoteAddr(), "login-email|" + AuthRateLimiter.normalizeEmail(body.email()));
     return authService.login(body.email(), body.password());
 }
 
@@ -205,7 +220,7 @@ TokenPairResponse refresh(@Valid @RequestBody RefreshRequest body, HttpServletRe
 }
 ```
 
-- Detrás de un proxy, `getRemoteAddr()` es la IP del proxy. Activa `server.forward-headers-strategy=native` y fija `server.tomcat.remoteip.internal-proxies` con las IPs del proxy de confianza. Nunca leas `X-Forwarded-For` a mano: lo falsifica cualquiera.
+- Detrás de un proxy, `getRemoteAddr()` es la IP del proxy. Activa `server.forward-headers-strategy=native` y fija `server.tomcat.remoteip.internal-proxies` con las IPs del proxy de confianza. Es una expresión regular: escapa los puntos (`10\\.0\\.0\\.5`), o `10.0.0.5` también aceptaría `10a0b0c5`. Nunca leas `X-Forwarded-For` a mano: lo falsifica cualquiera.
 - El contador vive en cada instancia. Con varias réplicas, usa el límite del proxy inverso o Bucket4j con Redis (requiere aprobación). Documenta cuál en `docs/AUTH.md`.
 
 ## Tests obligatorios (qa-writer)
@@ -220,9 +235,11 @@ TokenPairResponse refresh(@Valid @RequestBody RefreshRequest body, HttpServletRe
 - Preflight `OPTIONS` con `Origin` permitido → 200 con `Access-Control-Allow-Origin`.
 
 ```java
-String mint(String aud, Instant exp) {   // vencido: exp más de 60 s en el pasado (margen de reloj por defecto)
-    var claims = JwtClaimsSet.builder().issuer(issuer).audience(List.of(aud)).subject(UUID.randomUUID().toString())
-        .issuedAt(exp.minus(Duration.ofMinutes(15))).expiresAt(exp).build();
+String mint(String aud, Instant exp) {   // aud == null: sin `aud`; vencido: exp más de 60 s en el pasado (margen de reloj)
+    var builder = JwtClaimsSet.builder().issuer(issuer).subject(UUID.randomUUID().toString())
+        .issuedAt(exp.minus(Duration.ofMinutes(15))).expiresAt(exp);
+    if (aud != null) builder.audience(List.of(aud));   // List.of(null) lanzaría NPE
+    var claims = builder.build();
     return encoder.encode(JwtEncoderParameters.from(JwsHeader.with(MacAlgorithm.HS256).build(), claims)).getTokenValue();
 }
 // mockMvc.perform(get("/api/auth/me").header("Authorization", "Bearer " + mint("otra-app", Instant.now().plusSeconds(600))))

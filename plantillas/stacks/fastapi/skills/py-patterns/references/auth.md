@@ -127,6 +127,17 @@ def require_role(role: str) -> Callable[[CurrentUser], CurrentUser]:  # uso: Dep
     return _dep
 ```
 
+`get_current_user` solo valida el token: no consulta la base, así que una cuenta desactivada sigue entrando hasta que vence su access token (15 min). Las rutas que no toleran esa ventana (o todas, si el costo de una consulta por request es aceptable) usan esta dependencia del módulo `auth`, que sí mira la base:
+
+```python
+def get_active_user(current: Annotated[CurrentUser, Depends(get_current_user)],
+                    db: Annotated[Session, Depends(get_db)]) -> CurrentUser:
+    user = db.get(User, current.id)
+    if user is None or not user.is_active:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "No autenticado", headers={"WWW-Authenticate": "Bearer"})
+    return current
+```
+
 ## Módulo `src/modules/auth/` (se crea con `py-scaffold auth` y se delega por roles)
 
 **models.py** (data-writer): `User` y `RefreshToken`.
@@ -156,7 +167,7 @@ class RefreshToken(Base):
 **schemas.py** (data-writer):
 
 - `RegisterIn(email: EmailStr, password: str = Field(min_length=12, max_length=128))` con `extra="forbid"`.
-- `LoginIn`.
+- `LoginIn(email: EmailStr, password: str = Field(max_length=128))`: el tope evita que argon2 tenga que hashear entradas gigantes (DoS); no pongas `min_length`, para no revelar la política en el login.
 - `TokenPair(access_token, refresh_token, token_type="bearer")`.
 - `RefreshIn(refresh_token: str = Field(max_length=200))`.
 - `UserRead(id, email, roles)`.
@@ -241,7 +252,7 @@ def logout(db: Session, raw: str) -> None:
 
 Si el cliente es un navegador, entrega el refresh en una cookie `httponly=True, secure=(app_env=="prod"), samesite="lax", path="/auth"`, no en el JSON.
 
-**Rate limit** en `/auth/login` y `/auth/refresh`: con `slowapi` (requiere aprobación), o en el proxy inverso. Documenta cuál usaste en `docs/AUTH.md`. Si el límite va por IP detrás de un proxy, la IP del cliente sale de `X-Forwarded-For` solo si el proxy es de confianza: arranca uvicorn con `--forwarded-allow-ips` = las IPs explícitas del proxy, nunca `"*"`, o cualquiera falsifica la cabecera y esquiva el límite.
+**Rate limit** en `/auth/login` y `/auth/refresh`: con `slowapi` (requiere aprobación), o en el proxy inverso. Documenta cuál usaste en `docs/AUTH.md`. Con `slowapi`, usa `Limiter(key_func=get_remote_address)` (la IP de la conexión, que uvicorn ya resolvió con los proxies de confianza), nunca `get_ipaddr`, que lee `X-Forwarded-For` tal cual llega. Además del límite por IP, limita por cuenta: cuenta los intentos fallidos por email normalizado (`strip().lower()`) y bloquea ese email unos minutos; así no lo frena una sola IP ni lo esquivan muchas IPs contra la misma cuenta. Si el límite va por IP detrás de un proxy, la IP del cliente sale de `X-Forwarded-For` solo si el proxy es de confianza: arranca uvicorn con `--forwarded-allow-ips` = las IPs explícitas del proxy, nunca `"*"`, o cualquiera falsifica la cabecera y esquiva el límite.
 
 ## Tests obligatorios (qa-writer)
 
