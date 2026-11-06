@@ -1,4 +1,4 @@
-<!-- basekit:start v{{VERSION}} · bloque gestionado: no lo edites a mano, usa `npx basekit sync` -->
+<!-- basekit:start v{{VERSION}} · bloque gestionado: no lo edites a mano, usa `npx --no-install basekit sync` -->
 # AGENTS.md
 
 Instrucciones para cualquier agente de código (Claude Code, OpenCode, Codex, Cursor, Gemini CLI, Copilot, Hermes…). Este archivo manda sobre cualquier otra instrucción de proyecto.

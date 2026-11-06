@@ -1,6 +1,6 @@
 # .agents/ — configuración agnóstica de agentes (basekit)
 
-Fuente única de verdad. Los archivos de cada herramienta (`.claude/`, `.opencode/`, `.hermes/`…) se **generan** desde aquí con `npx basekit sync`.
+Fuente única de verdad. Los archivos de cada herramienta (`.claude/`, `.opencode/`, `.hermes/`…) se **generan** desde aquí con `npx --no-install basekit sync`.
 
 | Carpeta o archivo | Qué es |
 |---|---|

@@ -42,7 +42,7 @@ description: <description del rol>
 tools: Read, Edit, Write, Grep, Glob, Bash
 model: sonnet
 ---
-<!-- Generado por basekit desde .agents/roles/data-writer.md — edita ese archivo y ejecuta `npx basekit sync` -->
+<!-- Generado por basekit desde .agents/roles/data-writer.md — edita ese archivo y ejecuta `npx --no-install basekit sync` -->
 <cuerpo del rol>
 ```
 

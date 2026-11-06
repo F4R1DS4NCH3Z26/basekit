@@ -68,7 +68,7 @@ NOTAS: ≤ 2 líneas
 ## 4. Flujo estándar (todos los stacks)
 
 ```text
-npx basekit init  →  agente: bootstrap (entrevista → ADR → infra → make new-app → make dev → auth)
+npx --no-install basekit init  →  agente: bootstrap (entrevista → ADR → infra → make new-app → make dev → auth)
 por módulo:  <stack>-scaffold → contrato cerrado → zone-check --snapshot
              → rol de datos → zone-check <rol> → --snapshot → lógica/web → … → qa
              → make verify → zone-check --owners

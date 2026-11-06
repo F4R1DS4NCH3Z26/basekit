@@ -59,7 +59,7 @@ function readZones(project: Project, stack: Stack, role: string): string[] {
 }
 
 const generatedBy = (role: string) =>
-  `<!-- Generado por basekit desde .agents/roles/${role}.md — edita ese archivo y ejecuta \`npx basekit sync\` -->`;
+  `<!-- Generado por basekit desde .agents/roles/${role}.md — edita ese archivo y ejecuta \`npx --no-install basekit sync\` -->`;
 
 function claudeAgent(r: Role): string {
   return [

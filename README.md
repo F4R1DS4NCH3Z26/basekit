@@ -8,11 +8,31 @@ La especificación completa está en `00_LEEME.md` … `05_bootstrap_bd_auth.md`
 
 Node ≥ 20 (sin dependencias en tiempo de ejecución) y git. Para usar el proyecto generado: Docker con Compose v2, GNU Make y OpenSSL.
 
+## Instalación
+
+Se instala desde este repositorio (todavía no está publicado en npm). Al instalar, npm compila el CLI con el script `prepare`.
+
+**Global**: un `basekit` para todos tus proyectos.
+
+```bash
+npm install -g github:F4R1DS4NCH3Z26/basekit
+basekit init mi-proyecto --stack nextjs --context "Reservas de canchas de pádel"
+```
+
+**Por proyecto**: queda fijado en las `devDependencies` del proyecto y cada equipo usa la misma versión.
+
+```bash
+npm install -D github:F4R1DS4NCH3Z26/basekit
+npx --no-install basekit init . --stack nextjs
+```
+
+> **Nunca uses `npx basekit` a secas.** El nombre `basekit` en npm es de otro paquete, y `npx` sin instalación local lo descargaría y lo ejecutaría. `npx --no-install basekit` usa solo la instalación local o la global, y si no encuentra ninguna falla sin descargar nada. Es lo que escriben `AGENTS.md` y los adaptadores generados.
+
 ## Uso
 
 ```bash
-npx basekit init mi-proyecto --stack nextjs --context "Reservas de canchas de pádel"
-npx basekit stacks        # stacks y agentes soportados
+basekit init mi-proyecto --stack nextjs --context "Reservas de canchas de pádel"
+basekit stacks        # stacks y agentes soportados
 ```
 
 Opciones de `init`: `--stack`, `--agents a,b`, `--context`, `--db auto|postgres|mysql|sqlite|none`, `--redis`, `--no-external-skills`, `--force`, `--dry-run`, `-y/--yes`. Detalle en `basekit help`.
