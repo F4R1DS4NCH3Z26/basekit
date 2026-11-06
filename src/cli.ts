@@ -8,7 +8,7 @@ import { stacks } from "./commands/stacks/index.js";
 import { sync } from "./commands/sync/index.js";
 import { nodeFileSystem } from "./infra/file-system.js";
 import { processRunner } from "./infra/runner.js";
-import { UsageError } from "./kit/errors.js";
+import { CancelledError, UsageError } from "./kit/errors.js";
 import { VERSION } from "./kit/templates.js";
 import { Prompter } from "./ui/prompt.js";
 
@@ -154,6 +154,10 @@ async function main(argv: string[]): Promise<number> {
 main(process.argv.slice(2)).then(
   (code) => process.exit(code),
   (err: unknown) => {
+    if (err instanceof CancelledError) {
+      process.stderr.write(`${err.message}\n`);
+      process.exit(130);
+    }
     const usage = err instanceof UsageError || (err instanceof TypeError && "code" in err && String(err.code).startsWith("ERR_PARSE_ARGS"));
     process.stderr.write(`ERROR: ${err instanceof Error ? err.message : String(err)}\n`);
     process.exit(usage ? 2 : 1);

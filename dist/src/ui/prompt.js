@@ -1,32 +1,121 @@
-import { createInterface } from "node:readline";
+import { createInterface, emitKeypressEvents } from "node:readline";
 import { AGENTS } from "../kit/agents.js";
-import { UsageError } from "../kit/errors.js";
+import { CancelledError, UsageError } from "../kit/errors.js";
+const ESC = "\x1b[";
+const color = !process.env.NO_COLOR;
+const accent = (s) => (color ? `${ESC}36m${s}${ESC}39m` : s);
+const dim = (s) => (color ? `${ESC}2m${s}${ESC}22m` : s);
 /**
- * Interactive questions for `init`. It reads lines through one async iterator, so answers
- * that arrive before the question is printed (pasted or piped) are never lost.
+ * Interactive questions. In a real terminal the menus move with the arrow keys (raw mode, no
+ * dependencies); otherwise, and for text answers, it reads whole lines through one async iterator,
+ * so answers that arrive before the question is printed (pasted or piped) are never lost.
  */
 export class Prompter {
+    input;
     out;
     rl;
     lines;
     constructor(input, out) {
+        this.input = input;
         this.out = out;
-        this.rl = createInterface({ input, terminal: false });
-        this.lines = this.rl[Symbol.asyncIterator]();
     }
     close() {
-        this.rl.close();
+        this.rl?.close();
+        this.rl = undefined;
+        this.lines = undefined;
+    }
+    /** True when the input is a terminal that supports raw mode, so the menus can use the arrow keys. */
+    get arrows() {
+        return this.input.isTTY === true && typeof this.input.setRawMode === "function";
     }
     say(text) {
         this.out.write(`${text}\n`);
     }
     /** Prints the prompt and returns the trimmed answer, or undefined when the input ended. */
     async line(prompt) {
+        if (!this.lines) {
+            this.rl = createInterface({ input: this.input, terminal: false });
+            this.lines = this.rl[Symbol.asyncIterator]();
+        }
         this.out.write(prompt);
         const next = await this.lines.next();
         return next.done ? undefined : next.value.trim();
     }
+    /**
+     * Arrow-key menu: ↑/↓ (or k/j) move, a number jumps, Enter chooses; with `multi`, space toggles.
+     * Returns the chosen indexes. Ctrl+C restores the terminal and throws CancelledError.
+     */
+    select(question, items, multi, checked = []) {
+        // The line reader would also consume the keys: it is recreated by the next text question.
+        this.close();
+        const input = this.input;
+        const n = items.length;
+        const width = Math.max(...items.map((i) => i.label.length));
+        const picked = new Set(checked);
+        let cursor = 0;
+        let warning = "";
+        const help = multi ? "↑/↓ mover · espacio marcar · Enter confirmar" : "↑/↓ mover · Enter elegir";
+        const row = (i) => {
+            const here = i === cursor;
+            const box = multi ? (picked.has(i) ? "◉ " : "◯ ") : "";
+            const text = `${items[i].label.padEnd(width)}  ${dim(items[i].hint)}`;
+            return `${here ? accent("❯") : " "} ${box}${here ? accent(text) : text}`;
+        };
+        const footer = () => (warning ? `  ${warning}` : `  ${dim(help)}`);
+        const draw = (again) => {
+            if (again)
+                this.out.write(`${ESC}${n + 1}A`);
+            for (let i = 0; i < n; i++)
+                this.out.write(`${ESC}2K${row(i)}\n`);
+            this.out.write(`${ESC}2K${footer()}\n`);
+        };
+        this.say(question);
+        this.out.write(`${ESC}?25l`);
+        draw(false);
+        emitKeypressEvents(input);
+        const wasRaw = input.isRaw === true;
+        input.setRawMode(true);
+        input.resume();
+        return new Promise((resolve, reject) => {
+            const finish = (result) => {
+                input.removeListener("keypress", onKey);
+                input.setRawMode(wasRaw);
+                input.pause();
+                this.out.write(`${ESC}?25h`);
+                if (result instanceof Error)
+                    reject(result);
+                else
+                    resolve(result);
+            };
+            const onKey = (str, key) => {
+                warning = "";
+                if (key?.ctrl && key.name === "c")
+                    return finish(new CancelledError());
+                if (key?.name === "up" || key?.name === "k")
+                    cursor = (cursor - 1 + n) % n;
+                else if (key?.name === "down" || key?.name === "j")
+                    cursor = (cursor + 1) % n;
+                else if (multi && key?.name === "space")
+                    picked.has(cursor) ? picked.delete(cursor) : picked.add(cursor);
+                else if (str && /^[1-9]$/.test(str) && Number(str) <= n)
+                    cursor = Number(str) - 1;
+                else if (key?.name === "return" || key?.name === "enter") {
+                    if (!multi)
+                        return finish([cursor]);
+                    if (picked.size > 0)
+                        return finish([...picked].sort((a, b) => a - b));
+                    warning = "Marca al menos una (espacio).";
+                }
+                draw(true);
+            };
+            input.on("keypress", onKey);
+        });
+    }
     async stack(stacks) {
+        if (this.arrows) {
+            const [i] = await this.select("¿Qué stack usa el proyecto?", stacks.map((s) => ({ label: s.id, hint: s.name })), false);
+            return stacks[i].id;
+        }
         const width = Math.max(...stacks.map((s) => s.id.length));
         this.say("¿Qué stack usa el proyecto?");
         stacks.forEach((s, i) => this.say(`  ${i + 1}) ${s.id.padEnd(width)}  ${s.name}`));
@@ -43,6 +132,10 @@ export class Prompter {
     }
     async agents(defaults) {
         const ids = AGENTS.map((a) => a.id);
+        if (this.arrows) {
+            const chosen = await this.select("¿Con qué herramientas vas a trabajar?", ids.map((id) => ({ label: id, hint: defaults.includes(id) ? "(por defecto)" : "" })), true, ids.flatMap((id, i) => (defaults.includes(id) ? [i] : [])));
+            return chosen.map((i) => ids[i]);
+        }
         const width = Math.max(...ids.map((id) => id.length));
         this.say("¿Con qué herramientas vas a trabajar? (puedes elegir varias, separadas por comas)");
         ids.forEach((id, i) => this.say(`  ${i + 1}) ${id.padEnd(width)}${defaults.includes(id) ? "  (por defecto)" : ""}`));
@@ -62,10 +155,15 @@ export class Prompter {
         return (await this.line("¿De qué trata el proyecto? (una o dos frases; Enter para dejarlo vacío): ")) ?? "";
     }
     /**
-     * Numbered menu; returns the chosen option's `id`. Enter takes the first option.
-     * Asks again after an invalid answer; fails when the input ends.
+     * Menu of options; returns the chosen option's `id`. In a terminal it moves with the arrow keys;
+     * otherwise it is numbered: Enter takes the first option, an invalid answer asks again, and the
+     * end of the input fails.
      */
     async choose(question, options) {
+        if (this.arrows) {
+            const [i] = await this.select(question, options, false);
+            return options[i].id;
+        }
         const width = Math.max(...options.map((o) => o.label.length));
         this.say(question);
         options.forEach((o, i) => this.say(`  ${i + 1}) ${o.label.padEnd(width)}  ${o.hint}`));
