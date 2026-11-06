@@ -51,7 +51,8 @@ export async function init(o, ctx) {
         ctx.log(`(dry-run: no se escribe nada en ${root})`);
     project.createRoot();
     // 5 · Git (zone-check needs it).
-    if (!project.exists(".git")) {
+    const newRepository = !project.exists(".git");
+    if (newRepository) {
         project.report("+", ".git", "git init");
         if (!o.dryRun)
             ctx.runner.run(ctx.log, "git", ["init", "-q"], root);
@@ -103,7 +104,13 @@ export async function init(o, ctx) {
     }
     project.block(".gitignore", template("core/gitignore.block"), (l) => l.trim() === "# >>> basekit", "# <<< basekit");
     // LF for everyone: a Windows clone with core.autocrlf=true would otherwise break the scripts in WSL/Docker.
-    project.create(".gitattributes", template("core/gitattributes"));
+    // In a repository that already existed it is only suggested: it could renormalize files committed with CRLF.
+    if (newRepository || project.exists(".gitattributes")) {
+        project.create(".gitattributes", template("core/gitattributes"));
+    }
+    else {
+        project.report("!", ".gitattributes", "agrega `* text=auto eol=lf` (y ejecuta `git add --renormalize .`) para que Windows no convierta los scripts a CRLF");
+    }
     // 9 · Documentation (GLOSSARY.md and docs/adr/ are created later by domain-modeling).
     const vars = templateVars(stack, root, context);
     project.create("README.md", render(template("core/README.tpl.md"), vars));

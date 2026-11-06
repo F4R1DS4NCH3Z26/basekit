@@ -261,6 +261,17 @@ describe("line endings (Windows)", () => {
     }
   });
 
+  it("in an existing git repository it only suggests .gitattributes (it could renormalize CRLF files)", () => {
+    const d = scratch();
+    sh("git", ["init", "-q"], d);
+    writeFileSync(join(d, "win.txt"), "a\r\nb\r\n");
+    gitCommitAll(d);
+    const r = init(d, "--stack", "nextjs");
+    assert.equal(r.code, 0, r.stderr);
+    assert.ok(!existsSync(join(d, ".gitattributes")), "must not be created in an existing repository");
+    assert.match(r.stdout, /^! \.gitattributes .*eol=lf/m);
+  });
+
   it("keeps an existing .gitattributes", () => {
     const d = scratch();
     writeFileSync(join(d, ".gitattributes"), "*.png binary\n");
