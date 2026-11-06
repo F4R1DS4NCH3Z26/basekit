@@ -43,7 +43,7 @@ export class Prompter {
     }
     /**
      * Arrow-key menu: ↑/↓ (or k/j) move, a number jumps, Enter chooses; with `multi`, space toggles.
-     * Returns the chosen indexes. Ctrl+C restores the terminal and throws CancelledError.
+     * Returns the chosen indexes. Ctrl+C, Ctrl+D, Esc or the end of the input restore the terminal and throw CancelledError.
      */
     select(question, items, multi, checked = []) {
         // The line reader would also consume the keys: it is recreated by the next text question.
@@ -79,6 +79,8 @@ export class Prompter {
         return new Promise((resolve, reject) => {
             const finish = (result) => {
                 input.removeListener("keypress", onKey);
+                input.removeListener("end", onEnd);
+                input.removeListener("close", onEnd);
                 input.setRawMode(wasRaw);
                 input.pause();
                 this.out.write(`${ESC}?25h`);
@@ -87,9 +89,11 @@ export class Prompter {
                 else
                     resolve(result);
             };
+            // A closed terminal or an ended stdin must not leave the menu waiting forever.
+            const onEnd = () => finish(new CancelledError());
             const onKey = (str, key) => {
                 warning = "";
-                if (key?.ctrl && key.name === "c")
+                if ((key?.ctrl && (key.name === "c" || key.name === "d")) || key?.name === "escape")
                     return finish(new CancelledError());
                 if (key?.name === "up" || key?.name === "k")
                     cursor = (cursor - 1 + n) % n;
@@ -109,6 +113,8 @@ export class Prompter {
                 draw(true);
             };
             input.on("keypress", onKey);
+            input.once("end", onEnd);
+            input.once("close", onEnd);
         });
     }
     async stack(stacks) {

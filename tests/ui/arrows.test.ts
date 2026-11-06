@@ -2,7 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { PassThrough } from "node:stream";
 import { DEFAULT_AGENTS } from "../../src/kit/agents.js";
-import { CancelledError } from "../../src/kit/errors.js";
+import { CancelledError, failure, UsageError } from "../../src/kit/errors.js";
 import { loadStacks } from "../../src/kit/stacks.js";
 import { Prompter } from "../../src/ui/prompt.js";
 
@@ -36,7 +36,8 @@ const OPTIONS = [
   { id: "project", label: "Este proyecto", hint: "npm install -D" },
 ];
 
-describe("arrow-key menus in a terminal", () => {
+// A menu that never settles must fail the test, not hang the suite.
+describe("arrow-key menus in a terminal", { timeout: 5000 }, () => {
   it("choose: ↓ and Enter pick the second option; raw mode is turned on and back off", async () => {
     const t = terminal();
     t.type(DOWN, ENTER);
@@ -98,6 +99,24 @@ describe("arrow-key menus in a terminal", () => {
     t.p.close();
   });
 
+  it("Esc and Ctrl+D cancel too", async () => {
+    for (const key of ["\x1b", "\x04"]) {
+      const t = terminal();
+      t.type(key);
+      await assert.rejects(t.p.choose("¿Dónde?", OPTIONS), CancelledError, JSON.stringify(key));
+      assert.deepEqual(t.modes, [true, false]);
+      t.p.close();
+    }
+  });
+
+  it("the end of the input while a menu is open cancels instead of hanging", async () => {
+    const t = terminal();
+    setImmediate(() => t.input.end());
+    await assert.rejects(t.p.choose("¿Dónde?", OPTIONS), CancelledError);
+    assert.deepEqual(t.modes, [true, false]);
+    t.p.close();
+  });
+
   it("after a menu, text and yes/no questions still read whole lines", async () => {
     const t = terminal();
     t.type(DOWN, ENTER);
@@ -107,5 +126,13 @@ describe("arrow-key menus in a terminal", () => {
     setImmediate(() => t.input.write("s\n"));
     assert.equal(await t.p.confirm("¿Seguro?", false), true);
     t.p.close();
+  });
+});
+
+describe("exit codes", () => {
+  it("Ctrl+C maps to exit 130 with 'Cancelado.', usage errors to 2, the rest to 1", () => {
+    assert.deepEqual(failure(new CancelledError()), { code: 130, message: "Cancelado." });
+    assert.deepEqual(failure(new UsageError("--x no aplica")), { code: 2, message: "ERROR: --x no aplica" });
+    assert.deepEqual(failure(new Error("boom")), { code: 1, message: "ERROR: boom" });
   });
 });
