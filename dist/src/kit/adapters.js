@@ -1,6 +1,7 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { AGENTS } from "./agents.js";
+import { roleFiles, zoneFiles } from "./layout.js";
 import { stackDir } from "./stacks.js";
 import { TEMPLATES, walk } from "./templates.js";
 const ROLE_NAME = /^[a-z0-9][a-z0-9-]*$/;
@@ -26,20 +27,20 @@ function parseRole(name, text) {
     const body = m ? m[2] : text;
     return { name, description: meta.description || name, body: body.endsWith("\n") ? body : `${body}\n` };
 }
-/** Roles from the project's `.agents/roles/`, or from the stack templates when it does not exist yet (dry-run). */
-function readRoles(project, stack) {
+/** Roles from the project's `.agents/roles/`, or the ones init would write when it does not exist yet (dry-run). */
+function readRoles(project, parts) {
     const own = project.files(".agents/roles").filter((f) => f.endsWith(".md"));
     const fromProject = own.length > 0 || project.exists(".agents/roles");
-    const names = fromProject ? own : walk(join(stackDir(stack), "roles")).filter((f) => f.endsWith(".md") && !f.includes("/"));
+    const kit = new Map(roleFiles(parts).filter((f) => f.rel.endsWith(".md") && !f.rel.includes("/")).map((f) => [f.rel, f.text]));
+    const names = fromProject ? own : [...kit.keys()].sort();
     return names
         .map((f) => f.slice(0, -3))
         .filter((n) => ROLE_NAME.test(n))
-        .map((n) => parseRole(n, fromProject ? project.read(`.agents/roles/${n}.md`) : readFileSync(join(stackDir(stack), "roles", `${n}.md`), "utf8")));
+        .map((n) => parseRole(n, fromProject ? project.read(`.agents/roles/${n}.md`) : kit.get(`${n}.md`)));
 }
-function readZones(project, stack, role) {
+function readZones(project, parts, role) {
     const own = project.read(`.agents/zones/${role}.txt`);
-    const tpl = join(stackDir(stack), "zones", `${role}.txt`);
-    const text = own ?? (existsSync(tpl) ? readFileSync(tpl, "utf8") : "");
+    const text = own ?? zoneFiles(parts).find((f) => f.rel === `${role}.txt`)?.text ?? "";
     return [...new Set(text.split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("#")))];
 }
 const generatedBy = (role) => `<!-- Generado por basekit desde .agents/roles/${role}.md — edita ese archivo y ejecuta \`npx --no-install basekit sync\` -->`;
@@ -78,11 +79,11 @@ function opencodeAgent(r, zones) {
     ].join("\n");
 }
 const json = (value) => `${JSON.stringify(value, null, 2)}\n`;
-function claudeSettings(stack) {
-    const scaffolds = stack.skills
+function claudeSettings(parts) {
+    const scaffolds = parts.flatMap(({ stack }) => stack.skills
         .map(([name]) => name)
         .filter((name) => existsSync(join(stackDir(stack), "skills", name, "scripts/scaffold.sh")))
-        .map((name) => `Bash(bash .agents/skills/${name}/scripts/scaffold.sh:*)`);
+        .map((name) => `Bash(bash .agents/skills/${name}/scripts/scaffold.sh:*)`));
     return json({
         permissions: {
             allow: [
@@ -130,17 +131,17 @@ function claudeMd(project) {
         project.generated("CLAUDE.md", `@AGENTS.md\n\n${cur}`);
 }
 /** Generated subagents are rewritten when they differ; config files are created only if missing. */
-export function writeAdapters(project, stack, agents) {
-    const roles = readRoles(project, stack);
+export function writeAdapters(project, parts, agents) {
+    const roles = readRoles(project, parts);
     if (agents.includes("claude-code")) {
         claudeMd(project);
         for (const r of roles)
             project.generated(`.claude/agents/${r.name}.md`, claudeAgent(r));
-        project.create(".claude/settings.json", claudeSettings(stack));
+        project.create(".claude/settings.json", claudeSettings(parts));
     }
     if (agents.includes("opencode")) {
         for (const r of roles)
-            project.generated(`.opencode/agents/${r.name}.md`, opencodeAgent(r, readZones(project, stack, r.name)));
+            project.generated(`.opencode/agents/${r.name}.md`, opencodeAgent(r, readZones(project, parts, r.name)));
         project.create("opencode.json", OPENCODE_JSON);
     }
     if (agents.includes("gemini-cli"))
@@ -148,8 +149,8 @@ export function writeAdapters(project, stack, agents) {
     // Hermes reads AGENTS.md from the cwd: it gets no instruction file of its own (never .hermes.md).
 }
 /** Links every skill in `.agents/skills/` into the folders of the tools that do not read it natively. */
-export function linkSkills(project, stack, agents) {
-    const kit = [join(TEMPLATES, "skills"), join(stackDir(stack), "skills")].flatMap((dir) => walk(dir).map((f) => f.split("/")[0]));
+export function linkSkills(project, parts, agents) {
+    const kit = [join(TEMPLATES, "skills"), ...parts.map((p) => join(stackDir(p.stack), "skills"))].flatMap((dir) => walk(dir).map((f) => f.split("/")[0]));
     const skills = [...new Set([...project.dirs(".agents/skills"), ...kit])].sort();
     for (const agent of AGENTS) {
         if (!agent.skillsDir || !agents.includes(agent.id))

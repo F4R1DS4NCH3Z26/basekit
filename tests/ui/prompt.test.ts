@@ -86,8 +86,40 @@ describe("stack question: tipo, lenguaje and framework", () => {
     p.close();
   });
 
+  it("fullstack offers the integrated stacks plus «Combinar backend + frontend» (S16)", async () => {
+    const { p, output } = prompter("3", "Combinar", "Python", "fastapi", "react");
+    assert.equal(await p.stack(stacks), "fastapi+react");
+    const text = output();
+    const integrated = languages("fullstack");
+    assert.match(text, new RegExp(`${integrated.length + 1}\\) Combinar backend \\+ frontend`));
+    assert.match(text, /¿En qué lenguaje es el backend\?/);
+    of("backend", "Python").forEach((s, i) => assert.match(text, new RegExp(`${i + 1}\\) ${escape(s.name)} +${s.id}\n`)));
+    assert.match(text, new RegExp(`Lenguaje del frontend: ${languages("frontend")[0]} \\(única opción\\)`));
+    assert.match(text, /¿Con qué framework de frontend\?/);
+    for (const s of of("fullstack")) assert.doesNotMatch(text, new RegExp(`\\) ${escape(s.name)} +${s.id}\n`), "no integrated framework list");
+    p.close();
+  });
+
+  it("combined: numbers work at every step and a stack id of the right kind is taken at its side", async () => {
+    const integrated = languages("fullstack");
+    const go = languages("backend").indexOf("Go") + 1;
+    const a = prompter("3", String(integrated.length + 1), String(go), "1", "3");
+    assert.equal(await a.p.stack(stacks), `${of("backend", "Go")[0]!.id}+${of("frontend")[2]!.id}`);
+    a.p.close();
+
+    const b = prompter("fullstack", "combinar", "gin", "vue");
+    assert.equal(await b.p.stack(stacks), "gin+vue");
+    b.p.close();
+
+    const c = prompter("3", "combinar", "react", "Go", "gin", "fastapi", "vue");
+    assert.equal(await c.p.stack(stacks), "gin+vue");
+    assert.match(c.output(), /«react» no es una opción válida/);
+    assert.match(c.output(), /«fastapi» no es una opción válida/);
+    c.p.close();
+  });
+
   it("fails with a hint when the input ends at any step", async () => {
-    for (const answers of [[], ["foo"], ["1"], ["1", "Python"]]) {
+    for (const answers of [[], ["foo"], ["1"], ["1", "Python"], ["3", "combinar"], ["3", "combinar", "Go", "gin"]]) {
       const { p } = prompter(...answers);
       await assert.rejects(p.stack(stacks), /--stack <id>/, JSON.stringify(answers));
       p.close();
@@ -186,6 +218,16 @@ describe("init with interactive answers", () => {
     assert.equal(m.stack, "flask");
     assert.deepEqual(m.agents, ["claude-code", "opencode"]);
     assert.match(readFileSync(join(d, "docs/PROJECT.md"), "utf8"), /Tienda de bicis/);
+  });
+
+  it("a combined answer becomes a backend/ + frontend/ project (S16)", async () => {
+    const d = join(scratch(), "app");
+    const { p } = prompter("3", "combinar", "Python", "fastapi", "react", "", "");
+    assert.equal(await quietInit({ dir: d }, p), 0);
+    p.close();
+    assert.equal(JSON.parse(readFileSync(join(d, ".agents/manifest.json"), "utf8")).stack, "fastapi+react");
+    assert.ok(existsSync(join(d, "backend/.make/stack.mk")));
+    assert.ok(existsSync(join(d, "frontend/.make/stack.mk")));
   });
 
   it("asks only what flags, the manifest or detection did not answer", async () => {

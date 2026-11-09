@@ -25,11 +25,11 @@ Flags de `init`:
 
 | Flag | Valores | Por defecto |
 |---|---|---|
-| `--stack` | backend: `django`, `express`, `fastapi`, `flask`, `gin`, `go-native`, `nestjs`, `node-native`, `php-native`, `python-native`, `spring`, `symfony` · frontend: `react`, `vanilla-ts`, `vue` · fullstack: `django-htmx`, `laravel`, `nextjs` (la lista sale de `plantillas/stacks/`; `basekit stacks` la imprime) | manifest; si no, detectado; si no, se pregunta |
+| `--stack` | backend: `django`, `express`, `fastapi`, `flask`, `gin`, `go-native`, `nestjs`, `node-native`, `php-native`, `python-native`, `spring`, `symfony` · frontend: `react`, `vanilla-ts`, `vue` · fullstack: `django-htmx`, `laravel`, `nextjs` (la lista sale de `plantillas/stacks/`; `basekit stacks` la imprime). **Combinado** (sección 14): `<backend>+<frontend>`, por ejemplo `fastapi+react`; solo un stack `kind: backend` seguido de uno `kind: frontend` | manifest; si no, detectado; si no, se pregunta |
 | `--agents` | lista separada por comas (ver guía 03) | detectados; si no, se pregunta (sugerencia: `claude-code,opencode`) |
 | `--context` | texto libre: "de qué trata el proyecto" | se pregunta (puede ir vacío) |
-| `--db` | `auto`, `postgres`, `mysql`, `sqlite`, `none`. Un stack frontend solo admite `auto` o `none` | `auto` (lo decide el bootstrap; en un stack frontend, `none`) |
-| `--redis` | booleano. Error en un stack frontend | no |
+| `--db` | `auto`, `postgres`, `mysql`, `sqlite`, `none`. Un stack frontend solo admite `auto` o `none`; en un combinado se aplica al backend | `auto` (lo decide el bootstrap; en un stack frontend, `none`) |
+| `--redis` | booleano. Error en un stack frontend; en un combinado, va al backend | no |
 | `--no-external-skills` | omite `npx skills add` (CI o sin red) | no |
 | `--force` | reemplaza las skills del kit modificadas localmente | no |
 | `--dry-run` | muestra lo que haría sin escribir | no |
@@ -42,6 +42,8 @@ Flags de `init`:
    1. **Tipo**: Backend, Frontend o Fullstack (`stack.json → kind`).
    2. **Lenguaje**: los lenguajes de ese tipo (`stack.json → language`), en orden alfabético.
    3. **Framework**: los stacks de ese tipo y lenguaje; la etiqueta es `stack.json → name`, que nombra el framework y el tipo de app.
+
+   En **Fullstack**, el paso Lenguaje ofrece los lenguajes de los stacks integrados y, al final, **«Combinar backend + frontend»** (si hay stacks de los dos tipos). Elegirla pregunta Lenguaje → Framework del backend (`¿En qué lenguaje es el backend?`, `¿Con qué framework de backend?`) y luego del frontend, y el resultado es `<backend>+<frontend>` (sección 14). En esos pasos solo se acepta un id de stack de ese lado.
 
    Un paso con una sola opción no se pregunta: se elige solo y se anuncia (`Lenguaje: TypeScript (única opción)`). En una terminal cada paso es un menú con flechas; sin TTY con modo raw, una lista numerada que acepta el número o el nombre (y, en cualquier paso, un id de stack), vuelve a preguntar ante una respuesta inválida y, si la entrada termina, falla con un error de uso que sugiere `--stack <id>`.
 3. **Agentes**: flag → detección (guía 03, sección 1) → pregunta. Valida contra la lista blanca.
@@ -58,11 +60,11 @@ Flags de `init`:
 10. **Adaptadores** para cada agente elegido (guía 03, sección 3).
 11. **Enlaces de skills** para los agentes que no leen `.agents/skills/`: enlace relativo y, si falla (Windows sin permisos), copia.
 12. **Skills externas** (sección 9), salvo con `--no-external-skills`.
-13. **Infraestructura**: si `--db ≠ auto`, ejecutar `bash .agents/skills/infra-setup/scripts/infra.sh --db <db> [--redis]`. Es el **mismo script** que usa el agente, así que la lógica vive en un solo lugar.
+13. **Infraestructura**: si `--db ≠ auto`, ejecutar `bash .agents/skills/infra-setup/scripts/infra.sh --db <db> [--redis]`. Es el **mismo script** que usa el agente, así que la lógica vive en un solo lugar. En un combinado corre dentro de `backend/` (`bash ../.agents/…/infra.sh`, con `GIT_CEILING_DIRECTORIES` en la raíz para que el script no suba a ella).
 14. **Resumen y próximo paso.** Imprimir el prompt sugerido:
     > «Lee AGENTS.md y ejecuta el bootstrap. El proyecto trata de: `<contexto>`»
 
-    Si falta la app del framework, indicar también `make new-app`.
+    Si falta la app del framework, indicar también `make new-app` (en un combinado, `make -C <lado> new-app` por cada lado al que le falte).
 
 Cada acción se reporta con `+` (creado), `~` (actualizado), `=` (existía, se conserva) o `!` (aviso).
 
@@ -153,6 +155,8 @@ Cada acción se reporta con `+` (creado), `~` (actualizado), `=` (existía, se c
 
 Al reescribirlo, conserva `createdAt` y cualquier campo desconocido; así un `upgrade` futuro podrá migrar.
 
+Un proyecto combinado guarda los dos ids en el mismo campo y con la misma gramática que `--stack`: `"stack": "fastapi+react"`. El resto del formato no cambia; las claves de `files` de cada lado llevan su carpeta (`backend/.agents/skills/…`). Un manifest de un solo stack sigue igual, y una versión anterior de basekit rechaza un combinado con «stack no existe» en vez de tratarlo como un solo stack.
+
 ## 9. Skills externas (obligatorias)
 
 ```bash
@@ -190,12 +194,12 @@ DISABLE_TELEMETRY=1 DO_NOT_TRACK=1 npx -y skills@1.7.4 add \
 Imprime `OK` o `FALTA` con una sugerencia:
 - Node ≥ 20, git, docker y `docker compose` v2, make, openssl.
 - El manifest, y el bloque de `AGENTS.md` (y su tamaño).
-- `Makefile`, `.make/stack.mk`, `Dockerfile`, los tres `compose*.yaml` y `.env.example`.
-- El `appMarker` (si falta → `make new-app`).
-- Cada `SKILL.md` esperado (core, stack y las cuatro externas).
+- `Makefile`, `.make/stack.mk`, `Dockerfile`, los tres `compose*.yaml` y `.env.example`. En un combinado: `Makefile (raíz)` y esos archivos dentro de `backend/` y de `frontend/`.
+- El `appMarker` (si falta → `make new-app`; en un combinado, `<lado>/<appMarker>` → `make -C <lado> new-app`).
+- Cada `SKILL.md` esperado (core, stack y las cuatro externas). En un combinado, también la copia de las skills del stack en `<lado>/.agents/skills/`.
 - Los enlaces de skills por agente.
 - Hermes: que no exista `.hermes.md` ni `HERMES.md`.
-- `.env`.
+- `.env` (en un combinado, `backend/.env` y `frontend/.env`).
 
 ## 12. Requisitos de seguridad del CLI
 
@@ -227,3 +231,17 @@ Imprime `OK` o `FALTA` con una sugerencia:
 - Pasaron la 1, 3, 4, 5, 6, 7, 8, 10 y 11.
 - La 2 falló en el prototipo: reescribía los archivos generados y el `updatedAt`. Por eso la regla de comparar contenido está arriba.
 - **La 9 y la 12 no las pude ejecutar** porque no tenía Docker: son las primeras que debe correr tu CI.
+
+## 14. Proyecto combinado: `backend/` + `frontend/`
+
+`--stack <backend>+<frontend>` (o «Combinar backend + frontend» en la pregunta) crea un monorepo con un stack `kind: backend` y uno `kind: frontend`. Cualquier otro par es un error de uso (exit 2) antes de escribir nada: el orden invertido (`react+fastapi`), dos backends (`fastapi+django`), un fullstack (`nextjs+react`), un id que no existe o más de dos partes.
+
+| Dónde | Qué |
+|---|---|
+| raíz | Lo común una sola vez: `AGENTS.md` (con las secciones de los dos stacks dentro de `core/combo/AGENTS.section.md`), `.agents/` (skills core y de los dos stacks, roles, zonas, manifest), adaptadores, `README.md`, `docs/`, bloque de `.gitignore`, `.gitattributes`, y `Makefile` desde `core/combo/Makefile`, que delega en los dos lados |
+| `backend/`, `frontend/` | Un proyecto completo de su stack: `Makefile` (el core), `files/` del stack (`.make/stack.mk`, `Dockerfile`, `compose*.yaml`, `.env.example`, `.dockerignore`), su `starter/` si falta el `appMarker` y una copia de las skills de su stack en `<lado>/.agents/skills/` (Docker solo monta la carpeta del lado, y `make verify` y `make new-app` leen de ahí). Cada uno funciona solo: `make -C backend dev`, `make -C frontend new-app` |
+
+- **Roles y zonas**: cada rol del stack se escribe como `<lado>-<rol>` (`backend-data-writer`, `frontend-ui-writer`), con `name:` cambiado, una nota inicial (`core/combo/role.note.md`) y la referencia a su zona actualizada. Cada glob de las zonas de un lado lleva el prefijo de su carpeta. `orchestrator.txt` es lo común más, por cada lado, lo común y `orchestrator.stack.txt` con el prefijo del lado. Así, `zone-check --owners` da 0 archivos sin dueño justo después de `init`.
+- **API**: el navegador llama a la API por el host. `frontend/.env.example` recibe `VITE_API_URL=http://127.0.0.1:<puerto del backend>` y `backend/.env.example`, `CORS_ORIGINS=http://127.0.0.1:<puerto del frontend>,http://localhost:<puerto del frontend>`. Si el `.env.example` del stack no tiene esa variable, `init` avisa con `!` y no inventa una. Los dos lados son proyectos de Compose distintos: no comparten red, así que los servicios `app` no chocan.
+- **Base de datos**: `--db` y `--redis` van al backend; infra-setup escribe sus overlays en `backend/`.
+- **`sync`** regenera el bloque de `AGENTS.md`, los adaptadores (con los roles prefijados) y los enlaces de los dos stacks. **`doctor`** revisa la raíz y cada lado (sección 11).

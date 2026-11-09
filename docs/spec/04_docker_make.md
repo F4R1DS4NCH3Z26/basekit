@@ -159,3 +159,21 @@ Para producción seria, fija **por digest** (`image@sha256:…`) y deja que Reno
 3. `roles/`, `zones/` (incluido `orchestrator.stack.txt`) y `skills/<x>-scaffold|verify|patterns` (con `references/auth.md`).
 4. `AGENTS.section.md` en menos de 25 líneas.
 5. Pruebas de aceptación 1, 6, 8, 9 y 12 de la guía 02.
+
+## 10. Proyecto combinado: `backend/` + `frontend/` (guía 02, sección 14)
+
+Con `--stack <backend>+<frontend>` cada carpeta es un proyecto completo de su stack, con todas las piezas de la sección 1: `backend/Makefile` y `frontend/Makefile` son el `Makefile` core sin cambios, y cada uno incluye su `.make/stack.mk`. Cada lado funciona solo (`make -C backend dev`, `make -C frontend new-app`) y es su propio proyecto de Compose (`backend-dev-<cksum>`, `frontend-dev-<cksum>`): no comparten red ni volúmenes, así que sus servicios `app` no chocan. En prod, el nombre por defecto de Compose sería el de la carpeta (`backend`, `frontend`) y dos proyectos combinados en un mismo servidor se pisarían contenedores y volúmenes; por eso `init` agrega a cada `<lado>/compose.yaml` un `name: <proyecto>-<lado>` (normalizado como Compose). En dev manda el `-p` del Makefile. Los overlays de base de datos y Redis (`infra.sh`) solo van a `backend/`.
+
+La raíz tiene un `Makefile` propio (`plantillas/core/combo/Makefile`) que no incluye nada: solo delega con `$(MAKE) -C`.
+
+| Objetivo de la raíz | Qué hace |
+|---|---|
+| `help` | Lista los objetivos de la raíz (`make -C <lado> help` muestra los de cada lado) |
+| `dev` / `up` / `build` / `logs` / `prod-build` / `prod-logs` | Los dos lados **en paralelo** (`$(MAKE) -j2 _backend-<obj> _frontend-<obj>`): `logs` sigue los dos a la vez |
+| `env` / `doctor` / `down` / `restart` / `ps` / `install` / `test` / `lint` / `verify` / `new-app` / `prod-up` / `prod-down` / `clean` / `fix-perms` | Backend y luego frontend; el primer fallo corta |
+| `migrate` / `migration NAME=x` / `db-shell` / `prod-migrate` | Solo el backend (el frontend no tiene base de datos) |
+
+Las variables de la línea de comandos (`ENV=prod`, `SCOPE=…`, `NAME=…`, `S=…`, `CONFIRM=1`) llegan a los dos Makefiles por `MAKEFLAGS`. Las recetas que delegan con `$(call …)` empiezan con `+`: make no ve `$(MAKE)` dentro de `$(call)`, y `make -n` debe seguir bajando a cada lado. `sh` no está en la raíz porque es ambiguo: usa `make -C <lado> sh`.
+
+**API entre los dos**: el navegador llama al backend por el host. `frontend/.env.example` trae `VITE_API_URL=http://127.0.0.1:<puerto del backend>` (en prod, el `VITE_API_URL` de `frontend/.env.prod` se incrusta al construir), y `backend/.env.example` permite `http://127.0.0.1:<puerto del frontend>` y `http://localhost:<puerto del frontend>` en `CORS_ORIGINS`.
+

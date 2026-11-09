@@ -28,6 +28,23 @@ Objective: `init` asks the language and then the framework, with 5 new stacks (d
   - `php-native` (backend, PDO)
   - `python-native` (backend, WSGI)
 - **S15** "sí, agrega Django + HTMX como fullstack integrado". Stack `django-htmx` (Python, kind fullstack): Django server-rendered templates + HTMX, with no SPA, no Node and no JS build. It has `detect: {}`: `django` (manage.py) is tried first in id order, so auto-detection would never be reached, and narrowing django would change existing projects (S7).
+- **S16** Combinar (L9, L11): "en full stack, has las diferentes combinaciones segun lo necesite el usuaios". User choice: "Combinar + integrados (Recommended)". The fullstack step offers the integrated stacks plus "Combinar backend + frontend". The layout is a monorepo `backend/` + `frontend/`; `make dev` starts both. Orchestrator design decisions (assumptions; the user can change them):
+  - Flag `--stack <backend>+<frontend>` (for example `fastapi+react`). Only a kind backend + kind frontend pair is valid. The manifest records both ids. `sync` and `doctor` support it.
+  - Each subfolder is a complete project of its stack (its `files/`, `starter/`, `.make/stack.mk`, Makefile and compose) that works alone with `make -C backend dev`. The root has the shared core (AGENTS.md, .agents/, adapters, docs) and a root Makefile that delegates (dev, down, logs, test, lint, verify, env, new-app) to both.
+  - The browser frontend calls the API through the host (`VITE_API_URL=http://127.0.0.1:<backend port>`), and the backend allows that origin in CORS. There is no shared Docker network, so `app` service names do not collide.
+  - `--db`/`--redis` apply only to the backend.
+  - Zones and roles are prefixed by side (`backend-<role>`, `frontend-<role>`) with paths under `backend/` and `frontend/`; zone-check gives 0 files without an owner.
+- **S17** "sí, arregla también los pendientes fuera del alcance". Fix the follow-ups listed in L28 and L35:
+  - fastapi: conftest visible to module tests, and models loaded so foreign keys between modules work;
+  - zone glob `tests/**/test_*.py` does not cover `tests/test_x.py`, in every stack that has it;
+  - `__pycache__/` added to the core gitignore block;
+  - stale manifest db when switching to a frontend stack (R3);
+  - CI frontend prod args (R3);
+  - R2 readability suggestions;
+  - ESLint 9 end of life: verify it, then move the TS stacks to a supported ESLint;
+  - CORS in express, node-native, php-native and symfony: they have no CORS_ORIGINS, so combined init warns (T6b);
+  - `infra.sh` and the stacks' scaffold/app-setup scripts use `git rev-parse --show-toplevel`, which climbs to the root in a combined project; they should use the nearest Makefile folder;
+  - the `migration` NAME regex runs before the frontend no-database override.
 - **S9** Go parity: basekit-go (`~/Documents/project-guiade`) gets the same feature once Node is done (L31): byte-identical `plantillas/` (except the CLI text), the Tipo → Lenguaje → Framework question, frontend without DB, Combine, tests, docs and CI.
 
 Selected scope (user choice): "Set base (Recommended)": Python: Django + Flask · TypeScript: NestJS + Express · PHP: Symfony.
@@ -52,7 +69,8 @@ Selected scope (user choice): "Set base (Recommended)": Python: Django + Flask �
 | T17 | S14 | delegated after T11 (express Prisma 7), `plantillas/stacks/node-native/` | done (no Docker e2e yet) | init with postgres/mysql/sqlite/none OK; make help 27 targets; zone-check 0 unowned; host replay of all 4 passes verify (11 tests); /health, 404, 405, 400, 413, 415 and SIGTERM OK; commit bccc9c1 |
 | T18 | S15 | delegated (parallel writer, `plantillas/stacks/django-htmx/`) | done (no Docker e2e yet) | init with the 3 databases + redis OK; make help 28 targets; zone-check 0 unowned; venv: verify OK, 17 tests (partial vs full, CSRF, OOB, login); gunicorn prod /health + SRI + CSP OK; commit adb74c6 |
 | T6a | S1, S1b, S7, S8 | delegated (context backstop) | done | verify.sh OK (parent rerun); owners 579/0; differential vs HEAD: only the requested differences; integration commit |
-| T6b | S1b (Combine, L11) | delegated after T6a | pending | |
+| T6b | S16 | delegated (context backstop) | done | verify.sh OK (parent rerun); fastapi+react init + root make help + VITE_API_URL/CORS checked by the parent; owners 125/0; differential vs b259216: only the requested help lines differ |
+| T19 | S17 | after T6b (it shares src/, plantillas/core and tests) | pending | |
 | T7 | S2-S6 | per-action worker (Docker e2e per stack, run one at a time) | pending | |
 | T8 | S9 | after T6b: implement in basekit-go (route decided when it starts) | pending | |
 
@@ -111,4 +129,21 @@ Selected scope (user choice): "Set base (Recommended)": Python: Django + Flask �
   - The independent verifier runs at the end of the feature (verification timing rule).
   - Commits (L30): 14 stacks + the nextjs fix (d8caa8f) + integration. Base fc1e268.
   - The intermediate stack commits do not pass `prompt.test` "9" until the integration commit.
+- **L35** Native review of the Node range fc1e268..b259216: the full candidate (577 files, 22,623 lines) was refused with `lens_context_budget_exceeded`. No authority was created. User choice: "Solo integración (Recommended)". The review of b259216 (risk, readability, reliability) was approved and acknowledged (`gentle-ai.review-acknowledged/v1`, lineage review-81f111f33b1caca7).
+  - Non-blocking advisories, as follow-ups:
+    - R3-stale-manifest-db-on-frontend-switch (init.ts:44-45)
+    - R3-ci-frontend-prod-args (ci.yml:168-170)
+    - R2-001 (init.ts:44-45)
+    - SUGGESTIONs R2-002..005 and R3-typed-id-case.
+  - The 14 stack commits get T7 (Docker e2e) and the independent verifier at the end.
+- **L36** (2026-11-09) User: "sí, arregla también los pendientes fuera del alcance". It becomes S17 / T19, after T6b to avoid touching the same files.
+- **L37** (2026-11-09) User: "ok, déjalo así hasta cerrar T6b y T19". The Go port (T8) happens all at once after T6b and T19. The two repos stay out of sync until then.
+- **L38** T6b OK. Decisions beyond S16:
+  - manifest `"stack": "a+b"`;
+  - per-side skill copies;
+  - compose `name: <project>-<side>` to avoid prod collisions;
+  - the root Makefile runs dev/up/build/logs in parallel (-j2) and sends migrate/db-shell to the backend only;
+  - delegating recipes use a `+` prefix;
+  - combined projects are not auto-detected without a manifest.
+  - Risk: item 1/3 (the persisted manifest format adds `a+b`; an older basekit rejects it as an unknown stack).
 - **L6** Engram mirror `odd/framework-stacks/tasks`: PENDING. Auto mode blocks `mem_save` because a hook rewrites its input.

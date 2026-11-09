@@ -2,9 +2,10 @@ import { linkSkills, writeAdapters } from "../../kit/adapters.js";
 import { parseAgents } from "../../kit/agents.js";
 import { writeAgentsMd } from "../../kit/agents-md.js";
 import { installExternalSkills } from "../../kit/external-skills.js";
+import { resolveParts, specOf } from "../../kit/layout.js";
 import { MANIFEST, readManifest, writeManifest } from "../../kit/manifest.js";
 import { Project, resolveRoot } from "../../kit/project.js";
-import { findStack, loadStacks } from "../../kit/stacks.js";
+import { loadStacks } from "../../kit/stacks.js";
 import type { Context } from "../context.js";
 import type { SyncOptions } from "./options.js";
 
@@ -13,18 +14,18 @@ export async function sync(o: SyncOptions, ctx: Context): Promise<number> {
   const project = new Project(resolveRoot(o.dir), o.dryRun, ctx.log, ctx.fs);
   const prev = readManifest(project);
   if (!prev?.stack) throw new Error(`No existe ${MANIFEST} en ${project.root}: ejecuta \`basekit init\` primero`);
-  const stack = findStack(loadStacks(), prev.stack);
+  const parts = resolveParts(loadStacks(), prev.stack);
   const saved = prev.agents ?? [];
   const agents = o.agents !== undefined ? parseAgents(o.agents) : saved.length > 0 ? parseAgents(saved.join(",")) : [];
   const added = agents.filter((a) => !saved.includes(a));
   if (o.dryRun) ctx.log(`(dry-run: no se escribe nada en ${project.root})`);
 
-  writeAgentsMd(project, stack, "");
-  writeAdapters(project, stack, agents);
+  writeAgentsMd(project, parts, "");
+  writeAdapters(project, parts, agents);
   if (o.externalSkills && agents.length > 0) installExternalSkills(project, agents, ctx.log, ctx.runner, added.length > 0);
-  linkSkills(project, stack, agents);
+  linkSkills(project, parts, agents);
   writeManifest(project, prev, {
-    stack: stack.id,
+    stack: specOf(parts),
     agents,
     db: prev.options?.db ?? "auto",
     redis: prev.options?.redis ?? false,

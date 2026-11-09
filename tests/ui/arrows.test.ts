@@ -97,6 +97,23 @@ describe("arrow-key menus in a terminal", { timeout: 5000 }, () => {
     t.p.close();
   });
 
+  it("stack: fullstack → Combinar, then backend and frontend with the arrows (S16)", async () => {
+    const stacks = loadStacks();
+    const backendLanguages = [...new Set(stacks.filter((s) => s.kind === "backend").map((s) => s.language))].sort();
+    const go = stacks.filter((s) => s.kind === "backend" && s.language === "Go");
+    const frontend = stacks.filter((s) => s.kind === "frontend");
+    const t = terminal();
+    t.when("¿Qué tipo de app es?", DOWN, DOWN, ENTER); // Fullstack
+    t.when("¿En qué lenguaje?", UP, ENTER); // the last option: Combinar backend + frontend
+    t.when("¿En qué lenguaje es el backend?", String(backendLanguages.indexOf("Go") + 1), ENTER);
+    t.when("¿Con qué framework de backend?", DOWN, ENTER);
+    t.when("¿Con qué framework de frontend?", UP, ENTER);
+    assert.equal(await t.p.stack(stacks), `${go[1]!.id}+${frontend[frontend.length - 1]!.id}`);
+    assert.ok(t.output().includes("Combinar backend + frontend"));
+    assert.ok(t.output().includes(`Lenguaje del frontend: ${frontend[0]!.language} (única opción)`));
+    t.p.close();
+  });
+
   it("agents: the defaults start checked; space toggles; the result keeps the canonical order", async () => {
     const a = terminal();
     a.type(ENTER);

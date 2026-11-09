@@ -1,14 +1,18 @@
 import { createInterface, emitKeypressEvents, type Interface } from "node:readline";
 import { AGENTS } from "../kit/agents.js";
 import { CancelledError, UsageError } from "../kit/errors.js";
+import { SIDES, type Side } from "../kit/layout.js";
 import { KINDS, type Kind, type Stack } from "../kit/stacks.js";
 
 /** How the kinds of app (S1b) read in the first step of the stack question. */
 const KIND_LABELS: Record<Kind, { label: string; hint: string }> = {
   backend: { label: "Backend", hint: "API o servicio, con base de datos" },
   frontend: { label: "Frontend", hint: "SPA que corre en el navegador, sin base de datos" },
-  fullstack: { label: "Fullstack", hint: "Servidor y vistas en una sola app" },
+  fullstack: { label: "Fullstack", hint: "Una app integrada, o un backend y un frontend combinados" },
 };
+
+/** The extra option of the fullstack step (S16): a backend stack in backend/ plus a frontend stack in frontend/. */
+const COMBINE = { label: "Combinar backend + frontend", hint: "monorepo backend/ + frontend/; make dev levanta los dos", keys: ["combinar", "combo"] };
 
 /** A readable stream that may be a terminal (process.stdin, or a test double). */
 type Input = NodeJS.ReadableStream & { isTTY?: boolean; isRaw?: boolean; setRawMode?: (raw: boolean) => unknown };
@@ -144,25 +148,52 @@ export class Prompter {
 
   /**
    * Which stack: Tipo → Lenguaje → Framework (S1b), each step filtered by the previous answers.
+   * Fullstack also offers «Combinar backend + frontend» (S16): then it asks Lenguaje → Framework for the
+   * backend and again for the frontend, and returns `<backend>+<frontend>`.
    * A step with a single option is chosen by itself and announced. Without a terminal it is numbered:
    * a number or a name is accepted (a stack id too, at any step), an invalid answer asks again and
    * the end of the input fails pointing at --stack.
    */
   async stack(stacks: Stack[]): Promise<string> {
-    const kinds = KINDS.filter((k) => stacks.some((s) => s.kind === k));
+    const combinable = SIDES.every((side) => stacks.some((s) => s.kind === side));
+    const kinds = KINDS.filter((k) => stacks.some((s) => s.kind === k) || (k === "fullstack" && combinable));
     const kind = await this.step("Tipo", "¿Qué tipo de app es?", kinds.map((k) => ({ label: KIND_LABELS[k].label, hint: KIND_LABELS[k].hint, keys: [k] })), stacks);
     if (typeof kind === "string") return kind;
     const ofKind = stacks.filter((s) => s.kind === kinds[kind]);
     const languages = [...new Set(ofKind.map((s) => s.language))].sort();
+    const combine = kinds[kind] === "fullstack" && combinable;
     const language = await this.step(
       "Lenguaje",
       "¿En qué lenguaje?",
-      languages.map((l) => ({ label: l, hint: ofKind.filter((s) => s.language === l).map((s) => s.id).join(", "), keys: [l] })),
+      [
+        ...languages.map((l) => ({ label: l, hint: ofKind.filter((s) => s.language === l).map((s) => s.id).join(", "), keys: [l] })),
+        ...(combine ? [COMBINE] : []),
+      ],
       stacks,
     );
     if (typeof language === "string") return language;
+    if (language === languages.length) {
+      const backend = await this.side("backend", stacks);
+      return `${backend}+${await this.side("frontend", stacks)}`;
+    }
     const candidates = ofKind.filter((s) => s.language === languages[language]);
     const framework = await this.step("Framework", "¿Con qué framework?", candidates.map((s) => ({ label: s.name, hint: s.id, keys: [s.id] })), stacks);
+    return typeof framework === "string" ? framework : candidates[framework]!.id;
+  }
+
+  /** Lenguaje → Framework among the stacks of one side of a combined project; a stack id typed is taken only from that side. */
+  private async side(side: Side, stacks: Stack[]): Promise<string> {
+    const ofSide = stacks.filter((s) => s.kind === side);
+    const languages = [...new Set(ofSide.map((s) => s.language))].sort();
+    const language = await this.step(
+      `Lenguaje del ${side}`,
+      `¿En qué lenguaje es el ${side}?`,
+      languages.map((l) => ({ label: l, hint: ofSide.filter((s) => s.language === l).map((s) => s.id).join(", "), keys: [l] })),
+      ofSide,
+    );
+    if (typeof language === "string") return language;
+    const candidates = ofSide.filter((s) => s.language === languages[language]);
+    const framework = await this.step(`Framework del ${side}`, `¿Con qué framework de ${side}?`, candidates.map((s) => ({ label: s.name, hint: s.id, keys: [s.id] })), ofSide);
     return typeof framework === "string" ? framework : candidates[framework]!.id;
   }
 
