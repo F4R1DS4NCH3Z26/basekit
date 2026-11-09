@@ -81,7 +81,7 @@ Selected scope (user choice): "Set base (Recommended)": Python: Django + Flask Â
 | T19c | S17 (OpenCode allowlist for side scripts) | inline | done | RED then GREEN in combo.test; single-stack opencode.json unchanged; verify.sh OK; owners 128/0 |
 | T7 | S2-S6, S10-S16 | per-action worker + inline e2e.sh fix | done | 18/18 dev + 18/18 prod + 7/7 mysql PASS; combined fastapi+react PASS (health on both sides, CORS allowed/denied); gin/go-native rerun with the fixed e2e.sh: dev, prod sqlite and mysql PASS |
 | V1 | S1-S17 | delegated independent verifier (Risk items 1, 3 and 5 named), read-only, baseline fc1e268 | done | all S# PASS except S7: blocker B1 (Spring + Vite React package.json became react). One correction batch: detect.priority; recheck of B1 with the verifier's repro gives spring |
-| T8a | S9 (plantillas parity, kind, 3-step question, frontend db guard, tests/docs/CI in Go) | delegated (context backstop), repo project-guiade | running | |
+| T8a | S9 (plantillas parity, kind, 3-step question, frontend db guard, tests/docs/CI in Go) | delegated (context backstop), repo project-guiade | done | Go: make verify OK (staticcheck not installed); zones 619/0; template-check react/vue/fastapi/django-htmx OK; e2e gin+react OK; parity test against Node f20c2b6. Go commits 6ab7c81, 442ffc0, d8eb62f |
 | T8b | S9 (Combine in Go: S16 + S17 CLI follow-ups) | delegated after T8a | pending | |
 
 ## Log
@@ -203,4 +203,15 @@ Selected scope (user choice): "Set base (Recommended)": Python: Django + Flask Â
   - Spec 02 tiers: 20 means a signal unique to the framework (its own file or module), 30 a short name in a shared manifest.
   - e2e: a named user without a shell gives a clear message.
   - e2e PASS: gin and fastapi prod sqlite; verify OK.
+- **L51** T8a committed in Go: 6ab7c81 (plantillas + modules.tar, because go:embed skips folders with their own go.mod), 442ffc0 (copied guides), d8eb62f (CLI).
+  - The first CLI commit exceeded the review budget. The orchestrator split it (local history, not pushed) so the copied guides stay apart. d8eb62f reviewed: approved and acknowledged (review-853a0dcfce58bbbb).
+  - False positives: R1 CI token (both workflows have top-level `permissions: contents: read`) and R3 modules.tar (committed in 6ab7c81).
+  - Valid, for T8b in Go:
+    - the e2e DB= override hits frontend and spring;
+    - templates-pack `|| true` and `-update` semantics;
+    - withModules readability;
+    - switching to frontend leaves overlays.
+  - The last one is fixed in Node now (warning, no deletion; RED â†’ GREEN).
+  - Go template-check.sh: frontend without a database (orchestrator inline).
+  - Pre-existing advisory in Go: `(*options).str` unused (staticcheck v0.8.2).
 - **L6** Engram mirror `odd/framework-stacks/tasks`: PENDING. Auto mode blocks `mem_save` because a hook rewrites its input.

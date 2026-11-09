@@ -60,6 +60,13 @@ export async function init(o, ctx) {
     const saved = hasDatabase(dbStack) ? prev?.options : undefined;
     const db = checkStackDb(dbStack, checkDb(o.db ?? saved?.db ?? "auto"), o.redis);
     const redis = o.redis ?? saved?.redis ?? false;
+    // Overlays left by an earlier backend stay (they are the user's files): say they no longer apply.
+    if (!hasDatabase(dbStack) && parts.length === 1) {
+        for (const f of ["compose.db.yaml", "compose.redis.yaml"]) {
+            if (project.exists(f))
+                project.report("!", f, `queda del stack anterior: un stack frontend no usa base de datos; bórralo si ya no lo necesitas`);
+        }
+    }
     // 3 · Agents: flag → manifest → detection → question.
     let agents = flags.agents ?? (prev?.agents ? parseAgents(prev.agents.join(",")) : undefined);
     if (!agents) {

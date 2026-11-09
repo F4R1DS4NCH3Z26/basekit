@@ -237,6 +237,11 @@ describe("frontend stacks have no database (S1b)", () => {
     const m = JSON.parse(read(d, ".agents/manifest.json"));
     assert.equal(m.stack, FRONTEND[0]);
     assert.deepEqual([m.options.db, m.options.redis], ["none", false]);
+    // The old overlays stay (they are the user's files), but init says they no longer apply.
+    for (const f of ["compose.db.yaml", "compose.redis.yaml"]) {
+      assert.ok(existsSync(join(d, f)), `${f} is not deleted`);
+      assert.match(r.stdout, new RegExp(`^\\s*! ${f.replace(".", "\\.")} .*frontend no usa base de datos`, "m"));
+    }
   });
 
   it("switching to another backend stack still keeps the manifest's database and Redis", () => {
