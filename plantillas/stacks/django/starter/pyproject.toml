@@ -2,26 +2,28 @@
 name = "app"
 version = "0.1.0"
 requires-python = ">=3.12"
+# Exact versions (repo rule): the ones `uv lock` resolved with --exclude-newer 14 days back (2026-10-26).
 dependencies = [
-    "django>=5.2,<6.0",
-    "djangorestframework>=3.16",
-    "django-cors-headers>=4.6",
-    "django-stubs-ext>=5.2",
-    "whitenoise>=6.8",
-    "gunicorn>=23.0",
-    "psycopg[binary]>=3.2",
-    "pymysql>=1.1",
-    "redis>=5.2",
+    "django==5.2.18",
+    "djangorestframework==3.18.3",
+    "django-cors-headers==4.9.0",
+    "django-stubs-ext==6.1.2",
+    "whitenoise==6.12.0",
+    "gunicorn==26.2.0",
+    "psycopg[binary]==3.3.6",
+    "pymysql==1.2.3",
+    "redis==8.1.0",
 ]
 
 [dependency-groups]
 dev = [
-    "pytest>=8.3",
-    "pytest-django>=4.9",
-    "ruff>=0.8",
-    "mypy>=1.13",
-    "django-stubs[compatible-mypy]>=5.2,<6",
-    "djangorestframework-stubs[compatible-mypy]>=3.16",
+    "pytest==9.1.1",
+    "pytest-django==4.14.0",
+    "ruff==0.17.2",
+    # django-stubs 5.2.x types Django 5.2 and requires mypy < 1.20.
+    "mypy==1.19.1",
+    "django-stubs[compatible-mypy]==5.2.9",
+    "djangorestframework-stubs[compatible-mypy]==3.16.9",
 ]
 
 [tool.ruff]

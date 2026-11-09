@@ -1,6 +1,9 @@
-"""Base declarativa de SQLAlchemy 2 y una sesión por petición (se cierra al terminar)."""
+"""Base declarativa de SQLAlchemy 2, carga de modelos y una sesión por petición."""
 
+import importlib
+import pkgutil
 from functools import lru_cache
+from pathlib import Path
 
 from flask import Flask, current_app, g
 from sqlalchemy import Engine, create_engine
@@ -13,6 +16,21 @@ FACTORY_KEY = "db_session_factory"
 
 class Base(DeclarativeBase):
     pass
+
+
+MODULES_DIR = Path(__file__).resolve().parents[1] / "modules"
+
+
+def load_models() -> None:
+    """Importa todos los `src/modules/*/models.py`.
+
+    Una FK entre módulos (products → users) solo resuelve si las dos tablas están en
+    `Base.metadata`; la app (`create_app`), los tests (`conftest.py`) y Alembic llaman a esto
+    antes de usar el ORM.
+    """
+    for info in pkgutil.iter_modules([str(MODULES_DIR)]):
+        if (MODULES_DIR / info.name / "models.py").is_file():
+            importlib.import_module(f"src.modules.{info.name}.models")
 
 
 @lru_cache

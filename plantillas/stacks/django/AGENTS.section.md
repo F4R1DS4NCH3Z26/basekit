@@ -10,6 +10,6 @@
 | data-writer | `models.py`, `serializers.py`, `admin.py` |
 | logic-writer | `services.py`, `exceptions.py` |
 | web-writer | `views.py`, `urls.py`, `permissions.py` |
-| qa-writer | `src/modules/*/tests/test_*.py` |
+| qa-writer | `src/modules/*/tests/test_*.py`, `tests/test_*.py` |
 
 Comandos: `make new-app` (genera `uv.lock`) · `make dev` (puerto 8000, admin en `/admin/`) · `make test` · `make verify SCOPE=src/modules/<m>` · `make migration NAME=x` (`makemigrations`) · `make migrate` · `make sh` → `python manage.py createsuperuser`

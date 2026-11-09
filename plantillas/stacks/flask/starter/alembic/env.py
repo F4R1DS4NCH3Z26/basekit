@@ -1,25 +1,19 @@
 """Entorno de Alembic: URL desde DATABASE_URL y metadata de todos los `src/modules/*/models.py`."""
 
-import importlib
-import pkgutil
 from logging.config import fileConfig
-from pathlib import Path
 
 from alembic import context
 from sqlalchemy import create_engine, pool
 
 from src.core.config import get_settings
-from src.core.db import Base
+from src.core.db import Base, load_models
 
 config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 # Autogenerate only sees tables whose models were imported: load every module's models.py.
-MODULES_DIR = Path(__file__).resolve().parents[1] / "src" / "modules"
-for info in pkgutil.iter_modules([str(MODULES_DIR)]):
-    if (MODULES_DIR / info.name / "models.py").is_file():
-        importlib.import_module(f"src.modules.{info.name}.models")
+load_models()
 
 target_metadata = Base.metadata
 

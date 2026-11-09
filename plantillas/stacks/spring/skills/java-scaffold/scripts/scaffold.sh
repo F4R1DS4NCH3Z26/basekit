@@ -3,7 +3,10 @@
 set -euo pipefail
 name="${1:-}"
 [[ $name =~ ^[a-z][a-z0-9]{1,30}$ ]] || { echo "Uso: scaffold.sh <dominio>  (minúsculas sin separadores, ej. orders)"; exit 2; }
-root=$(git rev-parse --show-toplevel 2>/dev/null || pwd); cd "$root"
+# Paths from $0 first: a relative $0 (bash backend/.agents/...) no longer resolves after the cd.
+assets="$(cd "$(dirname "$0")/.." && pwd)/assets"
+# The project is four levels above this script (<project>/.agents/skills/<skill>/scripts/), also in backend/ or frontend/.
+root=$(cd "$(dirname "$0")/../../../.." && pwd); cd "$root"
 [ -f pom.xml ] || ls build.gradle* >/dev/null 2>&1 || { echo "ERROR: ejecútalo en la raíz del proyecto (falta pom.xml/build.gradle)"; exit 2; }
 
 pkg="${BASE_PKG:-}"
@@ -15,7 +18,6 @@ fi
 ppath=${pkg//./\/}
 dir="src/main/java/$ppath/modules/$name"
 [ -e "$dir" ] && { echo "ERROR: $dir ya existe; no se sobrescribe"; exit 1; }
-assets="$(cd "$(dirname "$0")/.." && pwd)/assets"
 pascal="$(tr '[:lower:]' '[:upper:]' <<< "${name:0:1}")${name:1}"
 
 put() { [ -e "$1" ] && { echo "  = $1 (existe)"; return 0; }; mkdir -p "$(dirname "$1")"; printf '%s\n' "$2" > "$1"; echo "  + $1"; }

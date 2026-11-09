@@ -14,9 +14,10 @@ NODE_IMAGE  ?= node:22-alpine
 # makes `make new-app` fail with ETARGET until it is 14 days old. PRISMA_VERSION is the one of the express and
 # nestjs stacks; app-setup.sh installs it (with the driver adapter of the database) only when compose.db.yaml exists.
 # No web framework: the HTTP layer is node:http (src/lib/router.ts, src/lib/http.ts). Zod is the only runtime dependency.
+# ESLint 10: ESLint 9 reached end of life on 2026-08-06 (https://eslint.org/version-support/); typescript-eslint 8.72 supports it.
 DEPS        ?= zod@4.6.7
 DEV_DEPS    ?= typescript@5.9.3 tsx@4.23.15 @types/node@22.20.5 vitest@3.2.7 supertest@7.3.1 \
-               @types/supertest@6.0.3 eslint@9.39.5 @eslint/js@9.39.5 typescript-eslint@8.72.0
+               @types/supertest@6.0.3 eslint@10.13.0 @eslint/js@10.0.1 typescript-eslint@8.72.0
 PRISMA_VERSION ?= 7.10.1
 # User data (PKGS) reaches the shell as an environment variable, never interpolated by make into the command.
 export PKGS

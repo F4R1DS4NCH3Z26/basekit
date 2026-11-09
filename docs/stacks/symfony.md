@@ -44,6 +44,7 @@ Skills: `symfony-scaffold`, `symfony-verify` (la usa `make verify`: `php -l`, PH
 - **El entorno lo fija compose**: `APP_ENV`/`APP_DEBUG` (`dev`/`1` y `prod`/`0`).
 - **Prod con `read_only`**: el sistema de archivos es de solo lectura y `/tmp` es tmpfs. La imagen fija `APP_CACHE_DIR=/tmp/symfony/cache` y `APP_LOG_DIR=/tmp/symfony/log`, y `cache:warmup` compila el contenedor al arrancar con el entorno real. `/app/data` (volumen de SQLite) pertenece al usuario `app`.
 - **`vendor` en dev** va en un volumen con nombre; `make install` ejecuta `composer install` sobre él.
+- **CORS sin bundle** (`src/Core/Http/CorsSubscriber.php`, del kit en `.make/symfony/app`): solo los orígenes de `CORS_ORIGINS` (separados por coma; `env(CORS_ORIGINS): ''` en `services.yaml`) reciben `Access-Control-Allow-Origin`. Su preflight (`OPTIONS` con `Access-Control-Request-Method`) se responde con 204 en `kernel.request` con prioridad 250, antes del router y del firewall (un preflight no lleva token). Vacía, el valor por defecto: ningún origen externo. Un proyecto combinado la llena con el origen del frontend. No usa `nelmio/cors-bundle`: son unas 70 líneas sin otra dependencia que fijar y auditar, con el mismo comportamiento que FastAPI y NestJS (lista explícita, credenciales, sin `*`). Test: `tests/Core/CorsSubscriberTest.php`.
 
 ### Base de datos (overlays de `infra-setup`)
 
@@ -78,7 +79,7 @@ Si las descargas fallan con `504` o por límite de peticiones, exporta `COMPOSER
 2. `security.yaml`: provider de entidad y `access_token.token_handler` en el firewall `main` (stateless).
 3. `POST /api/auth/token`: dos rate limiters (por IP y por email), verificación con hash de relleno si el email no existe y mensaje genérico.
 4. Logout: borra el token actual o todos los del usuario.
-5. CORS solo con `nelmio/cors-bundle` y orígenes explícitos.
+5. CORS con orígenes explícitos en `CORS_ORIGINS` (ya resuelto por `src/Core/Http/CorsSubscriber.php`); nunca `*` con credenciales.
 
 ## Comandos
 

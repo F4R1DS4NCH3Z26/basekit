@@ -4,11 +4,13 @@ set -euo pipefail
 name="${1:-}"
 [[ $name =~ ^[a-z][a-z0-9]{1,30}$ ]] || { echo "Uso: scaffold.sh <modulo>  (paquete Go: minúsculas y dígitos, sin _ ni -, ej. orders)"; exit 2; }
 case "$name" in platform|internal|cmd|migrations|main|test) echo "ERROR: '$name' es un nombre reservado"; exit 2 ;; esac
-root=$(git rev-parse --show-toplevel 2>/dev/null || pwd); cd "$root"
+# Paths from $0 first: a relative $0 (bash backend/.agents/...) no longer resolves after the cd.
+assets="$(cd "$(dirname "$0")/.." && pwd)/assets"
+# The project is four levels above this script (<project>/.agents/skills/<skill>/scripts/), also in backend/ or frontend/.
+root=$(cd "$(dirname "$0")/../../../.." && pwd); cd "$root"
 [ -f go.mod ] || { echo "ERROR: ejecútalo en la raíz del proyecto Go (falta go.mod)"; exit 2; }
 dir="internal/$name"
 [ -e "$dir" ] && { echo "ERROR: $dir ya existe; no se sobrescribe"; exit 1; }
-assets="$(cd "$(dirname "$0")/.." && pwd)/assets"
 pascal="$(printf '%s' "${name:0:1}" | tr '[:lower:]' '[:upper:]')${name:1}"
 
 mkdir -p "$dir" docs/specs

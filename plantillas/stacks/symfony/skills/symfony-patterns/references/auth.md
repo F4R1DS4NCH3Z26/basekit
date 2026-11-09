@@ -185,7 +185,7 @@ framework:
 
 Roles: `role_hierarchy: { ROLE_ADMIN: [ROLE_USER] }` y comprobaciones con `#[IsGranted('ROLE_ADMIN')]`; la propiedad de cada recurso va en Voters (app-writer).
 
-CORS (si un SPA de otro origen llama a la API): `composer require nelmio/cors-bundle` (versión fijada) con `allow_origin` explícitos, nunca `*` con credenciales. Con Bearer tokens no hay cookies, así que no hace falta CSRF.
+CORS (si un SPA de otro origen llama a la API): ya está en `src/Core/Http/CorsSubscriber.php` (orquestador). Pon los orígenes explícitos en `CORS_ORIGINS` (separados por coma); nunca `*` con credenciales. Con Bearer tokens no hay cookies, así que no hace falta CSRF.
 
 Después: `make migration NAME=create_auth` y `make migrate`.
 

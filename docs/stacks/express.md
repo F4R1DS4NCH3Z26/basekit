@@ -76,7 +76,7 @@ Skills: `express-scaffold` (módulo + contrato; también guarda el `package.json
 
 `init` deja el esqueleto (`src/`, `tests/`, `tsconfig*.json`, `eslint.config.js`, `vitest.config.ts`) cuando el proyecto no tiene `package.json`. Luego `make new-app`:
 1. Copia `package.json` desde `.agents/skills/express-scaffold/assets/package.json.tpl` (ESM, scripts `dev`, `build`, `start`, `test`, `lint`).
-2. En `node:22-alpine` instala versiones exactas: `express@5.3.0 zod@4.6.7 helmet@8.3.0` y, como desarrollo, `typescript@5.9.3`, `tsx@4.23.15`, `@types/node@22.20.5`, `@types/express@5.0.6`, `vitest@3.2.7`, `supertest@7.3.1`, `@types/supertest@6.0.3`, `eslint@9.39.5`, `@eslint/js@9.39.5` y `typescript-eslint@8.72.0` (`DEPS` y `DEV_DEPS` en `.make/stack.mk`). `npm_config_before` = hace 14 días: también vale para versiones exactas, así que si subes una (o `PRISMA_VERSION`) a una publicada hace menos de 14 días, `make new-app` falla con `ETARGET` hasta que los cumpla. Corre como root (agrega `bash`) y al final devuelve los archivos a tu uid, también si un paso falla.
+2. En `node:22-alpine` instala versiones exactas: `express@5.3.0 zod@4.6.7 helmet@8.3.0` y, como desarrollo, `typescript@5.9.3`, `tsx@4.23.15`, `@types/node@22.20.5`, `@types/express@5.0.6`, `vitest@3.2.7`, `supertest@7.3.1`, `@types/supertest@6.0.3`, `eslint@10.13.0`, `@eslint/js@10.0.1` y `typescript-eslint@8.72.0` (ESLint 9 llegó a fin de vida el 2026-08-06, https://eslint.org/version-support/) (`DEPS` y `DEV_DEPS` en `.make/stack.mk`). `npm_config_before` = hace 14 días: también vale para versiones exactas, así que si subes una (o `PRISMA_VERSION`) a una publicada hace menos de 14 días, `make new-app` falla con `ETARGET` hasta que los cumpla. Corre como root (agrega `bash`) y al final devuelve los archivos a tu uid, también si un paso falla.
 3. `app-setup.sh`: si hay `compose.db.yaml`, instala `@prisma/client`, el adaptador y `prisma` (desarrollo) en `PRISMA_VERSION`, crea `prisma/schema.prisma`, `prisma.config.ts` y `src/lib/db.ts` y genera el cliente. Siempre agrega `node_modules/`, `dist/`, `coverage/` y `src/generated/` a `.gitignore`.
 4. Si un paso falla, quita `package.json` para poder reintentar.
 
@@ -106,6 +106,7 @@ make sh
 - **Entrada**: `safeParse` con schemas `.strict()` en body, params y query; inválido → 422 con `fieldErrors`.
 - **Salida**: `select` con los campos del contrato; nunca la fila completa.
 - **Cabeceras y tamaño**: `helmet()` y `express.json({ limit: "100kb" })`; sin `x-powered-by`.
+- **CORS** (`src/lib/cors.ts`, sin dependencia): solo los orígenes de `CORS_ORIGINS` (separados por coma) reciben `Access-Control-Allow-Origin` y su preflight `OPTIONS` (204). Vacía, el valor por defecto: ningún origen externo. Un proyecto combinado (`--stack express+<frontend>`) la llena con el origen del frontend. `createApp({ corsOrigins })` la reemplaza en los tests (`tests/cors.test.ts`).
 - **SQL**: solo la API de Prisma o `$queryRaw` con plantilla; nunca `$queryRawUnsafe` con datos del usuario.
 - **Detrás de un proxy**: `app.set("trust proxy", 1)`; si no, no lo actives (la IP del cliente sería falsificable).
 

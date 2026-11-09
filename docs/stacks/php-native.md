@@ -38,6 +38,7 @@ tests/bootstrap.php  tests/Core/  tests/Support/      # orquestador
 - **Sin registro manual**: el Kernel carga cada `src/Modules/*/Http/routes.php` (devuelve `static function (Router $r): void`), el `Container` construye repositorios, handlers y controladores por el tipo de los argumentos de su constructor, y el migrador lee `src/Modules/*/Migrations/`. Lo que no se puede autowirear (PDO, interfaces, escalares) va en `src/Core/Services.php`.
 - **Seguro por omisión**: toda ruta exige autenticación salvo `public: true`. Hasta que exista el módulo `Auth`, el autenticador es `DenyAllAuthenticator` (401).
 - **Errores**: `HttpException` → JSON `{"error": …}` con su código (422 agrega `errors` por campo; 405 agrega `Allow`; 401 agrega `WWW-Authenticate: Bearer`). Cualquier otra excepción → 500 sin detalles (van a `error_log`, salvo con `APP_DEBUG=1`). Cuerpos de más de 1 MiB → 413.
+- **CORS** (`src/Core/Http/Cors.php`, que `Kernel::handle` aplica a cada petición del front controller): solo los orígenes de `CORS_ORIGINS` (separados por coma) reciben `Access-Control-Allow-Origin`, y su preflight (`OPTIONS` con `Access-Control-Request-Method`) se responde con 204 antes de enrutar y autenticar. Vacía, el valor por defecto: ningún origen externo. Un proyecto combinado la llena con el origen del frontend. Test: `tests/Core/CorsTest.php`.
 - **PDO perezoso**: la conexión se crea cuando un servicio la pide; `/health` nunca toca la BD.
 
 ## Roles y zonas

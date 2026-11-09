@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Verificación silenciosa para la API PHP nativa. Uso: verify.sh [ruta]. Sin red; no instala nada.
 set -uo pipefail
-root=$(git rev-parse --show-toplevel 2>/dev/null || pwd); cd "$root"
+# The project is four levels above this script (<project>/.agents/skills/<skill>/scripts/), also in backend/ or frontend/.
+root=$(cd "$(dirname "$0")/../../../.." && pwd); cd "$root"
 scope="${1:-src}"; MAX="${MAX_LINES:-30}"; fail=0
 re='^[A-Za-z0-9_./-]+$'
 [[ $scope =~ $re && $scope != *..* && $scope != /* ]] || { echo "ERROR: ruta inválida: $scope"; exit 2; }

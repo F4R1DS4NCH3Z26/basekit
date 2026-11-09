@@ -53,6 +53,8 @@ En dev, `node_modules` y `.next` van en **volúmenes con nombre**, para que el b
 4. Añade `output: "standalone"` a `next.config`.
 5. Crea `/api/health`.
 
+**ESLint sigue en 9** aunque ESLint 9 llegó a fin de vida el 2026-08-06 (https://eslint.org/version-support/): `create-next-app@16.4.3` escribe `eslint: "^9"` y `eslint-config-next` depende de `eslint-plugin-react` 7.37.5, `eslint-plugin-import` 2.32.0 y `eslint-plugin-jsx-a11y` 6.10.2, que solo aceptan ESLint hasta 9 (`peerDependencies`). Pasar a ESLint 10 espera a que Next.js publique una configuración compatible. Los demás stacks TypeScript ya usan ESLint 10 (express y node-native fijado; react, vue y vanilla-ts lo resuelven al crear la app); nestjs usa oxlint.
+
 ## Auth: Better Auth (detalle en `nextjs-patterns/references/auth.md`)
 
 1. Requiere BD. Dependencias: `better-auth` + Prisma (o Drizzle), con aprobación del usuario.

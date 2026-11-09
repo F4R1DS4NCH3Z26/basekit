@@ -4,6 +4,11 @@ import { z } from "zod";
 const schema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.coerce.number().int().positive().default(3000),
+  // Orígenes separados por coma con acceso CORS (src/lib/router.ts). Vacía: ningún origen externo.
+  CORS_ORIGINS: z
+    .string()
+    .optional()
+    .transform((raw) => (raw ?? "").split(",").map((o) => o.trim()).filter(Boolean)),
   // compose.db.yaml (src/lib/db.ts las usa según la BD): postgresql://…, mysql://… o file:/app/data/app.db,
   // y DB_* para el adaptador de MySQL. Opcionales: sin BD la app arranca igual.
   DATABASE_URL: z.string().min(1).optional(),

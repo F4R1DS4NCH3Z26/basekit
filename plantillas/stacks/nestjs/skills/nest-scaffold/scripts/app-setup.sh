@@ -3,7 +3,8 @@
 # Prisma con el adaptador de esa BD. Lo ejecuta `make new-app` dentro de Docker; también sirve después de
 # activar la BD con infra-setup (`make sh` y, dentro, este script). Idempotente: nunca sobrescribe código tuyo.
 set -euo pipefail
-root=$(git rev-parse --show-toplevel 2>/dev/null || pwd); cd "$root"
+# The project is four levels above this script (<project>/.agents/skills/<skill>/scripts/), also in backend/ or frontend/.
+root=$(cd "$(dirname "$0")/../../../.." && pwd); cd "$root"
 [ -f package.json ] && [ -f nest-cli.json ] || { echo "ERROR: ejecútalo en la raíz de una app NestJS (falta package.json o nest-cli.json)"; exit 2; }
 command -v npm >/dev/null || { echo "ERROR: falta npm (ejecútalo dentro del contenedor: make sh)"; exit 2; }
 PRISMA_VERSION="${PRISMA_VERSION:-7.10.1}"

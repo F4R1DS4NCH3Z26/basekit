@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Core;
 
+use App\Core\Http\Cors;
 use App\Core\Http\HealthController;
 use App\Core\Http\HttpException;
 use App\Core\Http\Request;
@@ -12,8 +13,8 @@ use App\Core\Http\Router;
 use App\Core\Security\Authenticator;
 
 /**
- * Turns a Request into a Response: route, authenticate (every route that is not public), call the
- * controller and map errors to JSON. Modules add routes in src/Modules/<M>/Http/routes.php.
+ * Turns a Request into a Response: CORS (CORS_ORIGINS), route, authenticate (every route that is not public),
+ * call the controller and map errors to JSON. Modules add routes in src/Modules/<M>/Http/routes.php.
  */
 final class Kernel
 {
@@ -21,6 +22,7 @@ final class Kernel
         private readonly Container $container,
         private readonly Router $router,
         private readonly bool $debug = false,
+        private readonly Cors $cors = new Cors(),
     ) {}
 
     public static function boot(?Env $env = null, ?Container $container = null): self
@@ -39,7 +41,7 @@ final class Kernel
             $register($router);
         }
 
-        return new self($container, $router, $env->bool('APP_DEBUG'));
+        return new self($container, $router, $env->bool('APP_DEBUG'), Cors::fromEnv($env));
     }
 
     public function router(): Router
@@ -48,6 +50,11 @@ final class Kernel
     }
 
     public function handle(Request $request): Response
+    {
+        return $this->cors->preflight($request) ?? $this->cors->apply($request, $this->dispatch($request));
+    }
+
+    private function dispatch(Request $request): Response
     {
         try {
             if ($request->isTooLarge()) {

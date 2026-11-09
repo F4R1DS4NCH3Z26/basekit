@@ -13,7 +13,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from src.core.db import Base
+from src.core.db import Base, load_models
 from src.main import create_app
 
 
@@ -22,6 +22,7 @@ def session_factory() -> Iterator[sessionmaker[Session]]:
     engine = create_engine(
         "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
     )
+    load_models()
     Base.metadata.create_all(engine)
     yield sessionmaker(bind=engine, expire_on_commit=False)
     engine.dispose()

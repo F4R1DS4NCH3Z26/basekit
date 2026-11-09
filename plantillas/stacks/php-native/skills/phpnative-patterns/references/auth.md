@@ -116,7 +116,7 @@ La búsqueda es por el hash exacto (clave primaria), así que no hace falta comp
 | GET | `/api/auth/me` | no | 200 `{id, email, role}` |
 
 - La IP del cliente: `$_SERVER['REMOTE_ADDR']` por defecto. Detrás de un proxy, confía en `X-Forwarded-For` solo si el orquestador fija la IP del proxy (variable `TRUSTED_PROXY`).
-- CORS: si un navegador de otro origen consume la API, agrega en `src/Core/Kernel.php` (orquestador) las cabeceras `Access-Control-Allow-*` con una lista explícita de orígenes desde el entorno; nunca `*` con credenciales.
+- CORS: ya está en `src/Core/Http/Cors.php` (orquestador), que `Kernel::handle` aplica a cada petición. Si un navegador de otro origen consume la API, pon sus orígenes explícitos en `CORS_ORIGINS` (separados por coma); nunca `*` con credenciales.
 
 ### Tests (qa-writer)
 

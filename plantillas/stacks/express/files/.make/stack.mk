@@ -13,9 +13,10 @@ NODE_IMAGE  ?= node:22-alpine
 # only to releases at least 14 days old: npm_config_before (below) applies to exact versions too, so a newer one
 # makes `make new-app` fail with ETARGET until it is 14 days old. PRISMA_VERSION is the one of the nestjs stack;
 # app-setup.sh installs it (with the driver adapter of the database) only when compose.db.yaml exists.
+# ESLint 10: ESLint 9 reached end of life on 2026-08-06 (https://eslint.org/version-support/); typescript-eslint 8.72 supports it.
 DEPS        ?= express@5.3.0 zod@4.6.7 helmet@8.3.0
 DEV_DEPS    ?= typescript@5.9.3 tsx@4.23.15 @types/node@22.20.5 @types/express@5.0.6 vitest@3.2.7 supertest@7.3.1 \
-               @types/supertest@6.0.3 eslint@9.39.5 @eslint/js@9.39.5 typescript-eslint@8.72.0
+               @types/supertest@6.0.3 eslint@10.13.0 @eslint/js@10.0.1 typescript-eslint@8.72.0
 PRISMA_VERSION ?= 7.10.1
 # User data (PKGS) reaches the shell as an environment variable, never interpolated by make into the command.
 export PKGS

@@ -7,7 +7,7 @@ Plantillas: `plantillas/stacks/django/`. Tipo de app: **API REST + admin de Djan
 - **Detección**: `detect.files = ["manage.py"]`. Sin `manifest`/`contains`: la detección es una búsqueda de subcadena sensible a mayúsculas y los stacks se prueban en orden de id, y `django` va antes que `fastapi`.
 - **`appMarker`: `uv.lock`**. Si falta, el CLI copia `starter/` sin sobrescribir nada y avisa que falta `make new-app`, que solo genera `uv.lock` con uv dentro de Docker. Con `uv.lock` presente, `make new-app` no hace nada y no llama a Docker.
 - **El esqueleto** (`starter/`):
-  - `manage.py` y `pyproject.toml`: Django 5.2 LTS (`<6.0`), DRF, `django-cors-headers`, WhiteNoise, gunicorn, `psycopg[binary]`, PyMySQL y `redis`. Herramientas: ruff (reglas `S` de seguridad y `DJ`), mypy strict con `django-stubs` y `djangorestframework-stubs`, y pytest-django.
+  - `manage.py` y `pyproject.toml`: Django 5.2 LTS, DRF, `django-cors-headers`, WhiteNoise, gunicorn, `psycopg[binary]`, PyMySQL y `redis`. Herramientas: ruff (reglas `S` de seguridad y `DJ`), mypy strict con `django-stubs` y `djangorestframework-stubs`, y pytest-django. Todas con versión exacta (regla del repo): las que resuelve `uv lock` con `--exclude-newer` de hace 14 días (2026-10-26), p. ej. `django==5.2.18`, `djangorestframework==3.18.3`, `mypy==1.19.1` (django-stubs 5.2.x exige mypy < 1.20).
   - `src/config/settings.py`: todo sale de variables de entorno.
   - `src/config/settings_test.py`: SQLite en memoria para pytest, mypy y `make verify`.
   - `src/core/health.py`, `src/core/pagination.py` y `conftest.py` en la raíz (fixtures `api_client`, `user`, `other_user` y `auth_as`).
@@ -57,7 +57,7 @@ conftest.py                              # fixtures en la raíz: los ven todos l
 | data-writer | `models.py`, `serializers.py`, `admin.py` |
 | logic-writer | `services.py`, `exceptions.py` |
 | web-writer | `views.py`, `urls.py`, `permissions.py` |
-| qa-writer | `src/modules/*/tests/test_*.py`, `tests/**/test_*.py` |
+| qa-writer | `src/modules/*/tests/test_*.py`, `tests/test_*.py`, `tests/**/test_*.py` |
 
 Skills: `django-scaffold`, `django-patterns` (+ `references/auth.md`) y `django-verify` (la usa `make verify`).
 

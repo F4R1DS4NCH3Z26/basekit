@@ -5,7 +5,7 @@ description: Código de referencia seguro para un módulo de backend Python - mo
 
 # py-patterns
 
-Ejemplo con el módulo `products`. Copia la forma y cambia los nombres. Busca con Grep lo que ya existe en `src/core/` (`Base`, `get_db`, `get_current_user`) antes de asumir sus nombres.
+Ejemplo con el módulo `products`. Copia la forma y cambia los nombres. Busca con Grep lo que ya existe en `src/core/` (`Base`, `get_db`, `load_models` en `db.py`; `get_current_user` cuando exista auth) antes de asumir sus nombres. Una FK a la tabla de otro módulo (`ForeignKey("users.id")`) funciona porque `load_models()` importa todos los `models.py` antes de usar el ORM.
 
 ## models.py — data-writer
 
@@ -153,25 +153,37 @@ def get_product(product_id: UUID, db: DB, user: User) -> Product:
 
 ## Tests — qa-writer (`src/modules/products/tests/test_router.py`)
 
-Los fixtures viven en `tests/conftest.py` (zona del orquestador): `client` (TestClient con BD de pruebas vía `app.dependency_overrides[get_db]`) y `auth_as(user)` (sobrescribe `get_current_user`).
+Los fixtures viven en `conftest.py` de la raíz (zona del orquestador), para que los vean `tests/` y `src/modules/*/tests/`: `app`, `client` (TestClient con BD SQLite en memoria vía `app.dependency_overrides[get_db]`), `db` y, cuando exista auth, `user` y `auth_as(user)` (ver `references/auth.md`). mypy es strict también en los tests: anota fixtures y retornos.
 
 ```python
-def test_create_requires_auth(client):
+from collections.abc import Callable
+
+from fastapi.testclient import TestClient
+
+from src.modules.auth.models import User
+from src.modules.products.models import Product
+
+AuthAs = Callable[[User], None]
+
+
+def test_create_requires_auth(client: TestClient) -> None:
     assert client.post("/products", json={"name": "A", "price": "1.00"}).status_code == 401
 
 
-def test_create_rejects_extra_fields(client, auth_as, user):
+def test_create_rejects_extra_fields(client: TestClient, auth_as: AuthAs, user: User) -> None:
     auth_as(user)
     r = client.post("/products", json={"name": "A", "price": "1.00", "owner_id": "x"})
     assert r.status_code == 422
 
 
-def test_other_users_product_is_404(client, auth_as, user, other_user_product):
+def test_other_users_product_is_404(
+    client: TestClient, auth_as: AuthAs, user: User, other_user_product: Product
+) -> None:
     auth_as(user)
     assert client.get(f"/products/{other_user_product.id}").status_code == 404
 
 
-def test_create_ok(client, auth_as, user):
+def test_create_ok(client: TestClient, auth_as: AuthAs, user: User) -> None:
     auth_as(user)
     r = client.post("/products", json={"name": "A", "price": "1.00"})
     assert r.status_code == 201

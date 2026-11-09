@@ -7,9 +7,12 @@ alembic/**
 migrations/**
 src/core/**
 src/main.py
+src/__init__.py
+src/modules/__init__.py
 src/modules/*/__init__.py
 src/modules/*/tests/__init__.py
-tests/conftest.py
 src/modules/*/tests/conftest.py
+conftest.py
+tests/__init__.py
+tests/conftest.py
 manage.py
-src/__init__.py

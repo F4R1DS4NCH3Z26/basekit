@@ -2,6 +2,8 @@
 parameters:
     # Sin overlay de BD (infra-setup --db none): SQLite local en var/.
     env(DATABASE_URL): 'sqlite:///%kernel.project_dir%/var/data.db'
+    # Sin CORS_ORIGINS (o vacía): ningún origen externo (src/Core/Http/CorsSubscriber.php).
+    env(CORS_ORIGINS): ''
 
 services:
     _defaults:

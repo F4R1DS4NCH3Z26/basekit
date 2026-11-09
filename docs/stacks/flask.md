@@ -25,7 +25,7 @@ tests/test_*.py                    # qa-writer
 - `pyproject.toml` con versiones exactas (Flask 3.1, SQLAlchemy 2.1, Alembic, Pydantic v2, gunicorn, `psycopg[binary]`, `pymysql[rsa]`), ruff (incluidas las reglas de seguridad `S`), mypy strict y pytest.
 - `src/main.py` con `create_app()`, `/health`, errores siempre en JSON (`ValidationError` → 422 sin eco de la entrada; 500 sin trazas), CORS a partir de `CORS_ORIGINS` y cuerpo máximo de 1 MiB.
 - `src/core/config.py`, que normaliza `DATABASE_URL` → `postgresql+psycopg://`, `mysql+pymysql://` o `sqlite:///` (`/app/data/app.db`).
-- `src/core/db.py`: `Base`, engine creado en el primer uso y `get_db()` con una sesión por petición que se cierra en `teardown_appcontext`.
+- `src/core/db.py`: `Base`, engine creado en el primer uso, `get_db()` con una sesión por petición que se cierra en `teardown_appcontext`, y `load_models()`, que importa todos los `src/modules/*/models.py`. Una FK entre módulos (`products.owner_id → users.id`) solo resuelve si las dos tablas están en `Base.metadata`, así que `create_app()`, el `conftest.py` y `alembic/env.py` la llaman antes de usar el ORM.
 - `alembic.ini` + `alembic/` listos: `make migrate` funciona sin migraciones y `make migration NAME=x` autogenera.
 - `conftest.py` y `tests/test_health.py` sobre SQLite en memoria.
 
@@ -100,3 +100,4 @@ make deps-add PKGS="…"
 - Crear el engine al importar: rompe los tests y los comandos sin base de datos.
 - Alembic como dependencia de desarrollo: `make prod-migrate` falla.
 - Instalar paquetes con `pip` en el host.
+- Importar un modelo sin pasar por `load_models()`: una FK a la tabla de otro módulo falla con `NoReferencedTableError`.

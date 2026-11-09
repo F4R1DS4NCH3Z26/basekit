@@ -4,7 +4,8 @@
 # de Docker; también sirve después de activar la BD con infra-setup (`make sh` y, dentro, este script).
 # Idempotente: nunca sobrescribe código tuyo.
 set -euo pipefail
-root=$(git rev-parse --show-toplevel 2>/dev/null || pwd); cd "$root"
+# The project is four levels above this script (<project>/.agents/skills/<skill>/scripts/), also in backend/ or frontend/.
+root=$(cd "$(dirname "$0")/../../../.." && pwd); cd "$root"
 [ -f package.json ] && [ -f src/app.ts ] || { echo "ERROR: ejecútalo en la raíz de la app Express (falta package.json o src/app.ts)"; exit 2; }
 command -v npm >/dev/null || { echo "ERROR: falta npm (ejecútalo dentro del contenedor: make sh)"; exit 2; }
 PRISMA_VERSION="${PRISMA_VERSION:-7.10.1}"

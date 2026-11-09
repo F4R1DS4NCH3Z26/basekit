@@ -1,6 +1,6 @@
 // Router mínimo sobre node:http (zona del orquestador): método + ruta con parámetros (`/products/:id`), middlewares
 // encadenados (`use`) y routers de módulo montados con prefijo (`mount`). createHandler() lo convierte en el
-// listener del servidor: cabeceras de seguridad, cuerpo JSON (100 KB), 404/405 y errores → JSON.
+// listener del servidor: cabeceras de seguridad, CORS, cuerpo JSON (100 KB), 404/405 y errores → JSON.
 import type { IncomingMessage, RequestListener, ServerResponse } from "node:http";
 import { HttpError, readJsonBody, sendError, sendJson, setSecurityHeaders } from "./http.js";
 
@@ -132,7 +132,40 @@ function decodeSegment(segment: string): string {
   }
 }
 
-async function handle(router: Router, req: IncomingMessage, res: ServerResponse): Promise<void> {
+export type HandlerOptions = {
+  /** Orígenes con acceso CORS (CORS_ORIGINS). Vacío: ningún origen externo. */
+  corsOrigins?: readonly string[];
+};
+
+const CORS_METHODS = "GET, POST, PUT, PATCH, DELETE";
+const CORS_HEADERS = "Authorization, Content-Type";
+
+/**
+ * CORS a mano: solo un origen de la lista recibe Access-Control-Allow-Origin, y su preflight (OPTIONS con
+ * Access-Control-Request-Method) se responde aquí con 204. Devuelve true si ya respondió.
+ */
+function applyCors(allowed: ReadonlySet<string>, req: IncomingMessage, res: ServerResponse, method: string): boolean {
+  // La respuesta cambia según Origin: una caché nunca debe servir la de un origen a otro.
+  res.setHeader("Vary", "Origin");
+  const origin = req.headers.origin;
+  if (origin === undefined || !allowed.has(origin)) return false;
+  res.setHeader("Access-Control-Allow-Origin", origin);
+  res.setHeader("Access-Control-Allow-Credentials", "true");
+  if (method !== "OPTIONS" || req.headers["access-control-request-method"] === undefined) return false;
+  res.setHeader("Access-Control-Allow-Methods", CORS_METHODS);
+  res.setHeader("Access-Control-Allow-Headers", CORS_HEADERS);
+  res.setHeader("Access-Control-Max-Age", "600");
+  res.statusCode = 204;
+  res.end();
+  return true;
+}
+
+async function handle(
+  router: Router,
+  cors: ReadonlySet<string>,
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
   setSecurityHeaders(res);
   try {
     const url = req.url ?? "/";
@@ -140,6 +173,7 @@ async function handle(router: Router, req: IncomingMessage, res: ServerResponse)
     const path = q === -1 ? url : url.slice(0, q);
     const query = Object.fromEntries(new URLSearchParams(q === -1 ? "" : url.slice(q + 1)));
     const method = (req.method ?? "GET").toUpperCase();
+    if (applyCors(cors, req, res, method)) return;
     const parts = split(path).map(decodeSegment);
     // Como express.json(): el cuerpo se lee antes de enrutar (límite, 413, 415 y 400 valen para cualquier ruta).
     const body = await readJsonBody(req);
@@ -175,8 +209,9 @@ async function handle(router: Router, req: IncomingMessage, res: ServerResponse)
 }
 
 /** Listener para `createServer()`. Nunca rechaza: todo error termina en sendError (JSON). */
-export function createHandler(router: Router): RequestListener {
+export function createHandler(router: Router, { corsOrigins = [] }: HandlerOptions = {}): RequestListener {
+  const cors = new Set(corsOrigins);
   return (req, res) => {
-    void handle(router, req, res);
+    void handle(router, cors, req, res);
   };
 }

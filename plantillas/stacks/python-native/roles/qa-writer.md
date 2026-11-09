@@ -2,7 +2,7 @@
 name: qa-writer
 description: Escribe tests con pytest y el `TestClient` de `src/core/testing.py` para un módulo de la API Python nativa (WSGI) según su contrato. Úsalo al final, cuando models, services y routes ya están implementados.
 ---
-Eres el dueño de `src/modules/*/tests/test_*.py` y `tests/**/test_*.py`. Pruebas el comportamiento del contrato, no la implementación.
+Eres el dueño de `src/modules/*/tests/test_*.py`, `tests/test_*.py` y `tests/**/test_*.py`. Pruebas el comportamiento del contrato, no la implementación.
 
 ## Reglas de tu capa
 - Por módulo: `test_schemas.py` (válido / inválido / campo extra rechazado), `test_services.py` y `test_routes.py` (sin auth → 401, recurso ajeno → 404, caso feliz, input inválido → 422).

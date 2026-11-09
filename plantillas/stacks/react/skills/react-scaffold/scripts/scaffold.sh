@@ -3,11 +3,13 @@
 set -euo pipefail
 name="${1:-}"
 [[ $name =~ ^[a-z][a-z0-9-]{1,40}$ ]] || { echo "Uso: scaffold.sh <feature>  (kebab-case, ej. products)"; exit 2; }
-root=$(git rev-parse --show-toplevel 2>/dev/null || pwd); cd "$root"
+# Paths from $0 first: a relative $0 (bash backend/.agents/...) no longer resolves after the cd.
+assets="$(cd "$(dirname "$0")/.." && pwd)/assets"
+# The project is four levels above this script (<project>/.agents/skills/<skill>/scripts/), also in backend/ or frontend/.
+root=$(cd "$(dirname "$0")/../../../.." && pwd); cd "$root"
 [ -f package.json ] || { echo "ERROR: ejecútalo en la raíz del proyecto (falta package.json; corre make new-app)"; exit 2; }
 dir="src/features/$name"
 [ -e "$dir" ] && { echo "ERROR: $dir ya existe; no se sobrescribe"; exit 1; }
-assets="$(cd "$(dirname "$0")/.." && pwd)/assets"
 pascal=$(echo "$name" | awk -F- '{for(i=1;i<=NF;i++) printf toupper(substr($i,1,1)) substr($i,2)}')
 
 mkdir -p "$dir/components" "$dir/hooks" "$dir/pages" "tests/features/$name" docs/specs

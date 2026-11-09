@@ -13,6 +13,8 @@ MAX_BODY_BYTES = 1024 * 1024
 
 def create_app(session_factory: sessionmaker[Session] | None = None) -> Flask:
     settings = get_settings()
+    # Todos los modelos antes del primer uso del ORM: así resuelven las FK entre módulos.
+    db.load_models()
     app = Flask(__name__)
     app.config.update(SECRET_KEY=settings.secret_key, MAX_CONTENT_LENGTH=MAX_BODY_BYTES)
     db.init_app(app, session_factory)
