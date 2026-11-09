@@ -1,0 +1,15 @@
+composer.json
+composer.lock
+bin/**
+public/**
+migrations/**
+src/Core/**
+src/Modules/.gitkeep
+phpunit.dist.xml
+phpunit.xml*
+phpstan.dist.neon
+phpstan.neon*
+.php-cs-fixer*
+tests/bootstrap.php
+tests/Core/**
+tests/Support/**
