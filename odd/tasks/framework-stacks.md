@@ -181,4 +181,8 @@ Selected scope (user choice): "Set base (Recommended)": Python: Django + Flask Â
   - Regression checked: fastapi, django, gin and go-native prod sqlite, react prod.
   - One transient network EOF from proxy.golang.org, which passed on retry.
   - Docker build cache: 27 GB, not pruned.
+- **L47** Review of 5214b9e..7d7778a (risk, resilience, reliability) approved and acknowledged (review-b01e2482c7e82424).
+  - WARNINGs R3-001 and R4 were valid: the write check no longer used the real process, and a failed pull looked like a permission error.
+  - Fix: `compose exec` first (as before); a throwaway container only when the image has no `sh`; a failed pull gets its own message.
+  - e2e PASS: fastapi, gin, go-native and express on prod sqlite; fastapi dev postgres.
 - **L6** Engram mirror `odd/framework-stacks/tasks`: PENDING. Auto mode blocks `mem_save` because a hook rewrites its input.
