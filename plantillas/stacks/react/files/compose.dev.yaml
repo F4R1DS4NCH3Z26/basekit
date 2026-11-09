@@ -1,0 +1,15 @@
+services:
+  app:
+    build:
+      target: dev
+    env_file: [.env]
+    environment:
+      NODE_ENV: development
+      CHOKIDAR_USEPOLLING: "true"
+    ports:
+      - "127.0.0.1:${APP_PORT:-5173}:5173"
+    volumes:
+      - .:/app
+      - node_modules:/app/node_modules
+volumes:
+  node_modules: {}

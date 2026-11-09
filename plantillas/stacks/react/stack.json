@@ -1,0 +1,17 @@
+{
+  "id": "react",
+  "name": "TypeScript · React + Vite (SPA frontend)",
+  "language": "TypeScript",
+  "kind": "frontend",
+  "port": 5173,
+  "health": "/health",
+  "detect": { "files": [], "manifest": "package.json", "contains": "\"@vitejs/plugin-react" },
+  "appMarker": "package.json",
+  "roles": ["logic-writer", "ui-writer", "qa-writer"],
+  "skills": [
+    ["react-scaffold", "Feature nueva: estructura + contrato"],
+    ["react-patterns", "Antes de escribir cualquier capa; auth en references/auth.md"],
+    ["react-verify", "Lo usa `make verify`"]
+  ],
+  "defaultAuth": "backend-session"
+}
