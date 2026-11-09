@@ -45,7 +45,7 @@ Skills: `nextjs-scaffold`, `nextjs-verify` (la usa `make verify`), `nextjs-patte
 En dev, `node_modules` y `.next` van en **volúmenes con nombre**, para que el bind mount no los oculte; `make install` vuelve a ejecutar `npm ci` en el volumen. Se activa `WATCHPACK_POLLING` para que el hot reload funcione en Docker Desktop y WSL.
 
 `make new-app` (si no hay `package.json`):
-1. Corre `create-next-app@16.4.3` (TypeScript, ESLint, App Router, `src/`, Tailwind, alias `@/*`) dentro de `node:22-alpine` como root y al final devuelve los archivos a tu uid (`create-next-app` falla con un uid sin usuario en la imagen).
+1. Instala `create-next-app@16.4.3` con versión fija (`npm install --prefix /tmp/cli`, igual que `@nestjs/cli` en NestJS; sin `npx --yes`) y lo ejecuta (TypeScript, ESLint, App Router, `src/`, Tailwind, alias `@/*`) dentro de `node:22-alpine` como root y al final devuelve los archivos a tu uid (`create-next-app` falla con un uid sin usuario en la imagen).
    Todas las dependencias se resuelven con `npm_config_before` = hace 14 días: ninguna versión publicada en las últimas dos semanas (rota o comprometida) entra en un proyecto nuevo.
    La regla también vale para versiones exactas: si subes `CREATE_NEXT_VERSION` (o la pasas con `make new-app CREATE_NEXT_VERSION=…`) a una versión publicada hace menos de 14 días, `make new-app` falla con `ETARGET` hasta que cumpla los 14 días.
 2. Copia el resultado sin pisar archivos del kit.
