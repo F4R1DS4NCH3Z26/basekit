@@ -1,0 +1,53 @@
+[project]
+name = "app"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "django>=5.2,<6.0",
+    "djangorestframework>=3.16",
+    "django-cors-headers>=4.6",
+    "django-stubs-ext>=5.2",
+    "whitenoise>=6.8",
+    "gunicorn>=23.0",
+    "psycopg[binary]>=3.2",
+    "pymysql>=1.1",
+    "redis>=5.2",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-django>=4.9",
+    "ruff>=0.8",
+    "mypy>=1.13",
+    "django-stubs[compatible-mypy]>=5.2,<6",
+    "djangorestframework-stubs[compatible-mypy]>=3.16",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = [".agents", "**/migrations"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S", "SIM", "DJ"]   # S = seguridad (bandit), DJ = reglas de Django
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["S101", "S105", "S106"]   # asserts y contraseñas de prueba
+"conftest.py" = ["S105", "S106"]
+
+[tool.mypy]
+strict = true
+plugins = ["mypy_django_plugin.main", "mypy_drf_plugin.main"]
+exclude = ["/migrations/"]
+
+[[tool.mypy.overrides]]
+module = ["pymysql", "pymysql.*"]
+ignore_missing_imports = true
+
+[tool.django-stubs]
+django_settings_module = "src.config.settings_test"
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "src.config.settings_test"
+testpaths = ["src", "tests"]

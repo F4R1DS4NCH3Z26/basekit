@@ -1,0 +1,17 @@
+pyproject.toml
+uv.lock
+manage.py
+src/__init__.py
+src/config/**
+src/core/**
+src/modules/__init__.py
+src/modules/*/__init__.py
+src/modules/*/apps.py
+src/modules/*/migrations/**
+src/modules/*/tests/__init__.py
+src/modules/*/tests/conftest.py
+conftest.py
+tests/conftest.py
+tests/__init__.py
+data/**
+staticfiles/**
