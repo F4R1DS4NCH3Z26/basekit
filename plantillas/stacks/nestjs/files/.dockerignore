@@ -1,0 +1,15 @@
+.git
+node_modules
+dist
+coverage
+src/generated
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.agents
+.claude
+.opencode
+.hermes
+docs
