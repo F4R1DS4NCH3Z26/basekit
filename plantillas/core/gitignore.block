@@ -7,4 +7,6 @@
 !.env.template
 *.pem
 *.key
+# Bytecode de Python (lo genera cualquier stack Python al correr la app o los tests en el host)
+__pycache__/
 # <<< basekit

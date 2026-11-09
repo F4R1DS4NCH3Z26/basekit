@@ -5,15 +5,15 @@ import { DEFAULT_AGENTS, detectAgents, parseAgents } from "../../kit/agents.js";
 import { templateVars, writeAgentsMd } from "../../kit/agents-md.js";
 import { UsageError } from "../../kit/errors.js";
 import { installExternalSkills } from "../../kit/external-skills.js";
-import { displayName, inPart, isCombined, nameCompose, resolveParts, roleFiles, specOf, wireEnv, zoneFiles, type Part } from "../../kit/layout.js";
+import {
+  displayName, INFRA, INFRA_SKILL, inPart, isCombined, nameCompose, newAppCommand, resolveParts, roleFiles, specOf, wireEnv, zoneFiles, type Part,
+} from "../../kit/layout.js";
 import { readManifest, writeManifest } from "../../kit/manifest.js";
 import { Project, resolveRoot } from "../../kit/project.js";
-import { detectStack, loadStacks, stackDir } from "../../kit/stacks.js";
+import { detectStack, hasDatabase, loadStacks, stackDir } from "../../kit/stacks.js";
 import { modeOf, render, template, TEMPLATES, walk } from "../../kit/templates.js";
 import type { Context } from "../context.js";
 import { checkDb, checkStackDb, validateFlags, type InitOptions } from "./options.js";
-
-const INFRA = ".agents/skills/infra-setup/scripts/infra.sh";
 
 function nextStep(ctx: Context, project: Project, parts: Part[], context: string): void {
   ctx.log("");
@@ -25,8 +25,7 @@ function nextStep(ctx: Context, project: Project, parts: Part[], context: string
     const fromStarter = marker !== undefined && walk(join(stackDir(part.stack), "starter")).includes(marker);
     if (marker !== undefined && !project.exists(inPart(part, marker)) && !fromStarter) {
       const where = part.side ? ` en ${part.side}/` : "";
-      const cmd = part.side ? `make -C ${part.side} new-app` : "make new-app";
-      ctx.log(`Falta la app del framework${where}: ejecuta \`${cmd}\` (corre dentro de Docker).`);
+      ctx.log(`Falta la app del framework${where}: ejecuta \`${newAppCommand(part)}\` (corre dentro de Docker).`);
     }
   }
 }
@@ -61,8 +60,12 @@ export async function init(o: InitOptions, ctx: Context): Promise<number> {
   }
   const parts = resolveParts(stacks, stackId.trim());
   // The database belongs to the first part (the backend of a combined project). A frontend stack has none:
-  // checked before any other question or write.
-  const db = checkStackDb(parts[0]!.stack, checkDb(o.db ?? prev?.options?.db ?? "auto"), o.redis);
+  // checked before any other question or write. Flags win over the manifest; the manifest's database and
+  // Redis carry over only to a stack that has a database (an existing project switched to a frontend drops them).
+  const dbStack = parts[0]!.stack;
+  const saved = hasDatabase(dbStack) ? prev?.options : undefined;
+  const db = checkStackDb(dbStack, checkDb(o.db ?? saved?.db ?? "auto"), o.redis);
+  const redis = o.redis ?? saved?.redis ?? false;
 
   // 3 · Agents: flag → manifest → detection → question.
   let agents = flags.agents ?? (prev?.agents ? parseAgents(prev.agents.join(",")) : undefined);
@@ -73,7 +76,6 @@ export async function init(o: InitOptions, ctx: Context): Promise<number> {
 
   // 4 · Context (asked only on the first run) and database.
   const context = (o.context ?? (!prev && ctx.prompt ? await ctx.prompt.context() : "")).trim();
-  const redis = o.redis ?? prev?.options?.redis ?? false;
 
   if (o.dryRun) ctx.log(`(dry-run: no se escribe nada en ${root})`);
   project.createRoot();
@@ -89,24 +91,25 @@ export async function init(o: InitOptions, ctx: Context): Promise<number> {
   const files: Record<string, string> = {};
   const copy = (src: string) => readFileSync(src, "utf8");
   const stackSkills = (part: Part) => join(stackDir(part.stack), "skills");
+  /** Copies every file under `srcRoot` to `dest` (a folder of the project), tracked in the manifest. */
+  const copyTracked = (srcRoot: string, dest: string) => {
+    for (const f of walk(srcRoot)) {
+      const src = join(srcRoot, f);
+      project.tracked(`${dest}/${f}`, copy(src), modeOf(src), prevFiles, files, o.force);
+    }
+  };
 
   // 6 · .agents/ core (once, at the root, with the roles and skills of every part).
   project.create(".agents/README.md", template("core/agents-README.md"));
   for (const f of roleFiles(parts)) project.create(`.agents/roles/${f.rel}`, f.text);
   for (const f of zoneFiles(parts)) project.create(`.agents/zones/${f.rel}`, f.text);
-  for (const skillsRoot of [join(TEMPLATES, "skills"), ...parts.map(stackSkills)]) {
-    for (const f of walk(skillsRoot)) {
-      const src = join(skillsRoot, f);
-      project.tracked(`.agents/skills/${f}`, copy(src), modeOf(src), prevFiles, files, o.force);
-    }
-  }
+  for (const skillsRoot of [join(TEMPLATES, "skills"), ...parts.map(stackSkills)]) copyTracked(skillsRoot, ".agents/skills");
   // A side runs its Makefile inside Docker with only its own folder mounted: it gets a copy of its stack's
-  // skills, which `make verify` and `make new-app` read from `.agents/skills/`.
+  // skills, which `make verify` and `make new-app` read from `.agents/skills/`. The skill scripts work on the
+  // project that holds them, so the side with the database also gets infra-setup (S17).
   for (const part of parts.filter((p) => p.side)) {
-    for (const f of walk(stackSkills(part))) {
-      const src = join(stackSkills(part), f);
-      project.tracked(inPart(part, `.agents/skills/${f}`), copy(src), modeOf(src), prevFiles, files, o.force);
-    }
+    copyTracked(stackSkills(part), inPart(part, ".agents/skills"));
+    if (hasDatabase(part.stack)) copyTracked(join(TEMPLATES, "skills", INFRA_SKILL), inPart(part, `.agents/skills/${INFRA_SKILL}`));
   }
 
   // 7 · AGENTS.md managed block.
@@ -163,20 +166,15 @@ export async function init(o: InitOptions, ctx: Context): Promise<number> {
   if (o.externalSkills) installExternalSkills(project, agents, ctx.log, ctx.runner, false);
   linkSkills(project, parts, agents);
 
-  // 13 · Infrastructure, through the same script the agent uses, in the folder of the part with the database.
-  // Only when --db is passed: a rerun that takes the db from the manifest must not touch the infrastructure again.
+  // 13 · Infrastructure, through the same script the agent uses: the copy of the part with the database, which
+  // works on the folder that holds it. Only when --db is passed: a rerun that takes the db from the manifest must
+  // not touch the infrastructure again.
   if (o.db !== undefined && o.db !== "auto") {
-    const side = parts[0]!.side;
-    const args = [side ? `../${INFRA}` : INFRA, "--db", db, ...(redis ? ["--redis"] : [])];
-    // infra.sh works at the git top level: in a side folder the ceiling keeps git from climbing to the root.
-    const shown = `${side ? `cd ${side} && GIT_CEILING_DIRECTORIES="$PWD/.." ` : ""}bash ${args.join(" ")}`;
+    const script = inPart(parts[0]!, INFRA);
+    const args = [script, "--db", db, ...(redis ? ["--redis"] : [])];
+    const shown = `bash ${args.join(" ")}`;
     if (o.dryRun) ctx.log(`· ejecutaría: ${shown}`);
-    else {
-      const env = side ? { GIT_CEILING_DIRECTORIES: `${root}:${ctx.fs.realpath(root)}` } : undefined;
-      if (!ctx.runner.run(ctx.log, "bash", args, side ? join(root, side) : root, env)) {
-        project.report("!", INFRA, `falló; reinténtalo con: ${shown}`);
-      }
-    }
+    else if (!ctx.runner.run(ctx.log, "bash", args, root)) project.report("!", script, `falló; reinténtalo con: ${shown}`);
   }
 
   writeManifest(project, prev, { stack: specOf(parts), agents, db, redis, files });

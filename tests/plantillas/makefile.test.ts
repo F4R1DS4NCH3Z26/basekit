@@ -2,7 +2,7 @@ import { after, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { loadStacks } from "../../src/kit/stacks.js";
+import { hasDatabase, loadStacks } from "../../src/kit/stacks.js";
 import { basekit, cleanup, hasDocker, REPO, scratch, sh } from "../helpers.js";
 
 after(cleanup);
@@ -49,6 +49,41 @@ describe("make new-app when the app already exists", () => {
       assert.equal(sh("git", ["status", "--porcelain"], d).stdout, before, "new-app changed files");
     });
   }
+});
+
+describe("make migration NAME=… (S17)", () => {
+  const frontends = loadStacks().filter((s) => !hasDatabase(s)).map((s) => s.id);
+  it("has at least one stack without a database to check", () => assert.ok(frontends.length > 0));
+  for (const stack of frontends) {
+    it(`${stack}: prints the no-database message and exits 0 whatever NAME is, without calling docker`, () => {
+      const d = scratch();
+      assert.equal(init(d, "--stack", stack).code, 0);
+      assert.equal(sh("make", ["env"], d).code, 0);
+      const fake = fakeBin({ docker: "exit 0" });
+      for (const args of [["NAME=x"], [], ["NAME=create_orders"], ["NAME=Bad Name"]]) {
+        const r = sh("make", ["migration", ...args], d, { PATH: `${fake.path}:${process.env.PATH}` });
+        assert.equal(r.code, 0, `${args.join(" ")}: ${r.stdout}${r.stderr}`);
+        assert.match(r.stdout, /no usa base de datos/, args.join(" "));
+        assert.doesNotMatch(r.stdout, /Uso: make migration/, args.join(" "));
+      }
+      assert.equal(fake.calls(), "", "docker was called");
+    });
+  }
+  it("a stack with a database still rejects a bad NAME before calling docker", () => {
+    const d = scratch();
+    assert.equal(init(d, "--stack", "fastapi").code, 0);
+    assert.equal(sh("make", ["env"], d).code, 0);
+    const fake = fakeBin({ docker: "exit 0" });
+    for (const args of [["NAME=x"], [], ["NAME=Bad-Name"]]) {
+      const r = sh("make", ["migration", ...args], d, { PATH: `${fake.path}:${process.env.PATH}` });
+      assert.equal(r.code, 2, `${args.join(" ")}: ${r.stdout}`);
+      assert.match(r.stdout, /Uso: make migration NAME=snake_case/);
+    }
+    assert.equal(fake.calls(), "", "docker was called");
+    const ok = sh("make", ["migration", "NAME=create_orders"], d, { PATH: `${fake.path}:${process.env.PATH}` });
+    assert.equal(ok.code, 0, ok.stdout + ok.stderr);
+    assert.match(fake.calls(), /^docker compose .* run --rm -e NAME app /m);
+  });
 });
 
 describe("make env merges new variables", () => {

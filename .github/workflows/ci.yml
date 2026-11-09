@@ -175,8 +175,13 @@ jobs:
           node-version: 24
       - run: npm ci && npm run compile
       # Acceptance 12: make new-app + make dev, answering on the stack healthcheck.
-      - run: bash scripts/e2e.sh ${{ matrix.stack }} ${{ matrix.db }} ${{ matrix.env == 'prod' && '--prod' || '' }}
+      # Arguments go through env and are added only when set: a frontend job (no db) passes no db argument at all,
+      # never an empty one (scripts/e2e.sh rejects any argument that is not a db or --prod).
+      - run: bash scripts/e2e.sh "$STACK" ${DB:+"$DB"} ${PROD:+--prod}
         env:
+          STACK: ${{ matrix.stack }}
+          DB: ${{ matrix.db }}
+          PROD: ${{ matrix.env == 'prod' && '1' || '' }}
           # Composer's make new-app downloads package zips from api.github.com; anonymous requests from shared
           # runners get 504s. Only the PHP jobs (Laravel, Symfony, PHP nativo) receive the (read-only) workflow token.
           COMPOSER_AUTH: ${{ contains(fromJSON('["laravel","symfony","php-native"]'), matrix.stack) && format('{{"github-oauth":{{"github.com":"{0}"}}}}', secrets.GITHUB_TOKEN) || '' }}

@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
-import { displayName, isCombined, type Part } from "./layout.js";
+import { displayName, type Part } from "./layout.js";
 import type { Project } from "./project.js";
 import { stackDir, type Stack } from "./stacks.js";
 import { render, template, VERSION } from "./templates.js";
@@ -20,9 +20,9 @@ function section(stack: Stack): string {
  */
 export function templateVars(parts: Part[], root: string, context: string): Record<string, string> {
   const [first] = parts;
-  const backend = parts.find((p) => p.side === "backend") ?? first!;
-  const frontend = parts.find((p) => p.side === "frontend") ?? first!;
-  const stackSection = isCombined(parts)
+  const backend = parts.find((p) => p.side === "backend");
+  const frontend = parts.find((p) => p.side === "frontend");
+  const stackSection = backend && frontend
     ? render(template("core/combo/AGENTS.section.md"), {
         BACKEND_NAME: backend.stack.name,
         FRONTEND_NAME: frontend.stack.name,
@@ -40,7 +40,7 @@ export function templateVars(parts: Part[], root: string, context: string): Reco
     PROJECT_NAME: basename(root),
     ONE_LINER: context || "Descripción pendiente: la completa el bootstrap.",
     CONTEXT: context || "_(sin contexto inicial: el bootstrap lo pedirá)_",
-    PORT: String(frontend.stack.port),
+    PORT: String((frontend ?? first!).stack.port),
   };
 }
 

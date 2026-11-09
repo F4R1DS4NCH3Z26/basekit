@@ -2,7 +2,8 @@
 # Cada carpeta es un proyecto completo con su propio Makefile: este solo delega (make -C backend … / make -C frontend …).
 # Desarrollo:  make env && make dev
 # Producción:  make env ENV=prod   (edita backend/.env.prod y frontend/.env.prod)   &&   make prod-up
-# Las variables de la línea de comandos (ENV=prod, SCOPE=…, NAME=…, S=…, CONFIRM=1) llegan a los dos Makefiles.
+# Las variables de la línea de comandos (ENV=prod, SCOPE=…, NAME=…, CONFIRM=1) llegan a los dos Makefiles.
+# Logs de un solo lado: make logs SIDE=backend; de un servicio: make logs SIDE=backend S=db (S solo existe en un lado).
 SHELL := /usr/bin/env bash
 .SHELLFLAGS := -euo pipefail -c
 .DEFAULT_GOAL := help
@@ -38,8 +39,14 @@ down: ## Detiene los dos lados (conserva los datos)
 restart: ## Reinicia la app de los dos lados
 	+@$(call both,restart)
 
-logs: ## Sigue los logs de los dos lados a la vez (S=servicio para filtrar)
-	+@$(call parallel,logs)
+# A service lives on one side only (db and redis are the backend's), so S=<service> needs SIDE: sent to both sides,
+# the one without that service would fail. Both are checked by make itself, before any recipe runs (make -n too).
+logs_side = $(if $(SIDE),$(if $(filter $(SIDE),$(SIDES)),$(SIDE),$(error SIDE debe ser backend o frontend)),$(if $(S),$(error S=$(S) filtra un servicio de un solo lado: agrega SIDE=backend o SIDE=frontend)))
+# $(1): logs or prod-logs. With SIDE, only that side; otherwise both at once.
+side_logs = $(if $(logs_side),$(MAKE) --no-print-directory -C $(SIDE) $(1),$(call parallel,$(1)))
+
+logs: ## Sigue los logs de los dos lados a la vez (SIDE=backend|frontend para uno; S=servicio requiere SIDE)
+	+@$(call side_logs,logs)
 
 ps: ## Estado de los servicios de los dos lados
 	+@$(call both,ps)
@@ -80,8 +87,8 @@ prod-up: ## Construye y levanta producción en los dos lados (requiere sus .env.
 prod-down: ## Detiene producción en los dos lados
 	+@$(call both,prod-down)
 
-prod-logs: ## Logs de producción de los dos lados a la vez
-	+@$(call parallel,prod-logs)
+prod-logs: ## Logs de producción de los dos lados (SIDE=backend|frontend para uno; S=servicio requiere SIDE)
+	+@$(call side_logs,prod-logs)
 
 prod-migrate: ## Aplica las migraciones del backend en producción
 	@$(MAKE) --no-print-directory -C backend prod-migrate

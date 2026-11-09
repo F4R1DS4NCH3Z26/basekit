@@ -226,6 +226,30 @@ describe("frontend stacks have no database (S1b)", () => {
     assert.equal(sh("git", ["status", "--porcelain"], d).stdout, "");
   });
 
+  it("switching an existing project to a frontend stack drops the database and Redis the manifest had (S17)", () => {
+    const d = scratch();
+    const first = init(d, "--stack", "fastapi", "--db", "postgres", "--redis");
+    assert.equal(first.code, 0, first.stderr);
+    gitCommitAll(d);
+    const r = init(d, "--stack", FRONTEND[0]!);
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    assert.doesNotMatch(r.stdout + r.stderr, /no aplica|infra OK|ejecutaría/);
+    const m = JSON.parse(read(d, ".agents/manifest.json"));
+    assert.equal(m.stack, FRONTEND[0]);
+    assert.deepEqual([m.options.db, m.options.redis], ["none", false]);
+  });
+
+  it("switching to another backend stack still keeps the manifest's database and Redis", () => {
+    const d = scratch();
+    assert.equal(init(d, "--stack", "fastapi", "--db", "postgres", "--redis").code, 0);
+    gitCommitAll(d);
+    const r = init(d, "--stack", "django");
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    assert.doesNotMatch(r.stdout, /infra OK|ejecutaría/);
+    const m = JSON.parse(read(d, ".agents/manifest.json"));
+    assert.deepEqual([m.stack, m.options.db, m.options.redis], ["django", "postgres", true]);
+  });
+
   it("a backend stack still takes --db and --redis as before", () => {
     const d = scratch();
     const r = init(d, "--stack", "fastapi", "--db", "postgres", "--redis", "--dry-run");

@@ -67,6 +67,8 @@ model: sonnet
 }
 ```
 
+En un proyecto combinado, el scaffold y `infra.sh` permitidos son las copias del lado, que trabajan en su carpeta: `Bash(bash backend/.agents/skills/<stack>-scaffold/scripts/scaffold.sh:*)` (y `frontend/…`) y `Bash(bash backend/.agents/skills/infra-setup/scripts/infra.sh:*)`, la misma invocación que documenta `AGENTS.md`.
+
 > Ojo: **no uses `Read(./.env.*)`**. En Claude Code, `deny` gana sobre `allow`, y esa regla bloquearía `.env.example`, que los agentes deben leer y editar. Enumera los archivos secretos explícitamente.
 
 ### OpenCode

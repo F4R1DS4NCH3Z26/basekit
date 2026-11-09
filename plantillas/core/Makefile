@@ -109,8 +109,11 @@ verify: _env-check ## Verificación con salida mínima para agentes (SCOPE=ruta 
 migrate: _env-check ## Aplica las migraciones (servicio migrate; también en prod con ENV=prod)
 	$(DC) --profile tools run --rm migrate
 
+# A stack without a database sets NO_DB_MSG in .make/stack.mk: its DB targets only print it, so NAME is not checked.
+# The check lives in a variable because its regex has a comma, which $(if …) would split on.
+MIGRATION_NAME_CHECK = [[ "$${NAME:-}" =~ ^[a-z0-9_]{3,60}$$ ]] || { echo "Uso: make migration NAME=snake_case"; exit 2; }
 migration: _env-check ## Crea una migración: make migration NAME=create_orders
-	@[[ "$${NAME:-}" =~ ^[a-z0-9_]{3,60}$$ ]] || { echo "Uso: make migration NAME=snake_case"; exit 2; }
+	@$(if $(NO_DB_MSG),:,$(MIGRATION_NAME_CHECK))
 	$(DC) run --rm -e NAME $(APP) $(MAKE_MIGRATION_CMD)
 
 # The check is done by make: DB_SHELL_CMD contains quotes and container variables that must not reach the host shell.

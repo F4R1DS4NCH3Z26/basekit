@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { AGENTS } from "./agents.js";
-import { roleFiles, zoneFiles, type Part } from "./layout.js";
+import { INFRA, inPart, roleFiles, zoneFiles, type Part } from "./layout.js";
 import type { Project } from "./project.js";
 import { stackDir } from "./stacks.js";
 import { TEMPLATES, walk } from "./templates.js";
@@ -75,13 +75,23 @@ function claudeAgent(r: Role): string {
   ].join("\n");
 }
 
-const OPENCODE_BASH: [string, string][] = [
-  ["*", "ask"], ["make verify*", "allow"], ["make test*", "allow"], ["make lint*", "allow"],
-  ["git status*", "allow"], ["git diff*", "allow"], ["bash .agents/skills/*", "allow"],
-];
+const ROOT_SKILLS = "bash .agents/skills/*";
+
+/** The side copies of the skill scripts (`bash backend/.agents/skills/*`); empty for a single-stack project. */
+function sideSkills(parts: Part[]): string[] {
+  return [...new Set(parts.map((p) => `bash ${inPart(p, ".agents/skills/*")}`))].filter((g) => g !== ROOT_SKILLS);
+}
+
+function opencodeBash(parts: Part[]): [string, string][] {
+  return [
+    ["*", "ask"], ["make verify*", "allow"], ["make test*", "allow"], ["make lint*", "allow"],
+    ["git status*", "allow"], ["git diff*", "allow"], [ROOT_SKILLS, "allow"],
+    ...sideSkills(parts).map((g): [string, string] => [g, "allow"]),
+  ];
+}
 
 /** Zones become real edit permissions; every pattern is a JSON string, which is valid YAML. */
-function opencodeAgent(r: Role, zones: string[]): string {
+function opencodeAgent(r: Role, zones: string[], parts: Part[]): string {
   return [
     "---",
     `description: ${JSON.stringify(r.description)}`,
@@ -91,7 +101,7 @@ function opencodeAgent(r: Role, zones: string[]): string {
     '    "*": deny',
     ...zones.map((z) => `    ${JSON.stringify(z)}: allow`),
     "  bash:",
-    ...OPENCODE_BASH.map(([p, v]) => `    ${JSON.stringify(p)}: ${v}`),
+    ...opencodeBash(parts).map(([p, v]) => `    ${JSON.stringify(p)}: ${v}`),
     "  webfetch: deny",
     "---",
     generatedBy(r.name),
@@ -101,12 +111,16 @@ function opencodeAgent(r: Role, zones: string[]): string {
 
 const json = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`;
 
+/**
+ * The skill scripts work on the project that holds them (S17): in a combined project the allowed invocations are the
+ * side copies, run from the root (`bash backend/.agents/skills/<skill>/scripts/scaffold.sh`), as AGENTS.md documents.
+ */
 function claudeSettings(parts: Part[]): string {
-  const scaffolds = parts.flatMap(({ stack }) =>
-    stack.skills
+  const scaffolds = parts.flatMap((part) =>
+    part.stack.skills
       .map(([name]) => name)
-      .filter((name) => existsSync(join(stackDir(stack), "skills", name, "scripts/scaffold.sh")))
-      .map((name) => `Bash(bash .agents/skills/${name}/scripts/scaffold.sh:*)`),
+      .filter((name) => existsSync(join(stackDir(part.stack), "skills", name, "scripts/scaffold.sh")))
+      .map((name) => `Bash(bash ${inPart(part, `.agents/skills/${name}/scripts/scaffold.sh`)}:*)`),
   );
   return json({
     permissions: {
@@ -118,7 +132,7 @@ function claudeSettings(parts: Part[]): string {
       ask: [
         "Bash(make dev:*)", "Bash(make up:*)", "Bash(make migrate:*)", "Bash(make migration:*)", "Bash(make install:*)",
         "Bash(make new-app:*)", "Bash(make deps-add:*)", "Bash(make prod-build:*)", "Bash(make prod-up:*)",
-        "Bash(make prod-migrate:*)", "Bash(bash .agents/skills/infra-setup/scripts/infra.sh:*)",
+        "Bash(make prod-migrate:*)", `Bash(bash ${inPart(parts[0]!, INFRA)}:*)`,
         "Bash(docker:*)", "Bash(npx:*)", "Bash(git commit:*)", "Bash(git checkout:*)",
       ],
       // Secrets are listed one by one: `Read(./.env.*)` would also block .env.example (deny wins over allow).
@@ -132,7 +146,7 @@ function claudeSettings(parts: Part[]): string {
   });
 }
 
-const OPENCODE_JSON = json({
+const opencodeJson = (parts: Part[]) => json({
   $schema: "https://opencode.ai/config.json",
   permission: {
     // In OpenCode the last matching rule wins, so *.env.example reopens what *.env.* closes.
@@ -140,7 +154,8 @@ const OPENCODE_JSON = json({
     edit: { "*": "allow", "*.env": "deny", "*.env.*": "deny", "*.env.example": "allow" },
     bash: {
       "*": "ask", "make help*": "allow", "make verify*": "allow", "make test*": "allow", "make lint*": "allow",
-      "git status*": "allow", "git diff*": "allow", "bash .agents/skills/*": "allow",
+      "git status*": "allow", "git diff*": "allow", [ROOT_SKILLS]: "allow",
+      ...Object.fromEntries(sideSkills(parts).map((g) => [g, "allow"])),
       "make clean*": "deny", "git push*": "deny", "rm -rf*": "deny", "curl *": "deny", "wget *": "deny", "sudo *": "deny",
     },
   },
@@ -164,8 +179,8 @@ export function writeAdapters(project: Project, parts: Part[], agents: string[])
     project.create(".claude/settings.json", claudeSettings(parts));
   }
   if (agents.includes("opencode")) {
-    for (const r of roles) project.generated(`.opencode/agents/${r.name}.md`, opencodeAgent(r, readZones(project, parts, r.name)));
-    project.create("opencode.json", OPENCODE_JSON);
+    for (const r of roles) project.generated(`.opencode/agents/${r.name}.md`, opencodeAgent(r, readZones(project, parts, r.name), parts));
+    project.create("opencode.json", opencodeJson(parts));
   }
   if (agents.includes("gemini-cli")) project.create(".gemini/settings.json", GEMINI_JSON);
   // Hermes reads AGENTS.md from the cwd: it gets no instruction file of its own (never .hermes.md).

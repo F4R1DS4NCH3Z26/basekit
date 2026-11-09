@@ -44,6 +44,14 @@ export const specOf = (parts) => parts.map((p) => p.stack.id).join("+");
 export const isCombined = (parts) => parts.some((p) => p.side !== undefined);
 /** `rel` inside the part's folder (unchanged for a single stack). */
 export const inPart = (part, rel) => (part.side ? `${part.side}/${rel}` : rel);
+/**
+ * infra-setup's script, relative to a part's folder. The script works on the project that holds it, so in a combined
+ * project the backend (the part with the database) has its own copy: `backend/.agents/skills/infra-setup/…` (S17).
+ */
+export const INFRA_SKILL = "infra-setup";
+export const INFRA = `.agents/skills/${INFRA_SKILL}/scripts/infra.sh`;
+/** The command that creates the framework's app of a part (`make new-app`, or `make -C <side> new-app`). */
+export const newAppCommand = (part) => (part.side ? `make -C ${part.side} new-app` : "make new-app");
 /** The role name in the project: prefixed by side in a combined project (`backend-data-writer`). */
 export const roleIn = (part, role) => (part.side ? `${part.side}-${role}` : role);
 /** How the project's stack reads in AGENTS.md, the README and init's summary. */
@@ -136,8 +144,8 @@ export function nameCompose(root, part, text) {
     if (!part.side || /^name:/m.test(text))
         return text;
     const project = basename(root).toLowerCase().replace(/[^a-z0-9_-]/g, "").replace(/^[-_]+/, "") || "app";
-    const lines = text.split("\n");
-    const at = lines.findIndex((l) => l.trim() !== "" && !l.startsWith("#"));
-    lines.splice(at < 0 ? lines.length : at, 0, `name: ${project}-${part.side}`);
-    return lines.join("\n");
+    const rows = lines(text);
+    const at = rows.findIndex((l) => l.trim() !== "" && !l.startsWith("#"));
+    rows.splice(at < 0 ? rows.length : at, 0, `name: ${project}-${part.side}`);
+    return rows.join("\n");
 }

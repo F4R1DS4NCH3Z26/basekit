@@ -86,6 +86,16 @@ describe("stack question: tipo, lenguaje and framework", () => {
     p.close();
   });
 
+  it("a typed stack id ignores case, like the option names do (R3-typed-id-case)", async () => {
+    const { p, output } = prompter("Spring");
+    assert.equal(await p.stack(stacks), "spring");
+    assert.doesNotMatch(output(), /no es una opción válida|¿En qué lenguaje\?/);
+    p.close();
+    const side = prompter("3", "combinar", "GIN", "Vue");
+    assert.equal(await side.p.stack(stacks), "gin+vue");
+    side.p.close();
+  });
+
   it("fullstack offers the integrated stacks plus «Combinar backend + frontend» (S16)", async () => {
     const { p, output } = prompter("3", "Combinar", "Python", "fastapi", "react");
     assert.equal(await p.stack(stacks), "fastapi+react");

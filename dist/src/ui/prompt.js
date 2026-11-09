@@ -11,6 +11,15 @@ const KIND_LABELS = {
 };
 /** The extra option of the fullstack step (S16): a backend stack in backend/ plus a frontend stack in frontend/. */
 const COMBINE = { label: "Combinar backend + frontend", hint: "monorepo backend/ + frontend/; make dev levanta los dos", keys: ["combinar", "combo"] };
+/** The option an answer names in numbered mode: its number (from 1), its label or one of its keys, ignoring case; -1 if none. */
+function optionIndex(options, answer) {
+    if (/^\d+$/.test(answer)) {
+        const i = Number(answer) - 1;
+        return i < options.length ? i : -1;
+    }
+    const lower = answer.toLowerCase();
+    return options.findIndex((o) => o.label.toLowerCase() === lower || o.keys.some((k) => k.toLowerCase() === lower));
+}
 /** `text` cut to `max` characters, with "…" when it had to be shortened. */
 const cut = (text, max) => ([...text].length <= max ? text : `${[...text].slice(0, Math.max(0, max - 1)).join("")}…`);
 const ESC = "\x1b[";
@@ -150,31 +159,36 @@ export class Prompter {
         if (typeof kind === "string")
             return kind;
         const ofKind = stacks.filter((s) => s.kind === kinds[kind]);
-        const languages = [...new Set(ofKind.map((s) => s.language))].sort();
-        const combine = kinds[kind] === "fullstack" && combinable;
-        const language = await this.step("Lenguaje", "¿En qué lenguaje?", [
-            ...languages.map((l) => ({ label: l, hint: ofKind.filter((s) => s.language === l).map((s) => s.id).join(", "), keys: [l] })),
-            ...(combine ? [COMBINE] : []),
-        ], stacks);
-        if (typeof language === "string")
-            return language;
-        if (language === languages.length) {
-            const backend = await this.side("backend", stacks);
-            return `${backend}+${await this.side("frontend", stacks)}`;
-        }
-        const candidates = ofKind.filter((s) => s.language === languages[language]);
-        const framework = await this.step("Framework", "¿Con qué framework?", candidates.map((s) => ({ label: s.name, hint: s.id, keys: [s.id] })), stacks);
-        return typeof framework === "string" ? framework : candidates[framework].id;
+        const picked = await this.languageThenFramework(ofKind, stacks, undefined, kinds[kind] === "fullstack" && combinable);
+        if (typeof picked === "string")
+            return picked;
+        // «Combinar backend + frontend» (S16): the backend first, then the frontend.
+        return `${await this.side("backend", stacks)}+${await this.side("frontend", stacks)}`;
     }
     /** Lenguaje → Framework among the stacks of one side of a combined project; a stack id typed is taken only from that side. */
     async side(side, stacks) {
         const ofSide = stacks.filter((s) => s.kind === side);
-        const languages = [...new Set(ofSide.map((s) => s.language))].sort();
-        const language = await this.step(`Lenguaje del ${side}`, `¿En qué lenguaje es el ${side}?`, languages.map((l) => ({ label: l, hint: ofSide.filter((s) => s.language === l).map((s) => s.id).join(", "), keys: [l] })), ofSide);
+        // Without «Combinar» among the options, the answer is always a stack id.
+        return (await this.languageThenFramework(ofSide, ofSide, side, false));
+    }
+    /**
+     * The Lenguaje and Framework steps among `pool`; `typed` are the stack ids accepted when typed directly.
+     * `side` names the half of a combined project in the questions. With `combine`, the language step also offers
+     * «Combinar backend + frontend», and choosing it returns COMBINE instead of a stack id.
+     */
+    async languageThenFramework(pool, typed, side, combine) {
+        const languages = [...new Set(pool.map((s) => s.language))].sort();
+        const options = [
+            ...languages.map((l) => ({ label: l, hint: pool.filter((s) => s.language === l).map((s) => s.id).join(", "), keys: [l] })),
+            ...(combine ? [COMBINE] : []),
+        ];
+        const language = await this.step(side ? `Lenguaje del ${side}` : "Lenguaje", side ? `¿En qué lenguaje es el ${side}?` : "¿En qué lenguaje?", options, typed);
         if (typeof language === "string")
             return language;
-        const candidates = ofSide.filter((s) => s.language === languages[language]);
-        const framework = await this.step(`Framework del ${side}`, `¿Con qué framework de ${side}?`, candidates.map((s) => ({ label: s.name, hint: s.id, keys: [s.id] })), ofSide);
+        if (options[language] === COMBINE)
+            return COMBINE;
+        const candidates = pool.filter((s) => s.language === languages[language]);
+        const framework = await this.step(side ? `Framework del ${side}` : "Framework", side ? `¿Con qué framework de ${side}?` : "¿Con qué framework?", candidates.map((s) => ({ label: s.name, hint: s.id, keys: [s.id] })), typed);
         return typeof framework === "string" ? framework : candidates[framework].id;
     }
     /**
@@ -195,13 +209,10 @@ export class Prompter {
             const answer = await this.line("Número o nombre: ");
             if (answer === undefined)
                 throw new UsageError("No se eligió un stack. Usa --stack <id>");
-            const lower = answer.toLowerCase();
-            const index = /^\d+$/.test(answer)
-                ? Number(answer) - 1
-                : options.findIndex((o) => o.label.toLowerCase() === lower || o.keys.some((k) => k.toLowerCase() === lower));
-            if (options[index])
+            const index = optionIndex(options, answer);
+            if (index >= 0)
                 return index;
-            const typed = stacks.find((s) => s.id === answer);
+            const typed = stacks.find((s) => s.id.toLowerCase() === answer.toLowerCase());
             if (typed)
                 return typed.id;
             this.say(answer ? `  «${answer}» no es una opción válida.` : "  Hace falta elegir una opción.");

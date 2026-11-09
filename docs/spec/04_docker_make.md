@@ -43,7 +43,7 @@ Si tenías contenedores de dev creados antes de este cambio, quedaron bajo el no
 | `test` / `lint` | `$(TEST_CMD)` / `$(LINT_CMD)` en un contenedor efímero |
 | `verify` | `$(VERIFY_CMD)` con `--no-deps`; `SCOPE` validado con regex. Es la verificación de bajo consumo de tokens para agentes |
 | `migrate` | `docker compose --profile tools run --rm migrate` (dev o prod) |
-| `migration NAME=x` | `$(MAKE_MIGRATION_CMD)`; `NAME` validado (`^[a-z0-9_]{3,60}$`) y pasado con `-e NAME` |
+| `migration NAME=x` | `$(MAKE_MIGRATION_CMD)`; `NAME` validado (`^[a-z0-9_]{3,60}$`) y pasado con `-e NAME`. Un stack sin base de datos define `NO_DB_MSG` en su `stack.mk`: entonces no se valida `NAME` y el objetivo solo imprime el mensaje (exit 0) |
 | `db-shell` | `exec db $(DB_SHELL_CMD)` |
 | `prod-build` / `prod-up` / `prod-down` / `prod-logs` / `prod-migrate` | Alias con `ENV=prod` |
 | `clean` | `down -v` del proyecto de dev (`<nombre>-dev`); exige `CONFIRM=1`, está prohibido con `ENV=prod` y nunca alcanza los volúmenes de prod |
@@ -169,11 +169,11 @@ La raíz tiene un `Makefile` propio (`plantillas/core/combo/Makefile`) que no in
 | Objetivo de la raíz | Qué hace |
 |---|---|
 | `help` | Lista los objetivos de la raíz (`make -C <lado> help` muestra los de cada lado) |
-| `dev` / `up` / `build` / `logs` / `prod-build` / `prod-logs` | Los dos lados **en paralelo** (`$(MAKE) -j2 _backend-<obj> _frontend-<obj>`): `logs` sigue los dos a la vez |
+| `dev` / `up` / `build` / `logs` / `prod-build` / `prod-logs` | Los dos lados **en paralelo** (`$(MAKE) -j2 _backend-<obj> _frontend-<obj>`): `logs` sigue los dos a la vez. `logs` y `prod-logs` con `SIDE=backend\|frontend` siguen un solo lado; `S=<servicio>` exige `SIDE` (un servicio como `db` existe en un solo lado, y el otro fallaría): sin `SIDE`, error de make (exit 2) antes de lanzar nada |
 | `env` / `doctor` / `down` / `restart` / `ps` / `install` / `test` / `lint` / `verify` / `new-app` / `prod-up` / `prod-down` / `clean` / `fix-perms` | Backend y luego frontend; el primer fallo corta |
 | `migrate` / `migration NAME=x` / `db-shell` / `prod-migrate` | Solo el backend (el frontend no tiene base de datos) |
 
-Las variables de la línea de comandos (`ENV=prod`, `SCOPE=…`, `NAME=…`, `S=…`, `CONFIRM=1`) llegan a los dos Makefiles por `MAKEFLAGS`. Las recetas que delegan con `$(call …)` empiezan con `+`: make no ve `$(MAKE)` dentro de `$(call)`, y `make -n` debe seguir bajando a cada lado. `sh` no está en la raíz porque es ambiguo: usa `make -C <lado> sh`.
+Las variables de la línea de comandos (`ENV=prod`, `SCOPE=…`, `NAME=…`, `S=…`, `SIDE=…`, `CONFIRM=1`) llegan a los dos Makefiles por `MAKEFLAGS`. Las recetas que delegan con `$(call …)` empiezan con `+`: make no ve `$(MAKE)` dentro de `$(call)`, y `make -n` debe seguir bajando a cada lado. `sh` no está en la raíz porque es ambiguo: usa `make -C <lado> sh`.
 
 **API entre los dos**: el navegador llama al backend por el host. `frontend/.env.example` trae `VITE_API_URL=http://127.0.0.1:<puerto del backend>` (en prod, el `VITE_API_URL` de `frontend/.env.prod` se incrusta al construir), y `backend/.env.example` permite `http://127.0.0.1:<puerto del frontend>` y `http://localhost:<puerto del frontend>` en `CORS_ORIGINS`.
 

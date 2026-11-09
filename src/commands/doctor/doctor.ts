@@ -2,7 +2,7 @@ import { join } from "node:path";
 import { AGENTS } from "../../kit/agents.js";
 import { AGENTS_MD_WARN } from "../../kit/agents-md.js";
 import { missingExternal } from "../../kit/external-skills.js";
-import { inPart, isCombined, partsOf } from "../../kit/layout.js";
+import { inPart, isCombined, newAppCommand, partsOf } from "../../kit/layout.js";
 import { EXTERNAL_SKILLS, MANIFEST, readManifest } from "../../kit/manifest.js";
 import { Project, resolveRoot } from "../../kit/project.js";
 import { loadStacks, stackDir } from "../../kit/stacks.js";
@@ -50,7 +50,7 @@ export function doctor(dir: string | undefined, ctx: Context): number {
     const marker = part.stack.appMarker;
     if (marker) {
       check(project.exists(inPart(part, marker)), `${inPart(part, marker)} (app del framework)`,
-        `ejecuta \`${part.side ? `make -C ${part.side} new-app` : "make new-app"}\``);
+        `ejecuta \`${newAppCommand(part)}\``);
     }
   }
 

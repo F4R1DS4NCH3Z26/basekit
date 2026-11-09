@@ -44,7 +44,13 @@ Objective: `init` asks the language and then the framework, with 5 new stacks (d
   - ESLint 9 end of life: verify it, then move the TS stacks to a supported ESLint;
   - CORS in express, node-native, php-native and symfony: they have no CORS_ORIGINS, so combined init warns (T6b);
   - `infra.sh` and the stacks' scaffold/app-setup scripts use `git rev-parse --show-toplevel`, which climbs to the root in a combined project; they should use the nearest Makefile folder;
-  - the `migration` NAME regex runs before the frontend no-database override.
+  - the `migration` NAME regex runs before the frontend no-database override;
+  - d08eda1 review warnings:
+    - R3-claude-scaffold-allowlist-root-relative
+    - R3-combo-logs-service-filter (`make logs S=db` from the root breaks the frontend side)
+    - R3-side-env-ignore-unproved (the parent checked that `.env*` ignores backend/.env and frontend/.env.prod; it needs a test)
+    - R2 suggestions
+  - Rule shared by the scripts: a script under `<project>/.agents/skills/<skill>/scripts/` resolves its project as `$(dirname "$0")/../../../..`, never with `git rev-parse --show-toplevel`. This works for single-stack projects and for each side of a combined one.
 - **S9** Go parity: basekit-go (`~/Documents/project-guiade`) gets the same feature once Node is done (L31): byte-identical `plantillas/` (except the CLI text), the Tipo → Lenguaje → Framework question, frontend without DB, Combine, tests, docs and CI.
 
 Selected scope (user choice): "Set base (Recommended)": Python: Django + Flask · TypeScript: NestJS + Express · PHP: Symfony.
@@ -70,7 +76,9 @@ Selected scope (user choice): "Set base (Recommended)": Python: Django + Flask �
 | T18 | S15 | delegated (parallel writer, `plantillas/stacks/django-htmx/`) | done (no Docker e2e yet) | init with the 3 databases + redis OK; make help 28 targets; zone-check 0 unowned; venv: verify OK, 17 tests (partial vs full, CSRF, OOB, login); gunicorn prod /health + SRI + CSP OK; commit adb74c6 |
 | T6a | S1, S1b, S7, S8 | delegated (context backstop) | done | verify.sh OK (parent rerun); owners 579/0; differential vs HEAD: only the requested differences; integration commit |
 | T6b | S16 | delegated (context backstop) | done | verify.sh OK (parent rerun); fastapi+react init + root make help + VITE_API_URL/CORS checked by the parent; owners 125/0; differential vs b259216: only the requested help lines differ |
-| T19 | S17 | after T6b (it shares src/, plantillas/core and tests) | pending | |
+| T19a | S17 (src, core, skills/infra-setup, CI, tests, docs/spec) | delegated (parallel writer A) | done | verify.sh 260 pass / 1 visible skip; owners 127/0; RED observed for the stale db, frontend migration, logs S=db and side infra.sh; differential vs d08eda1: only the expected differences |
+| T19b | S17 (plantillas/stacks/**, docs/stacks/**) | delegated (parallel writer B) | done | init 18 stacks + 2 combined OK; owners 0 in all; host: fastapi FK + root fixtures OK, flask FK fix, django pins verify OK, express/node-native ESLint 10 + CORS OK; PHP not run (no PHP/Docker) |
+| T19c | S17 (OpenCode allowlist for side scripts) | inline | done | RED then GREEN in combo.test; single-stack opencode.json unchanged; verify.sh OK; owners 128/0 |
 | T7 | S2-S6 | per-action worker (Docker e2e per stack, run one at a time) | pending | |
 | T8 | S9 | after T6b: implement in basekit-go (route decided when it starts) | pending | |
 
@@ -146,4 +154,16 @@ Selected scope (user choice): "Set base (Recommended)": Python: Django + Flask �
   - delegating recipes use a `+` prefix;
   - combined projects are not auto-detected without a manifest.
   - Risk: item 1/3 (the persisted manifest format adds `a+b`; an older basekit rejects it as an unknown stack).
+- **L39** T6b committed as d08eda1. Review of d08eda1 (risk, readability, reliability) approved and acknowledged (review-3dac7d013e86d9ff), 3 WARNINGs added to S17. T19 is split into two writers with disjoint surfaces.
+- **L40** T19a OK.
+  - `make logs S=x` in a combined project now requires SIDE=backend|frontend (exit 2): a deliberate behavior change.
+  - infra.sh resolves the project from its own location; the combined backend gets its own copy of infra-setup.
+  - Risk: item 3 (new invocations and allowlist entries in combined projects).
+  - Gap left open: the OpenCode bash allowlist (`bash .agents/skills/*`) does not cover `backend/.agents/...`. It goes in T19c, with what T19b leaves.
+- **L41** T19b OK.
+  - ESLint 9 is EOL (eslint.org/version-support: EOL 2026-08-06). express and node-native move to ESLint 10.13.0; react/vue/vanilla-ts already resolve 10.
+  - nextjs stays on 9: eslint-config-next 16.4.x has plugins with peer `^9`. This is documented, and blocked upstream.
+  - symfony CORS without nelmio (its own subscriber).
+  - fastapi pinned exactly.
+  - T19c inline: OpenCode allowlist `bash <side>/.agents/skills/*` in combined projects.
 - **L6** Engram mirror `odd/framework-stacks/tasks`: PENDING. Auto mode blocks `mem_save` because a hook rewrites its input.

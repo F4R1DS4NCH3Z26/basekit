@@ -11,7 +11,10 @@ export type Kind = (typeof KINDS)[number];
 /** `plantillas/stacks/<id>/stack.json` (spec 02 §6). Everything stack-specific lives there, never in code. */
 export interface Stack {
   id: string;
-  /** "<language> · <framework> (<kind of app>)": the label of the framework question. */
+  /**
+   * Human name, "<language> · <framework> …" ("Python · Flask + SQLAlchemy 2 (API REST ligera)"): the label of the
+   * framework question, and how the stack reads in AGENTS.md, the README, init's summary and `basekit stacks`.
+   */
   name: string;
   language: string;
   kind: Kind;

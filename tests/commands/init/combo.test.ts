@@ -151,6 +151,100 @@ describe("combined backend + frontend (S16): --stack <backend>+<frontend>", () =
     assert.match(sh("make", ["-C", "backend", "-n", "dev"], d).stdout, /-f compose\.db\.yaml -f compose\.redis\.yaml/);
   });
 
+  it("infra.sh resolves its project from its own location: backend's copy writes into backend/ from any folder (S17)", () => {
+    const d = scratch();
+    assert.equal(init(d, "--stack", "fastapi+react").code, 0);
+    gitCommitAll(d);
+    const infra = "backend/.agents/skills/infra-setup/scripts/infra.sh";
+    const fromRoot = sh("bash", [infra, "--db", "mysql", "--redis"], d);
+    assert.equal(fromRoot.code, 0, fromRoot.stdout + fromRoot.stderr);
+    assert.match(fromRoot.stdout, /infra OK: db=mysql redis=1/);
+    for (const f of ["compose.db.yaml", "compose.redis.yaml", ".make/db.mk"]) {
+      assert.ok(existsSync(join(d, "backend", f)), `missing backend/${f}`);
+      assert.ok(!existsSync(join(d, f)), `root ${f}`);
+      assert.ok(!existsSync(join(d, "frontend", f)), `frontend/${f}`);
+    }
+    // From inside backend/ (the git top level is the root) and from outside the project: same folder.
+    const inside = sh("bash", [".agents/skills/infra-setup/scripts/infra.sh", "--db", "mysql", "--redis"], join(d, "backend"));
+    assert.equal(inside.code, 0, inside.stdout + inside.stderr);
+    assert.match(inside.stdout, /^\s*= compose\.db\.yaml$/m);
+    const outside = sh("bash", [join(d, infra), "--db", "mysql", "--redis"], scratch());
+    assert.equal(outside.code, 0, outside.stdout + outside.stderr);
+    assert.match(outside.stdout, /^\s*= compose\.db\.yaml$/m);
+    assert.deepEqual(readdirSync(join(d, "frontend")).filter((f) => f.startsWith("compose.db")), []);
+  });
+
+  it("Claude's allowlist and AGENTS.md name the side copies of the skill scripts (S17)", () => {
+    const d = scratch();
+    assert.equal(init(d, "--stack", "fastapi+react", "--agents", "claude-code").code, 0);
+    const settings = JSON.parse(read(d, ".claude/settings.json"));
+    const scaffold = "bash backend/.agents/skills/py-scaffold/scripts/scaffold.sh";
+    assert.ok(existsSync(join(d, scaffold.slice(5))), "the allowlisted script exists");
+    assert.ok(settings.permissions.allow.includes(`Bash(${scaffold}:*)`), JSON.stringify(settings.permissions.allow));
+    assert.ok(!settings.permissions.allow.includes("Bash(bash .agents/skills/py-scaffold/scripts/scaffold.sh:*)"), "root copy is not allowlisted");
+    assert.ok(settings.permissions.ask.includes("Bash(bash backend/.agents/skills/infra-setup/scripts/infra.sh:*)"));
+    const agents = read(d, "AGENTS.md");
+    assert.match(agents, /`bash backend\/\.agents\/skills\/<skill>\/scripts\/scaffold\.sh <nombre>`/);
+    assert.match(agents, /`bash backend\/\.agents\/skills\/infra-setup\/scripts\/infra\.sh --db postgres`/);
+    assert.doesNotMatch(agents, /GIT_CEILING_DIRECTORIES/);
+  });
+
+  it("OpenCode's bash allowlist covers the side copies of the skill scripts (S17)", () => {
+    const d = scratch();
+    assert.equal(init(d, "--stack", "fastapi+react", "--agents", "opencode").code, 0);
+    const bash = JSON.parse(read(d, "opencode.json")).permission.bash;
+    for (const p of ["bash .agents/skills/*", "bash backend/.agents/skills/*", "bash frontend/.agents/skills/*"]) {
+      assert.equal(bash[p], "allow", p);
+    }
+    const agent = read(d, ".opencode/agents/backend-data-writer.md");
+    assert.match(agent, /^ {4}"bash backend\/\.agents\/skills\/\*": allow$/m);
+    assert.match(agent, /^ {4}"bash frontend\/\.agents\/skills\/\*": allow$/m);
+  });
+
+  it("the side env files are git-ignored (S17)", () => {
+    const d = scratch();
+    assert.equal(init(d, "--stack", "fastapi+react").code, 0);
+    const secrets = ["backend/.env", "backend/.env.prod", "frontend/.env", "frontend/.env.prod"];
+    const ignored = sh("git", ["check-ignore", ...secrets], d);
+    assert.equal(ignored.code, 0, ignored.stderr);
+    assert.deepEqual(ignored.stdout.trim().split("\n"), secrets);
+    assert.equal(sh("git", ["check-ignore", "backend/.env.example", "frontend/.env.example"], d).code, 1, "the templates stay versioned");
+  });
+
+  it("make logs runs both sides; S=<service> needs SIDE=backend|frontend, since a service lives on one side (S17)", () => {
+    const d = scratch();
+    assert.equal(init(d, "--stack", "fastapi+react", "--db", "postgres").code, 0);
+    const both = sh("make", ["-n", "logs"], d);
+    assert.equal(both.code, 0, both.stderr);
+    assert.match(both.stdout, /-p backend-dev-\d+ .*logs -f --tail=100 *$/m);
+    assert.match(both.stdout, /-p frontend-dev-\d+ .*logs -f --tail=100 *$/m);
+
+    const noSide = sh("make", ["-n", "logs", "S=db"], d);
+    assert.equal(noSide.code, 2, noSide.stdout);
+    assert.match(noSide.stderr, /S=db .*SIDE=backend o SIDE=frontend/);
+    assert.doesNotMatch(noSide.stdout, /docker compose/);
+
+    const db = sh("make", ["-n", "logs", "S=db", "SIDE=backend"], d);
+    assert.equal(db.code, 0, db.stderr);
+    assert.match(db.stdout, /-p backend-dev-\d+ .*logs -f --tail=100 db$/m);
+    assert.doesNotMatch(db.stdout, /frontend-dev-/);
+
+    const front = sh("make", ["-n", "logs", "SIDE=frontend"], d);
+    assert.equal(front.code, 0, front.stderr);
+    assert.match(front.stdout, /-p frontend-dev-\d+ .*logs -f --tail=100 *$/m);
+    assert.doesNotMatch(front.stdout, /backend-dev-/);
+
+    const bad = sh("make", ["-n", "logs", "SIDE=web"], d);
+    assert.equal(bad.code, 2, bad.stdout);
+    assert.match(bad.stderr, /SIDE debe ser backend o frontend/);
+
+    const prod = sh("make", ["-n", "prod-logs", "S=db", "SIDE=backend"], d);
+    assert.equal(prod.code, 0, prod.stderr);
+    assert.match(prod.stdout, /logs -f --tail=100 db$/m);
+    assert.doesNotMatch(prod.stdout, /frontend/);
+    assert.match(sh("make", ["help"], d).stdout, /logs .*SIDE=backend\|frontend/);
+  });
+
   it("wires the frontend to the API through the host and lets the backend's CORS allow it", () => {
     for (const [backend, frontend] of [["fastapi", "react"], ["gin", "vue"]] as [string, string][]) {
       const d = scratch();
@@ -162,14 +256,14 @@ describe("combined backend + frontend (S16): --stack <backend>+<frontend>", () =
     }
   });
 
-  it("warns when the backend stack has no CORS setting, and still points the frontend at it", () => {
-    const noCors = BACKENDS.find((id) => !/^CORS_ORIGINS=/m.test(read(REPO, `plantillas/stacks/${id}/files/.env.example`)));
-    if (!noCors) return;
+  // Through the CLI only while some backend lacks CORS_ORIGINS; wireEnv's own test (tests/kit/layout.test.ts) always runs.
+  const noCors = BACKENDS.find((id) => !/^CORS_ORIGINS=/m.test(read(REPO, `plantillas/stacks/${id}/files/.env.example`)));
+  it("warns when the backend stack has no CORS setting, and still points the frontend at it", { skip: noCors ? false : "every backend stack has CORS_ORIGINS" }, () => {
     const d = scratch();
     const r = init(d, "--stack", `${noCors}+${FRONTENDS[0]}`);
     assert.equal(r.code, 0, r.stderr);
     assert.match(r.stdout, /^! backend\/\.env\.example .*CORS/m);
-    assert.match(read(d, "frontend/.env.example"), new RegExp(`^VITE_API_URL=http://127\\.0\\.0\\.1:${byId(noCors).port}$`, "m"));
+    assert.match(read(d, "frontend/.env.example"), new RegExp(`^VITE_API_URL=http://127\\.0\\.0\\.1:${byId(noCors!).port}$`, "m"));
   });
 
   for (const [bad, why] of [
@@ -190,9 +284,12 @@ describe("combined backend + frontend (S16): --stack <backend>+<frontend>", () =
     });
   }
 
-  it("rejects --db for the frontend half only as before: a frontend alone still refuses it", () => {
-    const r = init(join(scratch(), "app"), "--stack", FRONTENDS[0]!, "--db", "postgres");
-    assert.equal(r.code, 2);
+  it("a frontend stack alone still rejects --db, and writes nothing (S1b regression)", () => {
+    const d = join(scratch(), "app");
+    const r = init(d, "--stack", FRONTENDS[0]!, "--db", "postgres");
+    assert.equal(r.code, 2, r.stdout);
+    assert.match(r.stderr, /--db 'postgres' no aplica/);
+    assert.ok(!existsSync(d), "nothing written");
   });
 
   it("--dry-run writes nothing and shows the side paths", () => {
@@ -203,7 +300,8 @@ describe("combined backend + frontend (S16): --stack <backend>+<frontend>", () =
     assert.match(r.stdout, /^\+ backend\/Dockerfile$/m);
     assert.match(r.stdout, /^\+ frontend\/\.make\/stack\.mk$/m);
     assert.match(r.stdout, /^\+ \.claude\/agents\/backend-data-writer\.md$/m);
-    assert.match(r.stdout, /ejecutaría: .*infra\.sh --db postgres/);
+    assert.match(r.stdout, /^· ejecutaría: bash backend\/\.agents\/skills\/infra-setup\/scripts\/infra\.sh --db postgres$/m);
+    assert.match(r.stdout, /^\+ backend\/\.agents\/skills\/infra-setup\/scripts\/infra\.sh$/m);
   });
 
   it("a rerun takes the pair from the manifest and changes nothing; sync and doctor work on it", () => {
