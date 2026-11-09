@@ -21,11 +21,12 @@ new-app: ## Crea la app NestJS en Docker (solo si no existe package.json)
 # _new-app runs as root and hands the files back at the end (also when a step fails), so a host uid without a
 # passwd entry in the image never breaks npm. GNU cp because busybox `cp -Rn` skips the whole tree when /work
 # already exists. npm_config_before resolves every dependency as of 14 days ago (guide 04 §8): a release published
-# minutes ago, broken or hijacked, never reaches a new project. app-setup.sh adds /health, Zod and, when
+# minutes ago, broken or hijacked, never reaches a new project. Node 24 (npm 11), like the Dockerfile: npm 10 fails on
+# Nest 12's peer set with "Cannot read properties of null (reading 'edgesOut')". app-setup.sh adds /health, Zod and, when
 # compose.db.yaml exists, Prisma with the driver adapter of that database.
 _new-app:
 	docker run --rm -e UID_GID="$$(id -u):$$(id -g)" -e HOME=/tmp -e npm_config_cache=/tmp/.npm -e PRISMA_VERSION="$(PRISMA_VERSION)" \
-	  -v "$$PWD":/work -w /tmp node:22-alpine sh -c '\
+	  -v "$$PWD":/work -w /tmp node:24-alpine sh -c '\
 	  export npm_config_before="$$(node -p "new Date(Date.now() - 14 * 864e5).toISOString()")"; \
 	  ( apk add --no-cache coreutils bash >/dev/null && \
 	    npm install --prefix /tmp/cli --no-audit --no-fund @nestjs/cli@$(NEST_CLI_VERSION) && \

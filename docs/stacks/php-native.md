@@ -12,7 +12,7 @@ API REST en PHP moderno sin framework web: front controller, router, contenedor 
 | Servidor | FrankenPHP `php-server` | Un solo proceso (Caddy + PHP) sin root y con `read_only`; php-fpm + nginx serían dos procesos y `php -S` no es para producción. Es la misma imagen base que el stack `symfony` |
 | Migraciones | Runner propio (`src/Core/Database/Migrator.php`, `bin/migrate.php`) | SQL plano por módulo que el agente lee y escribe, variantes por motor y cero dependencias de runtime; phinx agregaría una decena de paquetes (consola de Symfony, cakephp/database) a un stack sin framework |
 | Composer | `composer:2.10.2`, `config.platform.php` 8.5.0 | El lock se resuelve para el PHP de la imagen |
-| Herramientas | PHPUnit 13.4.3, PHPStan 2.3.2 (nivel 6), PHP-CS-Fixer 3.95.27 (`@PER-CS`) | Versiones exactas con más de 14 días |
+| Herramientas | PHPUnit 13.3.6, PHPStan 2.3.2 (nivel 6), PHP-CS-Fixer 3.95.27 (`@PER-CS`) | Versiones exactas con más de 14 días. PHPUnit 13.4.0–13.4.3 tiene el aviso de seguridad PKSA-qhjm-rpqc-qkn6 (Composer se niega a instalarlo) y 13.4.4 aún no cumple 14 días: se queda en 13.3.6 hasta que 13.4.4 o posterior los cumpla |
 
 ## Arquitectura
 

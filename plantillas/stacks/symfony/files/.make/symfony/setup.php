@@ -13,12 +13,19 @@ if ($mode === 'composer') {
         fwrite(STDERR, "setup.php: invalid PHP platform '$platform'\n");
         exit(2);
     }
-    $json = json_decode((string) file_get_contents('composer.json'), true, flags: JSON_THROW_ON_ERROR);
-    $json['config']['platform']['php'] = $platform;
+    // Objects, not arrays: an empty JSON object (the skeleton's "require-dev": {}) decoded as an array is written
+    // back as [], and Composer then rejects composer.json ("Array value found, but an object is required").
+    $json = json_decode((string) file_get_contents('composer.json'), false, flags: JSON_THROW_ON_ERROR);
+    $json->config ??= new stdClass();
+    $json->config->platform ??= new stdClass();
+    $json->config->platform->php = $platform;
+    $json->extra ??= new stdClass();
     // Flex must not add its own compose files: the kit already has them.
-    $json['extra']['symfony']['docker'] = false;
+    $json->extra->symfony ??= new stdClass();
+    $json->extra->symfony->docker = false;
     // The environment comes from compose (env_file + overlays); there is no .env inside the image.
-    $json['extra']['runtime']['disable_dotenv'] = true;
+    $json->extra->runtime ??= new stdClass();
+    $json->extra->runtime->disable_dotenv = true;
     file_put_contents('composer.json', json_encode($json, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n");
     echo "  ~ composer.json: platform php $platform, runtime.disable_dotenv, symfony.docker=false\n";
     exit(0);

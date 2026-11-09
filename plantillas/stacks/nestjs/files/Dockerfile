@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1.7
 # Targets: dev (nest start --watch) · build (compila; también lo usa el servicio migrate en prod) · prod (dist + dependencias de runtime, no root)
-ARG NODE_VERSION=22
+# Node 24 (LTS): el npm 10 de Node 22 no resuelve el árbol de peers de Nest 12 (oxlint-tsgolint + vite 8) y falla con "reading 'edgesOut'".
+ARG NODE_VERSION=24
 FROM node:${NODE_VERSION}-alpine AS base
 WORKDIR /app
 # openssl: lo necesita el motor de migraciones de Prisma en Alpine.
