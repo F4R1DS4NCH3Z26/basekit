@@ -1,0 +1,4 @@
+src/features/*/schemas.ts
+src/features/*/api.ts
+src/features/*/types.ts
+src/features/*/stores.ts
