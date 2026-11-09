@@ -6,7 +6,8 @@ import { templateVars, writeAgentsMd } from "../../kit/agents-md.js";
 import { UsageError } from "../../kit/errors.js";
 import { installExternalSkills } from "../../kit/external-skills.js";
 import {
-  displayName, INFRA, INFRA_SKILL, inPart, isCombined, nameCompose, newAppCommand, resolveParts, roleFiles, specOf, wireEnv, zoneFiles, type Part,
+  displayName, INFRA, INFRA_SKILL, inPart, isCombined, nameCompose, newAppCommand, partsOf, resolveParts, roleFiles, specOf, wireEnv, zoneFiles,
+  type Part,
 } from "../../kit/layout.js";
 import { readManifest, writeManifest } from "../../kit/manifest.js";
 import { Project, resolveRoot } from "../../kit/project.js";
@@ -70,6 +71,15 @@ export async function init(o: InitOptions, ctx: Context): Promise<number> {
   if (!hasDatabase(dbStack) && parts.length === 1) {
     for (const f of ["compose.db.yaml", "compose.redis.yaml"]) {
       if (project.exists(f)) project.report("!", f, `queda del stack anterior: un stack frontend no usa base de datos; bórralo si ya no lo necesitas`);
+    }
+  }
+  // A single-stack project switched to combined with the database carried from the manifest (S19): the new backend
+  // side has no overlays yet, so infra.sh runs for it as with an explicit --db. The root ones stay (the user's files).
+  const before = partsOf(stacks, prev?.stack);
+  const carried = isCombined(parts) && before !== undefined && !isCombined(before) && o.db === undefined && (!["none", "auto"].includes(db) || redis);
+  if (isCombined(parts)) {
+    for (const f of ["compose.db.yaml", "compose.redis.yaml", ".make/db.mk"]) {
+      if (project.exists(f)) project.report("!", f, `queda del stack anterior: la base de datos ahora vive en ${inPart(parts[0]!, "")}; bórralo si ya no lo necesitas`);
     }
   }
 
@@ -173,9 +183,9 @@ export async function init(o: InitOptions, ctx: Context): Promise<number> {
   linkSkills(project, parts, agents);
 
   // 13 · Infrastructure, through the same script the agent uses: the copy of the part with the database, which
-  // works on the folder that holds it. Only when --db is passed: a rerun that takes the db from the manifest must
-  // not touch the infrastructure again.
-  if (o.db !== undefined && o.db !== "auto") {
+  // works on the folder that holds it. Only when --db is passed or the database moves to a new backend side: a rerun
+  // that takes the db from the manifest must not touch the infrastructure again.
+  if ((o.db !== undefined && o.db !== "auto") || carried) {
     const script = inPart(parts[0]!, INFRA);
     const args = [script, "--db", db, ...(redis ? ["--redis"] : [])];
     const shown = `bash ${args.join(" ")}`;

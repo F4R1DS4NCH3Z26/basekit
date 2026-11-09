@@ -51,6 +51,11 @@ Objective: `init` asks the language and then the framework, with 5 new stacks (d
     - R3-side-env-ignore-unproved (the parent checked that `.env*` ignores backend/.env and frontend/.env.prod; it needs a test)
     - R2 suggestions
   - Rule shared by the scripts: a script under `<project>/.agents/skills/<skill>/scripts/` resolves its project as `$(dirname "$0")/../../../..`, never with `git rev-parse --show-toplevel`. This works for single-stack projects and for each side of a combined one.
+- **S18** "sí, fija staticcheck v0.8.2 en el Makefile". basekit-go: `make verify` runs staticcheck pinned at `honnef.co/go/tools/cmd/staticcheck@v0.8.2` (2026.2.2, released 2026-10-12) instead of skipping it when it is not installed. It also removes the pre-existing dead code it reports (`(*options).str`).
+- **S19** Fixes from the review of Go 3e0b0d0, applied to both repos:
+  - Combined projects: Claude's deny list must cover the side secrets (`backend/.env`, `backend/.env.prod`, and so on), just as the allowlist covers the side scripts.
+  - Switching an existing backend project that has a database to combined, with the db carried from the manifest, must leave `backend/` with its overlays (infra.sh runs for the backend) and warn about the leftover overlays at the root.
+  - Go: add the deny entries Node already has (`.env.local`, `.env.production`, `.env.*.local`).
 - **S9** Go parity: basekit-go (`~/Documents/project-guiade`) gets the same feature once Node is done (L31): byte-identical `plantillas/` (except the CLI text), the Tipo → Lenguaje → Framework question, frontend without DB, Combine, tests, docs and CI.
 
 Selected scope (user choice): "Set base (Recommended)": Python: Django + Flask · TypeScript: NestJS + Express · PHP: Symfony.
@@ -82,7 +87,9 @@ Selected scope (user choice): "Set base (Recommended)": Python: Django + Flask �
 | T7 | S2-S6, S10-S16 | per-action worker + inline e2e.sh fix | done | 18/18 dev + 18/18 prod + 7/7 mysql PASS; combined fastapi+react PASS (health on both sides, CORS allowed/denied); gin/go-native rerun with the fixed e2e.sh: dev, prod sqlite and mysql PASS |
 | V1 | S1-S17 | delegated independent verifier (Risk items 1, 3 and 5 named), read-only, baseline fc1e268 | done | all S# PASS except S7: blocker B1 (Spring + Vite React package.json became react). One correction batch: detect.priority; recheck of B1 with the verifier's repro gives spring |
 | T8a | S9 (plantillas parity, kind, 3-step question, frontend db guard, tests/docs/CI in Go) | delegated (context backstop), repo project-guiade | done | Go: make verify OK (staticcheck not installed); zones 619/0; template-check react/vue/fastapi/django-htmx OK; e2e gin+react OK; parity test against Node f20c2b6. Go commits 6ab7c81, 442ffc0, d8eb62f |
-| T8b | S9 (Combine in Go: S16 + S17 CLI follow-ups) | delegated after T8a | pending | |
+| T20 | S18 | delegated with T21 (same writer) | done | STATICCHECK ?= go run …@v0.8.2; `(*options).str` removed; make verify runs staticcheck: OK |
+| T8b | S9 (Combine in Go: S16 + S17 CLI follow-ups + review warnings) | delegated (context backstop), repo project-guiade | done | Go 3e0b0d0: make verify OK; zones 0; combined e2e PASS (health on both sides, CORS); cross-implementation diff with Node: only CLI text + pre-existing differences; review approved (medium) |
+| T21 | S19 | delegated (context backstop), both repos | done | Node verify OK, owners 0; Go make verify OK with staticcheck RUN, zones 0; switch scenario: backend/ gets overlays + 4 warnings; identical settings.json/opencode.json in both CLIs |
 
 ## Log
 
@@ -214,4 +221,18 @@ Selected scope (user choice): "Set base (Recommended)": Python: Django + Flask �
   - The last one is fixed in Node now (warning, no deletion; RED → GREEN).
   - Go template-check.sh: frontend without a database (orchestrator inline).
   - Pre-existing advisory in Go: `(*options).str` unused (staticcheck v0.8.2).
+- **L52** Stop hook in Go: the full range 081186a..d8eb62f (619 files, 25,304 lines). The user granted the review; START returned `lens_context_budget_exceeded` (terminal, no authority created). Coverage of that range:
+  - d8eb62f (code): reviewed and approved (L51);
+  - 6ab7c81 (plantillas): a byte-for-byte copy of Node's plantillas, guarded by the parity test, and Node's stacks have e2e (T7) and V1;
+  - 442ffc0: passive copied guides.
+- **L53** (2026-11-09) User: "sí, fija staticcheck v0.8.2 en el Makefile". This is T20, after T8b.
+- **L54** T8b committed in Go: 3e0b0d0. Review (medium; risk, reliability, resilience) approved and acknowledged (review-ff…; see the hook record). Valid WARNINGs:
+  - R1 combo secret deny is not side-aware;
+  - R3/R4: switching to combined leaves the db overlays at the root.
+  Both apply to Node too, so they become S19/T21 together with T20 (staticcheck).
+  - Go-only decision reported by the writer: a combined project always uses Docker (`--no-docker` with a pair is exit 2).
+- **L55** T21 + T20 OK in both repos.
+  - OpenCode needed no change: its `*` matches `/`, so `*.env` already denies backend/.env.
+  - Gap: an existing `.claude/settings.json` is not edited (config files are created only if missing). Init warns with "!" instead. Pending: the user's decision.
+  - The Go test helper uses `-c maintenance.auto=false`, because detached git maintenance broke the t.TempDir cleanup.
 - **L6** Engram mirror `odd/framework-stacks/tasks`: PENDING. Auto mode blocks `mem_save` because a hook rewrites its input.

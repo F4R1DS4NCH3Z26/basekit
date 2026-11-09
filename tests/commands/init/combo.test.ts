@@ -201,6 +201,90 @@ describe("combined backend + frontend (S16): --stack <backend>+<frontend>", () =
     assert.match(agent, /^ {4}"bash frontend\/\.agents\/skills\/\*": allow$/m);
   });
 
+  it("Claude's deny list also covers each side's secrets, as the allowlist covers its scripts (S19)", () => {
+    const d = scratch();
+    assert.equal(init(d, "--stack", "fastapi+react", "--agents", "claude-code").code, 0);
+    const deny: string[] = JSON.parse(read(d, ".claude/settings.json")).permissions.deny;
+    for (const dir of ["", "backend/", "frontend/"]) {
+      for (const f of [".env", ".env.prod", ".env.local", ".env.production", ".env.*.local"]) assert.ok(deny.includes(`Read(./${dir}${f})`), `Read ${dir}${f}`);
+      for (const f of [".env", ".env.prod", ".env.local", ".env.production"]) assert.ok(deny.includes(`Edit(./${dir}${f})`), `Edit ${dir}${f}`);
+      assert.ok(!deny.includes(`Read(./${dir}.env.*)`) && !deny.includes(`Edit(./${dir}.env.example)`), "the templates stay readable");
+    }
+    assert.equal(new Set(deny).size, deny.length, "no duplicates");
+  });
+
+  it("OpenCode's read and edit rules already deny each side's secrets (S19)", () => {
+    // opencode.ai/docs/permissions: `*` matches zero or more of any character (also `/`), `?` one character,
+    // everything else literally; the last matching rule wins.
+    const decide = (rules: Record<string, string>, path: string) => {
+      let action: string | undefined;
+      for (const [pattern, value] of Object.entries(rules)) {
+        const re = new RegExp(`^${pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".")}$`, "s");
+        if (re.test(path)) action = value;
+      }
+      return action;
+    };
+    const d = scratch();
+    assert.equal(init(d, "--stack", "fastapi+react", "--agents", "opencode").code, 0);
+    const { read: readRules, edit } = JSON.parse(read(d, "opencode.json")).permission;
+    for (const rules of [readRules, edit]) {
+      for (const side of ["backend", "frontend"]) {
+        for (const f of [".env", ".env.prod", ".env.local", ".env.production", ".env.development.local"]) assert.equal(decide(rules, `${side}/${f}`), "deny", `${side}/${f}`);
+        assert.equal(decide(rules, `${side}/.env.example`), "allow", `${side}/.env.example`);
+        assert.equal(decide(rules, `${side}/src/main.py`), "allow");
+      }
+    }
+  });
+
+  it("switching a backend project with a database to combined moves it to backend/ and warns about the root overlays (S19)", () => {
+    const d = scratch();
+    assert.equal(init(d, "--stack", "fastapi", "--db", "postgres", "--redis", "--agents", "claude-code,opencode").code, 0);
+    gitCommitAll(d);
+    const r = init(d, "--stack", "fastapi+react");
+    assert.equal(r.code, 0, r.stderr);
+    assert.match(r.stdout, /infra OK: db=postgres redis=1/);
+    for (const f of ["compose.db.yaml", "compose.redis.yaml", ".make/db.mk"]) {
+      assert.ok(existsSync(join(d, "backend", f)), `missing backend/${f}`);
+      assert.ok(!existsSync(join(d, "frontend", f)), `frontend/${f}`);
+      assert.ok(existsSync(join(d, f)), `root ${f} is not deleted`);
+      assert.match(r.stdout, new RegExp(`^! ${f.replace(/\./g, "\\.")}  \\(queda del stack anterior: la base de datos ahora vive en backend/; bórralo si ya no lo necesitas\\)$`, "m"));
+    }
+    assert.deepEqual(JSON.parse(read(d, ".agents/manifest.json")).options, { db: "postgres", redis: true });
+    assert.match(read(d, "backend/.env.example"), /^DB_PASSWORD=__GENERATE__$/m);
+    assert.match(sh("make", ["-C", "backend", "-n", "dev"], d).stdout, /-f compose\.db\.yaml -f compose\.redis\.yaml/);
+    // settings.json is the user's once created: init keeps it and says it does not deny the side secrets.
+    assert.ok(!JSON.parse(read(d, ".claude/settings.json")).permissions.deny.includes("Read(./backend/.env)"), "settings.json is kept");
+    assert.match(r.stdout, /^! \.claude\/settings\.json  \(ya existe y no niega los secretos de backend\/ ni de frontend\/ \(Read\(\.\/backend\/\.env\)…\): agrégalos a permissions\.deny o bórralo y vuelve a ejecutar init\)$/m);
+
+    // A rerun takes the db from the manifest and does not touch the infrastructure again.
+    gitCommitAll(d);
+    const again = init(d);
+    assert.equal(again.code, 0, again.stderr);
+    assert.doesNotMatch(again.stdout, /infra OK|ejecutaría/);
+  });
+
+  it("--dry-run of that switch shows infra.sh for backend/ but does not run it (S19)", () => {
+    const d = scratch();
+    assert.equal(init(d, "--stack", "fastapi", "--db", "postgres", "--redis").code, 0);
+    gitCommitAll(d);
+    const r = init(d, "--stack", "fastapi+react", "--dry-run");
+    assert.equal(r.code, 0, r.stderr);
+    assert.match(r.stdout, /^· ejecutaría: bash backend\/\.agents\/skills\/infra-setup\/scripts\/infra\.sh --db postgres --redis$/m);
+    assert.doesNotMatch(r.stdout, /infra OK/);
+    assert.ok(!existsSync(join(d, "backend")), "nothing written");
+    assert.equal(sh("git", ["status", "--porcelain"], d).stdout, "");
+  });
+
+  it("a backend without a database switched to combined runs no infra.sh (S19)", () => {
+    const d = scratch();
+    assert.equal(init(d, "--stack", "fastapi").code, 0);
+    gitCommitAll(d);
+    const r = init(d, "--stack", "fastapi+react");
+    assert.equal(r.code, 0, r.stderr);
+    assert.doesNotMatch(r.stdout, /infra OK|ejecutaría|la base de datos ahora vive/);
+    assert.ok(!existsSync(join(d, "backend/compose.db.yaml")));
+  });
+
   it("the side env files are git-ignored (S17)", () => {
     const d = scratch();
     assert.equal(init(d, "--stack", "fastapi+react").code, 0);
@@ -392,5 +476,16 @@ describe("single-stack projects keep their format (S16 regression)", () => {
     assert.ok(!existsSync(join(d, "backend")) && !existsSync(join(d, "frontend")));
     assert.ok(existsSync(join(d, ".agents/roles/data-writer.md")));
     assert.ok(Object.keys(m.files).every((f: string) => f.startsWith(".agents/") || f === "Makefile"), "no side files");
+  });
+
+  it("Claude's deny list of a single stack is unchanged (S19 regression)", () => {
+    const d = scratch();
+    assert.equal(init(d, "--stack", "fastapi", "--agents", "claude-code").code, 0);
+    assert.deepEqual(JSON.parse(read(d, ".claude/settings.json")).permissions.deny, [
+      "Read(./.env)", "Read(./.env.prod)", "Read(./.env.local)", "Read(./.env.production)", "Read(./.env.*.local)",
+      "Edit(./.env)", "Edit(./.env.prod)", "Edit(./.env.local)", "Edit(./.env.production)",
+      "Read(./**/*.pem)", "Read(./**/*.key)", "Bash(make clean:*)", "Bash(git push:*)", "Bash(rm -rf:*)",
+      "Bash(curl:*)", "Bash(wget:*)", "Bash(sudo:*)", "Bash(cat .env:*)",
+    ]);
   });
 });

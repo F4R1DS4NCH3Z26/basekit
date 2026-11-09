@@ -87,6 +87,17 @@ function opencodeAgent(r, zones, parts) {
     ].join("\n");
 }
 const json = (value) => `${JSON.stringify(value, null, 2)}\n`;
+const READ_SECRETS = [".env", ".env.prod", ".env.local", ".env.production", ".env.*.local"];
+const EDIT_SECRETS = [".env", ".env.prod", ".env.local", ".env.production"];
+/**
+ * Claude's deny entries for the secrets of the root and, in a combined project, of each side (S19), as the allowlist
+ * covers each side's scripts. They are listed one by one: `Read(./.env.*)` would also block .env.example (deny wins
+ * over allow).
+ */
+function secretDeny(parts) {
+    const dirs = [...new Set(["", ...parts.filter((p) => p.side).map((p) => inPart(p, ""))])];
+    return dirs.flatMap((dir) => [...READ_SECRETS.map((f) => `Read(./${dir}${f})`), ...EDIT_SECRETS.map((f) => `Edit(./${dir}${f})`)]);
+}
 /**
  * The skill scripts work on the project that holds them (S17): in a combined project the allowed invocations are the
  * side copies, run from the root (`bash backend/.agents/skills/<skill>/scripts/scaffold.sh`), as AGENTS.md documents.
@@ -109,10 +120,8 @@ function claudeSettings(parts) {
                 "Bash(make prod-migrate:*)", `Bash(bash ${inPart(parts[0], INFRA)}:*)`,
                 "Bash(docker:*)", "Bash(npx:*)", "Bash(git commit:*)", "Bash(git checkout:*)",
             ],
-            // Secrets are listed one by one: `Read(./.env.*)` would also block .env.example (deny wins over allow).
             deny: [
-                "Read(./.env)", "Read(./.env.prod)", "Read(./.env.local)", "Read(./.env.production)", "Read(./.env.*.local)",
-                "Edit(./.env)", "Edit(./.env.prod)", "Edit(./.env.local)", "Edit(./.env.production)",
+                ...secretDeny(parts),
                 "Read(./**/*.pem)", "Read(./**/*.key)", "Bash(make clean:*)", "Bash(git push:*)", "Bash(rm -rf:*)",
                 "Bash(curl:*)", "Bash(wget:*)", "Bash(sudo:*)", "Bash(cat .env:*)",
             ],
@@ -122,7 +131,8 @@ function claudeSettings(parts) {
 const opencodeJson = (parts) => json({
     $schema: "https://opencode.ai/config.json",
     permission: {
-        // In OpenCode the last matching rule wins, so *.env.example reopens what *.env.* closes.
+        // In OpenCode the last matching rule wins, so *.env.example reopens what *.env.* closes. `*` matches any character,
+        // `/` included, so these rules also cover backend/.env and frontend/.env.prod (S19).
         read: { "*": "allow", "*.env": "deny", "*.env.*": "deny", "*.env.example": "allow" },
         edit: { "*": "allow", "*.env": "deny", "*.env.*": "deny", "*.env.example": "allow" },
         bash: {
@@ -143,6 +153,18 @@ function claudeMd(project) {
     else
         project.generated("CLAUDE.md", `@AGENTS.md\n\n${cur}`);
 }
+/**
+ * settings.json is the user's once it exists (for example, from before the project was combined): say so when it does
+ * not deny the side secrets (S19), instead of rewriting it.
+ */
+function warnSideSecrets(project, parts) {
+    const sides = parts.filter((p) => p.side).map((p) => inPart(p, ""));
+    const cur = project.read(".claude/settings.json") ?? "";
+    const missing = secretDeny(parts).filter((e) => sides.some((s) => e.includes(`./${s}`)) && !cur.includes(JSON.stringify(e)));
+    if (missing.length === 0)
+        return;
+    project.report("!", ".claude/settings.json", `ya existe y no niega los secretos de ${sides.join(" ni de ")} (${missing[0]}…): agrégalos a permissions.deny o bórralo y vuelve a ejecutar init`);
+}
 /** Generated subagents are rewritten when they differ; config files are created only if missing. */
 export function writeAdapters(project, parts, agents) {
     const roles = readRoles(project, parts);
@@ -150,7 +172,8 @@ export function writeAdapters(project, parts, agents) {
         claudeMd(project);
         for (const r of roles)
             project.generated(`.claude/agents/${r.name}.md`, claudeAgent(r));
-        project.create(".claude/settings.json", claudeSettings(parts));
+        if (project.create(".claude/settings.json", claudeSettings(parts)) === "=")
+            warnSideSecrets(project, parts);
     }
     if (agents.includes("opencode")) {
         for (const r of roles)
