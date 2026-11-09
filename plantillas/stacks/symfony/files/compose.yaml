@@ -1,0 +1,12 @@
+# Base común. Se combina con compose.dev.yaml o compose.prod.yaml (+ compose.db.yaml / compose.redis.yaml). Usa `make`.
+services:
+  app:
+    build:
+      context: .
+    security_opt: ["no-new-privileges:true"]
+  migrate:
+    build:
+      context: .
+    profiles: ["tools"]
+    command: ["php", "bin/console", "doctrine:migrations:migrate", "--no-interaction", "--allow-no-migration"]
+    security_opt: ["no-new-privileges:true"]

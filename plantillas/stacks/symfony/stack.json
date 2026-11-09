@@ -1,0 +1,17 @@
+{
+  "id": "symfony",
+  "name": "PHP · Symfony (API REST) + Doctrine",
+  "language": "PHP",
+  "kind": "backend",
+  "port": 8000,
+  "health": "/health",
+  "detect": { "files": ["symfony.lock"] },
+  "appMarker": "composer.json",
+  "roles": ["data-writer", "app-writer", "http-writer", "qa-writer"],
+  "skills": [
+    ["symfony-scaffold", "Módulo nuevo: estructura + contrato"],
+    ["symfony-patterns", "Antes de escribir cualquier capa; auth en references/auth.md"],
+    ["symfony-verify", "Lo usa `make verify`"]
+  ],
+  "defaultAuth": "access-token"
+}
