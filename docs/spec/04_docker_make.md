@@ -169,7 +169,7 @@ La raíz tiene un `Makefile` propio (`plantillas/core/combo/Makefile`) que no in
 | Objetivo de la raíz | Qué hace |
 |---|---|
 | `help` | Lista los objetivos de la raíz (`make -C <lado> help` muestra los de cada lado) |
-| `dev` / `up` / `build` / `logs` / `prod-build` / `prod-logs` | Los dos lados **en paralelo** (`$(MAKE) -j2 _backend-<obj> _frontend-<obj>`): `logs` sigue los dos a la vez. `logs` y `prod-logs` con `SIDE=backend\|frontend` siguen un solo lado; `S=<servicio>` exige `SIDE` (un servicio como `db` existe en un solo lado, y el otro fallaría): sin `SIDE`, error de make (exit 2) antes de lanzar nada |
+| `dev` / `up` / `build` / `logs` / `prod-build` / `prod-logs` | Los dos lados **en paralelo** (`$(MAKE) -j2 _backend-<obj> _frontend-<obj>`): `logs` sigue los dos a la vez. `logs` y `prod-logs` con `SIDE=backend\|frontend` siguen un solo lado; `S=<servicio>` exige `SIDE` (un servicio como `db` existe en un solo lado, y el otro fallaría): sin `SIDE`, error de make (exit 2) antes de lanzar nada. La excepción es `S=app`, el único servicio de los dos lados, que sigue a ambos |
 | `env` / `doctor` / `down` / `restart` / `ps` / `install` / `test` / `lint` / `verify` / `new-app` / `prod-up` / `prod-down` / `clean` / `fix-perms` | Backend y luego frontend; el primer fallo corta |
 | `migrate` / `migration NAME=x` / `db-shell` / `prod-migrate` | Solo el backend (el frontend no tiene base de datos) |
 

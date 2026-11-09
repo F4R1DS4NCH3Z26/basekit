@@ -224,6 +224,12 @@ describe("combined backend + frontend (S16): --stack <backend>+<frontend>", () =
     assert.match(noSide.stderr, /S=db .*SIDE=backend o SIDE=frontend/);
     assert.doesNotMatch(noSide.stdout, /docker compose/);
 
+    // `app` exists on both sides, so S=app keeps following both, as it did before SIDE existed.
+    const app = sh("make", ["-n", "logs", "S=app"], d);
+    assert.equal(app.code, 0, app.stderr);
+    assert.match(app.stdout, /-p backend-dev-\d+ .*logs -f --tail=100 app$/m);
+    assert.match(app.stdout, /-p frontend-dev-\d+ .*logs -f --tail=100 app$/m);
+
     const db = sh("make", ["-n", "logs", "S=db", "SIDE=backend"], d);
     assert.equal(db.code, 0, db.stderr);
     assert.match(db.stdout, /-p backend-dev-\d+ .*logs -f --tail=100 db$/m);

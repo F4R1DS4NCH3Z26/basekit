@@ -166,4 +166,7 @@ Selected scope (user choice): "Set base (Recommended)": Python: Django + Flask Â
   - symfony CORS without nelmio (its own subscriber).
   - fastapi pinned exactly.
   - T19c inline: OpenCode allowlist `bash <side>/.agents/skills/*` in combined projects.
+- **L42** T19 committed: f63c351 (stacks) + 5214b9e (CLI). Native review of d08eda1..HEAD refused for budget (126 files, 2,027 lines). Following the user's earlier criterion (L35), only 5214b9e was reviewed: approved and acknowledged (review-0e3dbd9619ebeaa0).
+  - The scaffold-from-root WARNINGs are false positives: f63c351, outside the candidate, already removed `show-toplevel` from every stack script (grep: 0).
+  - R3-combo-logs-shared-service-regression is valid: `S=app` exists on both sides. Fixed inline: RED, then GREEN in combo.test; help text and spec 04 updated.
 - **L6** Engram mirror `odd/framework-stacks/tasks`: PENDING. Auto mode blocks `mem_save` because a hook rewrites its input.
