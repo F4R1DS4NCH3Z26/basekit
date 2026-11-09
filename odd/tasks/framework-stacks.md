@@ -79,7 +79,7 @@ Selected scope (user choice): "Set base (Recommended)": Python: Django + Flask Â
 | T19a | S17 (src, core, skills/infra-setup, CI, tests, docs/spec) | delegated (parallel writer A) | done | verify.sh 260 pass / 1 visible skip; owners 127/0; RED observed for the stale db, frontend migration, logs S=db and side infra.sh; differential vs d08eda1: only the expected differences |
 | T19b | S17 (plantillas/stacks/**, docs/stacks/**) | delegated (parallel writer B) | done | init 18 stacks + 2 combined OK; owners 0 in all; host: fastapi FK + root fixtures OK, flask FK fix, django pins verify OK, express/node-native ESLint 10 + CORS OK; PHP not run (no PHP/Docker) |
 | T19c | S17 (OpenCode allowlist for side scripts) | inline | done | RED then GREEN in combo.test; single-stack opencode.json unchanged; verify.sh OK; owners 128/0 |
-| T7 | S2-S6 | per-action worker (Docker e2e per stack, run one at a time) | pending | |
+| T7 | S2-S6, S10-S16 | per-action worker + inline e2e.sh fix | done | 18/18 dev + 18/18 prod + 7/7 mysql PASS; combined fastapi+react PASS (health on both sides, CORS allowed/denied); gin/go-native rerun with the fixed e2e.sh: dev, prod sqlite and mysql PASS |
 | T8 | S9 | after T6b: implement in basekit-go (route decided when it starts) | pending | |
 
 ## Log
@@ -169,4 +169,16 @@ Selected scope (user choice): "Set base (Recommended)": Python: Django + Flask Â
 - **L42** T19 committed: f63c351 (stacks) + 5214b9e (CLI). Native review of d08eda1..HEAD refused for budget (126 files, 2,027 lines). Following the user's earlier criterion (L35), only 5214b9e was reviewed: approved and acknowledged (review-0e3dbd9619ebeaa0).
   - The scaffold-from-root WARNINGs are false positives: f63c351, outside the candidate, already removed `show-toplevel` from every stack script (grep: 0).
   - R3-combo-logs-shared-service-regression is valid: `S=app` exists on both sides. Fixed inline: RED, then GREEN in combo.test; help text and spec 04 updated.
+- **L43** 0e5ec1d (logs S=app): assess medium, `review_due` false, `under_budget` (22 lines). It stays pending in the slice.
+- **L44** (2026-11-09) User: "hazlo ya esta activo" (Docker running: 29.9.2, 10 CPU, 8 GB). T7 launched.
+- **L45** T7 fixes in the stacks:
+  - nestjs on Node 24: npm 10 fails on Nest 12 with "edgesOut".
+  - symfony `setup.php` decodes composer.json as objects ("require-dev": {}).
+  - php-native: phpunit 13.3.6, because 13.4.0â€“13.4.3 has advisory PKSA-qhjm-rpqc-qkn6 and 13.4.4 is only 13 days old. It can move to 13.4.4 from 2026-11-10.
+- **L46** e2e.sh fixed inline (qa-writer zone):
+  - The health path falls back to stack.json `health` when the HEALTHCHECK has no URL (`|| true` under pipefail).
+  - The SQLite write check runs in a throwaway alpine container with the app's volumes and uid (named users resolved with `docker exec id`), because `scratch` images have no shell.
+  - Regression checked: fastapi, django, gin and go-native prod sqlite, react prod.
+  - One transient network EOF from proxy.golang.org, which passed on retry.
+  - Docker build cache: 27 GB, not pruned.
 - **L6** Engram mirror `odd/framework-stacks/tasks`: PENDING. Auto mode blocks `mem_save` because a hook rewrites its input.

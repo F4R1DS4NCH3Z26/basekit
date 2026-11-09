@@ -24,6 +24,7 @@ tpl="$repo/plantillas/stacks/$stack"
 [ -f "$repo/dist/src/cli.js" ] || { echo "Falta dist/: ejecuta npm run compile" >&2; exit 2; }
 
 port_of_stack() { node -p 'require(process.argv[1]).port' "$tpl/stack.json"; }
+health_of_stack() { node -p 'require(process.argv[1]).health || "/"' "$tpl/stack.json"; }
 
 work="$(mktemp -d)"
 app="$work/e2e-$stack-$env"   # unique compose project name, so runs can go in parallel
@@ -59,15 +60,32 @@ else
   make dev
 fi
 
-# The healthcheck path comes from the stack's own Dockerfile HEALTHCHECK, so this script stays stack-agnostic.
-path="$(grep -oE 'http://127\.0\.0\.1:[0-9]+/[A-Za-z0-9/_.-]*' "$tpl/files/Dockerfile" | head -1 | sed -E 's#^http://127\.0\.0\.1:[0-9]+##')"
+# The healthcheck path comes from the stack's own Dockerfile HEALTHCHECK, so this script stays stack-agnostic. A
+# HEALTHCHECK without a URL (a `scratch` binary checking itself) falls back to stack.json's health; `|| true` because
+# under pipefail a grep that matches nothing would end the script without a message.
+path="$(grep -oE 'http://127\.0\.0\.1:[0-9]+/[A-Za-z0-9/_.-]*' "$tpl/files/Dockerfile" | head -1 | sed -E 's#^http://127\.0\.0\.1:[0-9]+##' || true)"
 port="$(sed -n 's/^APP_PORT=//p' .env.example | head -1)"
-url="http://127.0.0.1:${port:-$(port_of_stack)}${path:-/}"
+url="http://127.0.0.1:${port:-$(port_of_stack)}${path:-$(health_of_stack)}"
+
+# With the SQLite overlay the app (non-root in prod) must be able to write its database directory. The check runs in a
+# throwaway container with the app's user and volumes: the app image may have no shell (`scratch`).
+can_write_data() {
+  local cid user
+  cid="$(compose ps -q app)"
+  [ -n "$cid" ] || return 1
+  user="$(docker inspect -f '{{.Config.User}}' "$cid")"
+  # A named user (USER app) only exists in the app image's passwd: resolve it there. `scratch` images use numeric ids.
+  case "$user" in
+    "" | [0-9]* ) ;;
+    *) user="$(docker exec "$cid" id -u </dev/null):$(docker exec "$cid" id -g </dev/null)" ;;
+  esac
+  docker run --rm ${user:+--user "$user"} --volumes-from "$cid" alpine:3.22 \
+    sh -c 'touch /app/data/.write-test && rm /app/data/.write-test' </dev/null
+}
 
 for _ in $(seq 1 90); do
   if curl -fsS -o /dev/null "$url"; then
-    # With the SQLite overlay the app (non-root in prod) must be able to write its database directory.
-    if [ "$db" = sqlite ] && ! compose exec -T app sh -c 'touch /app/data/.write-test && rm /app/data/.write-test'; then
+    if [ "$db" = sqlite ] && ! can_write_data; then
       echo "FALLO: $stack ($env) no puede escribir en /app/data" >&2
       exit 1
     fi
