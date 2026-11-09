@@ -23,6 +23,7 @@ export function loadStacks(dir = join(TEMPLATES, "stacks")) {
             s.health.startsWith("/") &&
             Number.isInteger(s.port) &&
             typeof s.detect === "object" &&
+            (s.detect.priority === undefined || Number.isInteger(s.detect.priority)) &&
             Array.isArray(s.roles) &&
             Array.isArray(s.skills) &&
             s.skills.every((r) => Array.isArray(r) && r.length === 2);
@@ -45,9 +46,16 @@ export function findStack(stacks, id) {
         throw new UsageError(`--stack '${id}' no existe. Disponibles: ${stacks.map((x) => x.id).join(", ")}`);
     return s;
 }
-/** Spec 02 §6: any of detect.files exists, or detect.manifest exists and contains detect.contains. First match wins. */
+const DEFAULT_PRIORITY = 50;
+/**
+ * Spec 02 §6: any of detect.files exists, or detect.manifest exists and contains detect.contains. Stacks are tried by
+ * detect.priority, then by id, and the first match wins: a project that carries the markers of two stacks (Spring Boot
+ * with a Vite React package.json) goes to the one with the stronger signal, whatever their ids.
+ */
 export function detectStack(stacks, project) {
-    return stacks.find((s) => {
+    const rank = (s) => s.detect.priority ?? DEFAULT_PRIORITY;
+    const ordered = [...stacks].sort((a, b) => rank(a) - rank(b) || a.id.localeCompare(b.id));
+    return ordered.find((s) => {
         if ((s.detect.files ?? []).some((f) => project.exists(f)))
             return true;
         const { manifest, contains } = s.detect;

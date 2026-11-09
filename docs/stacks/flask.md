@@ -2,7 +2,7 @@
 
 Plantillas: `plantillas/stacks/flask/`. Etiqueta en `init`: «Python · Flask + SQLAlchemy 2 (API REST ligera)». Auth por defecto: **JWT propio** (access + refresh rotado). Puerto: 8000. Healthcheck: `/health`.
 
-**Detección**: `pyproject.toml` que contiene `flask` (en minúsculas, como lo escribe el esqueleto). Los stacks se prueban en orden de id y `fastapi` va antes que `flask`: un proyecto que declara `fastapi` sigue detectándose como FastAPI.
+**Detección**: `pyproject.toml` que contiene `flask` (en minúsculas, como lo escribe el esqueleto). Los stacks se prueban por `detect.priority` y luego por id: `fastapi` (10) va antes que `flask` (30): un proyecto que declara `fastapi` sigue detectándose como FastAPI.
 
 ## Arquitectura (módulos por entidad)
 

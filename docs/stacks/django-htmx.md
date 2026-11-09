@@ -4,7 +4,7 @@ Plantillas: `plantillas/stacks/django-htmx/`. Tipo de app: **fullstack integrado
 
 ## Detección y esqueleto
 
-- **Detección**: `detect: {}`. Nunca se autodetecta: un proyecto con `manage.py` lo toma `django` (va antes en orden de id), y estrechar `django` cambiaría proyectos que ya existen (S7). Se elige con la pregunta de `init` (Tipo → Lenguaje → Template) o con `--stack django-htmx`.
+- **Detección**: `detect: {}`. Nunca se autodetecta: un proyecto con `manage.py` lo toma `django`, y estrechar `django` cambiaría proyectos que ya existen (S7). Se elige con la pregunta de `init` (Tipo → Lenguaje → Template) o con `--stack django-htmx`.
 - **`appMarker`: `uv.lock`**. Si falta, el CLI copia `starter/` sin sobrescribir nada y avisa que falta `make new-app`, que solo genera `uv.lock` con uv dentro de Docker. Con `uv.lock` presente, `make new-app` no hace nada y no llama a Docker.
 - **El esqueleto** (`starter/`):
   - `manage.py` y `pyproject.toml` con versiones exactas (≥ 14 días): `django==5.2.18`, `django-htmx==1.29.0` (`request.htmx`), `whitenoise==6.12.0`, `gunicorn==26.2.0`, `psycopg[binary]==3.3.6`, `pymysql==1.2.3`, `redis==8.1.0`, `django-stubs-ext==5.2.9`. Herramientas: ruff (reglas `S` de seguridad y `DJ`), mypy strict con `django-stubs[compatible-mypy]==5.2.9` (exige `mypy<1.20`, por eso `mypy==1.19.1`) y `pytest-django==4.14.0`.

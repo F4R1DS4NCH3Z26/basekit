@@ -69,6 +69,13 @@ describe("stack detection with every stack (S7)", () => {
     ["symfony.lock is symfony", { "symfony.lock": "{}\n", "composer.json": '{"require":{"symfony/framework-bundle":"7.*"}}\n' }, "symfony"],
     ["a Gin go.mod is gin", { "go.mod": "module app\n\ngo 1.27\n\nrequire github.com/gin-gonic/gin v1.11.0\n" }, "gin"],
     ["a Spring Boot pom.xml is spring", { "pom.xml": "<project><parent><artifactId>spring-boot-starter-parent</artifactId></parent></project>\n" }, "spring"],
+    // detect.priority: a stack that existed before (10) beats a new one whose marker the project also carries.
+    ["a Spring Boot project with a Vite React package.json stays spring", { "pom.xml": "<project><parent><artifactId>spring-boot-starter-parent</artifactId></parent></project>\n", "package.json": JSON.stringify({ devDependencies: { "@vitejs/plugin-react": "5", vite: "7" } }) }, "spring"],
+    ["a Next.js project with a nest-cli.json stays nextjs", { "next.config.ts": "export default {};\n", "nest-cli.json": "{}\n", "package.json": pkg({ next: "16" }) }, "nextjs"],
+    ["a FastAPI project with a manage.py stays fastapi", { "manage.py": "", "pyproject.toml": '[project]\ndependencies = ["fastapi>=0.115"]\n' }, "fastapi"],
+    ["a Laravel project with a Gin go.mod stays laravel", { artisan: "", "go.mod": "module app\n\nrequire github.com/gin-gonic/gin v1.11.0\n" }, "laravel"],
+    // A framework's own marker file (20) beats a generic package.json match (30).
+    ["a Symfony project with a Vite React package.json is symfony", { "symfony.lock": "{}\n", "package.json": JSON.stringify({ devDependencies: { "@vitejs/plugin-react": "5" } }) }, "symfony"],
   ];
   for (const [title, files, expected] of cases) {
     it(title, () => {

@@ -2,7 +2,7 @@
 
 Plantillas: `plantillas/stacks/react/`. Tipo: **frontend** (`kind: "frontend"`). Puerto: 5173. Healthcheck: `/health`. Sin base de datos ni migraciones.
 
-Detección: `package.json` contiene `"@vitejs/plugin-react`. Los stacks se prueban en orden de id y gana el primero: `nestjs` y `nextjs` van antes y se detectan por `nest-cli.json` y `next.config.*`. Un proyecto Laravel con Vite se detecta antes como `laravel`. Los proyectos Vite de Vue, Svelte o Symfony no usan ese plugin, así que no se detectan como `react`.
+Detección: `package.json` contiene `"@vitejs/plugin-react`. Los stacks se prueban por `detect.priority` y luego por id, y gana el primero (`react` tiene prioridad 30, detrás de los stacks con archivo propio): `nestjs` y `nextjs` van antes y se detectan por `nest-cli.json` y `next.config.*`. Un proyecto Laravel con Vite se detecta antes como `laravel`. Los proyectos Vite de Vue, Svelte o Symfony no usan ese plugin, así que no se detectan como `react`.
 
 ## Arquitectura (por features)
 

@@ -6,7 +6,7 @@ Express 5 + TypeScript strict (ESM, `module: NodeNext`) + Zod para validar + Pri
 
 ## Elección (sin detección automática)
 
-`express` **nunca se detecta solo**: su `detect` está vacío. Se elige en la pregunta de `init` o con `--stack express`. Los stacks se prueban en orden de id y `express` va antes de `nestjs` y `nextjs`: buscar `"express"` en `package.json` les robaría esos proyectos (NestJS trae `@nestjs/platform-express` y muchos proyectos Next.js usan Express).
+`express` **nunca se detecta solo**: su `detect` está vacío. Se elige en la pregunta de `init` o con `--stack express`. Los stacks se prueban por `detect.priority` y luego por id; con una regla de texto, `express` se adelantaría a `nestjs` y `nextjs`: buscar `"express"` en `package.json` les robaría esos proyectos (NestJS trae `@nestjs/platform-express` y muchos proyectos Next.js usan Express).
 
 ## Base de datos: Prisma 7, igual que NestJS
 

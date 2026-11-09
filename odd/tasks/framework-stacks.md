@@ -80,7 +80,9 @@ Selected scope (user choice): "Set base (Recommended)": Python: Django + Flask �
 | T19b | S17 (plantillas/stacks/**, docs/stacks/**) | delegated (parallel writer B) | done | init 18 stacks + 2 combined OK; owners 0 in all; host: fastapi FK + root fixtures OK, flask FK fix, django pins verify OK, express/node-native ESLint 10 + CORS OK; PHP not run (no PHP/Docker) |
 | T19c | S17 (OpenCode allowlist for side scripts) | inline | done | RED then GREEN in combo.test; single-stack opencode.json unchanged; verify.sh OK; owners 128/0 |
 | T7 | S2-S6, S10-S16 | per-action worker + inline e2e.sh fix | done | 18/18 dev + 18/18 prod + 7/7 mysql PASS; combined fastapi+react PASS (health on both sides, CORS allowed/denied); gin/go-native rerun with the fixed e2e.sh: dev, prod sqlite and mysql PASS |
-| T8 | S9 | after T6b: implement in basekit-go (route decided when it starts) | pending | |
+| V1 | S1-S17 | delegated independent verifier (Risk items 1, 3 and 5 named), read-only, baseline fc1e268 | done | all S# PASS except S7: blocker B1 (Spring + Vite React package.json became react). One correction batch: detect.priority; recheck of B1 with the verifier's repro gives spring |
+| T8a | S9 (plantillas parity, kind, 3-step question, frontend db guard, tests/docs/CI in Go) | delegated (context backstop), repo project-guiade | running | |
+| T8b | S9 (Combine in Go: S16 + S17 CLI follow-ups) | delegated after T8a | pending | |
 
 ## Log
 
@@ -185,4 +187,15 @@ Selected scope (user choice): "Set base (Recommended)": Python: Django + Flask �
   - WARNINGs R3-001 and R4 were valid: the write check no longer used the real process, and a failed pull looked like a permission error.
   - Fix: `compose exec` first (as before); a throwaway container only when the image has no `sh`; a failed pull gets its own message.
   - e2e PASS: fastapi, gin, go-native and express on prod sqlite; fastapi dev postgres.
+- **L48** Node closed at 3b45fed. V1 (independent verifier) and T8a (Go) were launched in parallel; they work on different repos.
+- **L49** V1 found blocker B1 (S7): detection by id lets a new stack take over projects that also carry its marker. Correction (one batch):
+  - `detect.priority` in stack.json: 10 for the original stacks (fastapi, laravel, nextjs, spring), 20 for stacks with their own marker file (django, symfony, nestjs, gin), 30 for generic manifest matches (flask, react, vue); then id order.
+  - 5 regression tests (RED → GREEN). Spec 02 §6 and docs/stacks updated.
+  - Recheck with the verifier's repro: Spring.
+  - Also covers A1 (nextjs + nest-cli → nextjs) and A2 (symfony + Vite React → symfony).
+  - Cheap advisories fixed: A3 (project-bootstrap points to the backend's infra.sh in a combined project) and A6 (`basekit init` hints say "en la raíz del proyecto").
+  - Left as advisories:
+    - A4: `--stack ' fastapi '` is accepted by trim;
+    - A5: the mermaid parentheses were already in the baseline;
+    - A7: the labels repeat the language.
 - **L6** Engram mirror `odd/framework-stacks/tasks`: PENDING. Auto mode blocks `mem_save` because a hook rewrites its input.

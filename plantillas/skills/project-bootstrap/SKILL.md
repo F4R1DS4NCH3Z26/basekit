@@ -39,6 +39,8 @@ bash .agents/skills/infra-setup/scripts/infra.sh --db <postgres|mysql|sqlite|non
 make env && make dev        # debe levantar y responder en http://localhost:<PORT>
 ```
 
+En un proyecto combinado (`backend/` + `frontend/`), la base de datos es del backend: usa su copia, `bash backend/.agents/skills/infra-setup/scripts/infra.sh …`, desde la raíz.
+
 Si `make dev` falla, corrige la configuración antes de seguir. Docker y el `Makefile` son tu zona como orquestador. Si Docker no está disponible en tu entorno, dile al usuario qué comando ejecutar y espera su resultado.
 
 ## Paso 4 · Autenticación

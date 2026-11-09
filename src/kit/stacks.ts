@@ -21,7 +21,8 @@ export interface Stack {
   port: number;
   /** Path of the health endpoint (`/health`, `/up`…). */
   health: string;
-  detect: { files?: string[]; manifest?: string; contains?: string };
+  /** `priority`: lower is tried first (default DEFAULT_PRIORITY); ties keep the id order. */
+  detect: { files?: string[]; manifest?: string; contains?: string; priority?: number };
   appMarker?: string;
   roles: string[];
   skills: [string, string][];
@@ -49,6 +50,7 @@ export function loadStacks(dir = join(TEMPLATES, "stacks")): Stack[] {
         s.health.startsWith("/") &&
         Number.isInteger(s.port) &&
         typeof s.detect === "object" &&
+        (s.detect.priority === undefined || Number.isInteger(s.detect.priority)) &&
         Array.isArray(s.roles) &&
         Array.isArray(s.skills) &&
         s.skills.every((r) => Array.isArray(r) && r.length === 2);
@@ -73,9 +75,17 @@ export function findStack(stacks: Stack[], id: string): Stack {
   return s;
 }
 
-/** Spec 02 §6: any of detect.files exists, or detect.manifest exists and contains detect.contains. First match wins. */
+const DEFAULT_PRIORITY = 50;
+
+/**
+ * Spec 02 §6: any of detect.files exists, or detect.manifest exists and contains detect.contains. Stacks are tried by
+ * detect.priority, then by id, and the first match wins: a project that carries the markers of two stacks (Spring Boot
+ * with a Vite React package.json) goes to the one with the stronger signal, whatever their ids.
+ */
 export function detectStack(stacks: Stack[], project: Project): Stack | undefined {
-  return stacks.find((s) => {
+  const rank = (s: Stack) => s.detect.priority ?? DEFAULT_PRIORITY;
+  const ordered = [...stacks].sort((a, b) => rank(a) - rank(b) || a.id.localeCompare(b.id));
+  return ordered.find((s) => {
     if ((s.detect.files ?? []).some((f) => project.exists(f))) return true;
     const { manifest, contains } = s.detect;
     if (!manifest || !contains || !project.isFile(manifest)) return false;

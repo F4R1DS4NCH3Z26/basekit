@@ -14,7 +14,7 @@ UV_IMAGE    ?= ghcr.io/astral-sh/uv:0.13.4-python3.12-trixie-slim
 # The guard and the work live in one shell decision: an `exit 0` on its own recipe line would only end that line.
 new-app: ## Genera uv.lock en Docker (el esqueleto Django lo dejó basekit)
 	@if [ -f uv.lock ]; then echo "Ya existe uv.lock; nada que hacer"; \
-	elif [ ! -f pyproject.toml ] || [ ! -f manage.py ]; then echo "Falta pyproject.toml o manage.py (ejecuta npx --no-install basekit init)"; exit 1; \
+	elif [ ! -f pyproject.toml ] || [ ! -f manage.py ]; then echo "Falta pyproject.toml o manage.py (ejecuta npx --no-install basekit init en la raíz del proyecto)"; exit 1; \
 	else $(MAKE) --no-print-directory _new-app; fi
 
 _new-app:

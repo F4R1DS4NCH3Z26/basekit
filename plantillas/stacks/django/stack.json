@@ -5,7 +5,7 @@
   "kind": "backend",
   "port": 8000,
   "health": "/health",
-  "detect": { "files": ["manage.py"] },
+  "detect": { "files": ["manage.py"], "priority": 20 },
   "appMarker": "uv.lock",
   "roles": ["data-writer", "logic-writer", "web-writer", "qa-writer"],
   "skills": [

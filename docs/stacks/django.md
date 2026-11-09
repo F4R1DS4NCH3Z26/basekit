@@ -4,7 +4,7 @@ Plantillas: `plantillas/stacks/django/`. Tipo de app: **API REST + admin de Djan
 
 ## Detección y esqueleto
 
-- **Detección**: `detect.files = ["manage.py"]`. Sin `manifest`/`contains`: la detección es una búsqueda de subcadena sensible a mayúsculas y los stacks se prueban en orden de id, y `django` va antes que `fastapi`.
+- **Detección**: `detect.files = ["manage.py"]`. Sin `manifest`/`contains`: la detección es una búsqueda de subcadena sensible a mayúsculas y los stacks se prueban por `detect.priority` (django: 20) y luego por id, y `django` va antes que `fastapi`.
 - **`appMarker`: `uv.lock`**. Si falta, el CLI copia `starter/` sin sobrescribir nada y avisa que falta `make new-app`, que solo genera `uv.lock` con uv dentro de Docker. Con `uv.lock` presente, `make new-app` no hace nada y no llama a Docker.
 - **El esqueleto** (`starter/`):
   - `manage.py` y `pyproject.toml`: Django 5.2 LTS, DRF, `django-cors-headers`, WhiteNoise, gunicorn, `psycopg[binary]`, PyMySQL y `redis`. Herramientas: ruff (reglas `S` de seguridad y `DJ`), mypy strict con `django-stubs` y `djangorestframework-stubs`, y pytest-django. Todas con versión exacta (regla del repo): las que resuelve `uv lock` con `--exclude-newer` de hace 14 días (2026-10-26), p. ej. `django==5.2.18`, `djangorestframework==3.18.3`, `mypy==1.19.1` (django-stubs 5.2.x exige mypy < 1.20).

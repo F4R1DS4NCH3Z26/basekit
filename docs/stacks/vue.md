@@ -2,7 +2,7 @@
 
 Plantillas: `plantillas/stacks/vue/`. Tipo: **frontend** (`kind: "frontend"`). Puerto: 5173. Healthcheck: `/health`. Sin base de datos ni migraciones. Es el espejo de [`react`](react.md): mismo Docker, mismo nginx, mismos roles y la misma forma de `make new-app`; cambian el framework y sus herramientas.
 
-Detección: `package.json` contiene `"vue"` (con comillas, como clave de dependencia: no coincide con `@vitejs/plugin-vue` ni con `vue-router`). Los stacks se prueban en orden de id y gana el primero; `vue` es el último:
+Detección: `package.json` contiene `"vue"` (con comillas, como clave de dependencia: no coincide con `@vitejs/plugin-vue` ni con `vue-router`). Los stacks se prueban por `detect.priority` y luego por id, y gana el primero (`vue` tiene prioridad 30); `vue` es el último:
 - `laravel` (`artisan`), `nestjs` (`nest-cli.json`) y `nextjs` (`next.config.*`) van antes y un proyecto Vue no tiene esos archivos. Un proyecto Laravel con Vue se detecta como `laravel`.
 - `react` va antes y hoy se detecta por `vite.config.ts`, que un proyecto Vue + Vite también tiene: mientras esa regla no se acote a `@vitejs/plugin-react` (pendiente del core), un proyecto Vue con `vite.config.ts` se detecta como `react`. Elige `--stack vue` en ese caso.
 - Un proyecto Nuxt también lista `"vue"` y se detecta como `vue`: ningún stack detecta Nuxt. Se acepta; el kit asume una SPA con Vite.

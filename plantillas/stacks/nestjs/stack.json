@@ -5,7 +5,7 @@
   "kind": "backend",
   "port": 3000,
   "health": "/health",
-  "detect": { "files": ["nest-cli.json"] },
+  "detect": { "files": ["nest-cli.json"], "priority": 20 },
   "appMarker": "package.json",
   "roles": ["data-writer", "logic-writer", "web-writer", "qa-writer"],
   "skills": [

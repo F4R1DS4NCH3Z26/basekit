@@ -5,7 +5,7 @@
   "kind": "backend",
   "port": 8000,
   "health": "/health",
-  "detect": { "files": ["symfony.lock"] },
+  "detect": { "files": ["symfony.lock"], "priority": 20 },
   "appMarker": "composer.json",
   "roles": ["data-writer", "app-writer", "http-writer", "qa-writer"],
   "skills": [

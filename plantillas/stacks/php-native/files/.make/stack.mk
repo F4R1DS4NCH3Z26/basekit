@@ -17,7 +17,7 @@ export M PKGS
 # The guard and the work live in one shell decision: an `exit 0` on its own recipe line would only end that line.
 new-app: ## Genera composer.lock en Docker (el esqueleto PHP nativo lo dejó basekit)
 	@if [ -f composer.lock ]; then echo "Ya existe composer.lock; nada que hacer"; \
-	elif [ ! -f composer.json ] || [ ! -f public/index.php ]; then echo "Falta composer.json o public/index.php (ejecuta npx --no-install basekit init)"; exit 1; \
+	elif [ ! -f composer.json ] || [ ! -f public/index.php ]; then echo "Falta composer.json o public/index.php (ejecuta npx --no-install basekit init en la raíz del proyecto)"; exit 1; \
 	else $(MAKE) --no-print-directory _new-app; fi
 
 # COMPOSER_AUTH is forwarded by name, so a GitHub token never shows up on the command line.

@@ -5,7 +5,7 @@
   "kind": "frontend",
   "port": 5173,
   "health": "/health",
-  "detect": { "files": [], "manifest": "package.json", "contains": "\"@vitejs/plugin-react" },
+  "detect": { "files": [], "manifest": "package.json", "contains": "\"@vitejs/plugin-react", "priority": 30 },
   "appMarker": "package.json",
   "roles": ["logic-writer", "ui-writer", "qa-writer"],
   "skills": [

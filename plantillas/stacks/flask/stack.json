@@ -5,7 +5,7 @@
   "kind": "backend",
   "port": 8000,
   "health": "/health",
-  "detect": { "files": [], "manifest": "pyproject.toml", "contains": "flask" },
+  "detect": { "files": [], "manifest": "pyproject.toml", "contains": "flask", "priority": 30 },
   "appMarker": "pyproject.toml",
   "roles": ["data-writer", "logic-writer", "web-writer", "qa-writer"],
   "skills": [

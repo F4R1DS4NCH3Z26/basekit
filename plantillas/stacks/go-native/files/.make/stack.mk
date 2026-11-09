@@ -13,7 +13,7 @@ export PKGS
 
 # The guard and the work live in one shell decision: an `exit 0` on its own recipe line would only end that line.
 new-app: ## Genera go.sum en Docker con go mod tidy (el esqueleto lo dejó basekit)
-	@if [ ! -f go.mod ]; then echo "Falta go.mod (ejecuta npx --no-install basekit init)"; exit 1; \
+	@if [ ! -f go.mod ]; then echo "Falta go.mod (ejecuta npx --no-install basekit init en la raíz del proyecto)"; exit 1; \
 	elif [ -f go.sum ]; then echo "Ya existe go.sum; nada que hacer"; \
 	else $(MAKE) --no-print-directory _new-app; fi
 
