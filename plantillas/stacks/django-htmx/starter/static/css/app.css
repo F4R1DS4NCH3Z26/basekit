@@ -1,0 +1,10 @@
+/* App styles. No inline styles in templates: the prod CSP only allows style-src 'self'. */
+body { font-family: system-ui, sans-serif; margin: 0 auto; max-width: 56rem; padding: 0 1rem; }
+.topbar { display: flex; gap: 1rem; align-items: center; padding: 1rem 0; border-bottom: 1px solid #ddd; }
+.topbar form { margin-left: auto; }
+.item { display: flex; gap: 1rem; align-items: center; padding: .5rem 0; border-bottom: 1px solid #eee; }
+.pager { display: flex; gap: 1rem; padding: 1rem 0; }
+.errorlist { color: #b00020; margin: .25rem 0; padding-left: 1rem; }
+/* htmx-config sets includeIndicatorStyles=false (CSP): the indicator rules live here. */
+.htmx-indicator { opacity: 0; transition: opacity 200ms ease-in; }
+.htmx-request .htmx-indicator, .htmx-request.htmx-indicator { opacity: 1; }

@@ -1,0 +1,17 @@
+{
+  "id": "django-htmx",
+  "name": "Python · Django + HTMX (fullstack, plantillas del servidor)",
+  "language": "Python",
+  "kind": "fullstack",
+  "port": 8000,
+  "health": "/health",
+  "detect": {},
+  "appMarker": "uv.lock",
+  "roles": ["data-writer", "logic-writer", "views-writer", "qa-writer"],
+  "skills": [
+    ["djhtmx-scaffold", "App nueva: estructura + contrato"],
+    ["djhtmx-patterns", "Antes de escribir cualquier capa; auth en references/auth.md"],
+    ["djhtmx-verify", "Lo usa `make verify`"]
+  ],
+  "defaultAuth": "session"
+}
