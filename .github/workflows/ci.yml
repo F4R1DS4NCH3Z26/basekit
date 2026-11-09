@@ -1,8 +1,11 @@
 name: ci
 
 on:
+  # Same triggers as basekit-go: a branch with an open PR runs once (pull_request), not twice.
   push:
+    branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
