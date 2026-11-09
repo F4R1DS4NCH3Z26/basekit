@@ -56,6 +56,7 @@ Objective: `init` asks the language and then the framework, with 5 new stacks (d
   - Combined projects: Claude's deny list must cover the side secrets (`backend/.env`, `backend/.env.prod`, and so on), just as the allowlist covers the side scripts.
   - Switching an existing backend project that has a database to combined, with the db carried from the manifest, must leave `backend/` with its overlays (infra.sh runs for the backend) and warn about the leftover overlays at the root.
   - Go: add the deny entries Node already has (`.env.local`, `.env.production`, `.env.*.local`).
+- **S20** "sí, que init agregue los bloqueos solo". Both repos: in a combined project, when an existing `.claude/settings.json` lacks the side secret deny entries, init appends only the missing entries to `permissions.deny`. Every other key, value and the order of the existing entries stay untouched, and the result is reported with `~`. An unparseable settings.json is left as is, with the current warning. Single-stack projects and a settings.json that already has the entries do not change (the run is idempotent).
 - **S9** Go parity: basekit-go (`~/Documents/project-guiade`) gets the same feature once Node is done (L31): byte-identical `plantillas/` (except the CLI text), the Tipo → Lenguaje → Framework question, frontend without DB, Combine, tests, docs and CI.
 
 Selected scope (user choice): "Set base (Recommended)": Python: Django + Flask · TypeScript: NestJS + Express · PHP: Symfony.
@@ -84,6 +85,7 @@ Selected scope (user choice): "Set base (Recommended)": Python: Django + Flask �
 | T19a | S17 (src, core, skills/infra-setup, CI, tests, docs/spec) | delegated (parallel writer A) | done | verify.sh 260 pass / 1 visible skip; owners 127/0; RED observed for the stale db, frontend migration, logs S=db and side infra.sh; differential vs d08eda1: only the expected differences |
 | T19b | S17 (plantillas/stacks/**, docs/stacks/**) | delegated (parallel writer B) | done | init 18 stacks + 2 combined OK; owners 0 in all; host: fastapi FK + root fixtures OK, flask FK fix, django pins verify OK, express/node-native ESLint 10 + CORS OK; PHP not run (no PHP/Docker) |
 | T19c | S17 (OpenCode allowlist for side scripts) | inline | done | RED then GREEN in combo.test; single-stack opencode.json unchanged; verify.sh OK; owners 128/0 |
+| T22 | S20 | delegated (context backstop), both repos | done | Node verify OK, owners 0; Go make verify OK (staticcheck run), zones 0; scenario: `~ .claude/settings.json (se agregaron 18 bloqueos…)`, second run `=`, Node and Go settings.json identical |
 | T7 | S2-S6, S10-S16 | per-action worker + inline e2e.sh fix | done | 18/18 dev + 18/18 prod + 7/7 mysql PASS; combined fastapi+react PASS (health on both sides, CORS allowed/denied); gin/go-native rerun with the fixed e2e.sh: dev, prod sqlite and mysql PASS |
 | V1 | S1-S17 | delegated independent verifier (Risk items 1, 3 and 5 named), read-only, baseline fc1e268 | done | all S# PASS except S7: blocker B1 (Spring + Vite React package.json became react). One correction batch: detect.priority; recheck of B1 with the verifier's repro gives spring |
 | T8a | S9 (plantillas parity, kind, 3-step question, frontend db guard, tests/docs/CI in Go) | delegated (context backstop), repo project-guiade | done | Go: make verify OK (staticcheck not installed); zones 619/0; template-check react/vue/fastapi/django-htmx OK; e2e gin+react OK; parity test against Node f20c2b6. Go commits 6ab7c81, 442ffc0, d8eb62f |
@@ -242,4 +244,11 @@ Selected scope (user choice): "Set base (Recommended)": Python: Django + Flask �
     - R1-staticcheck-unvalidated-command, Go: STATICCHECK can be overridden from the command line. It is the user's own invocation, so it is not a boundary.
   - Pending user decisions: add the side deny entries to an existing settings.json (today: warning only); Go: a combined project always uses Docker (`--no-docker` with a pair is exit 2).
 - **L57** Feature closed. Node dev/farid 328d0d3, Go dev/farid 49e3436. Nothing pushed (push/PR/merge are the user's).
+- **L58** (2026-11-09) User: "sí, que init agregue los bloqueos solo". This is S20/T22.
+- **L59** (2026-11-09) User: "y haz push al terminar todo". Authorized: push `dev/farid` in both repos (Node F4R1DS4NCH3Z26/basekit, Go F4R1DS4NCH3Z26/basekit-go) after T22 is committed and reviewed. Use the F4R1DS4NCH3Z26 token for that command only, without switching the active gh account. No push to main, no merge.
+- **L60** T22 OK in both repos.
+  - init and sync merge the missing side secret deny entries into an existing settings.json (`~`), keeping extras and order.
+  - Unparseable files or a non-list `deny` are kept, with a "!" warning (new text).
+  - Go merges with an order-preserving JSON token walk.
+  - Risk: item 3 (an existing user config file is rewritten).
 - **L6** Engram mirror `odd/framework-stacks/tasks`: PENDING. Auto mode blocks `mem_save` because a hook rewrites its input.

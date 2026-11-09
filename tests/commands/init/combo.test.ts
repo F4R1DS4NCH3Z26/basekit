@@ -1,6 +1,6 @@
 import { after, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { loadStacks } from "../../../src/kit/stacks.js";
 import { basekit, cleanup, gitCommitAll, REPO, scratch, sh } from "../../helpers.js";
@@ -252,9 +252,9 @@ describe("combined backend + frontend (S16): --stack <backend>+<frontend>", () =
     assert.deepEqual(JSON.parse(read(d, ".agents/manifest.json")).options, { db: "postgres", redis: true });
     assert.match(read(d, "backend/.env.example"), /^DB_PASSWORD=__GENERATE__$/m);
     assert.match(sh("make", ["-C", "backend", "-n", "dev"], d).stdout, /-f compose\.db\.yaml -f compose\.redis\.yaml/);
-    // settings.json is the user's once created: init keeps it and says it does not deny the side secrets.
-    assert.ok(!JSON.parse(read(d, ".claude/settings.json")).permissions.deny.includes("Read(./backend/.env)"), "settings.json is kept");
-    assert.match(r.stdout, /^! \.claude\/settings\.json  \(ya existe y no niega los secretos de backend\/ ni de frontend\/ \(Read\(\.\/backend\/\.env\)…\): agrégalos a permissions\.deny o bórralo y vuelve a ejecutar init\)$/m);
+    // settings.json is the user's once created: init only appends the side secret entries it lacks (S20).
+    assert.ok(JSON.parse(read(d, ".claude/settings.json")).permissions.deny.includes("Read(./backend/.env)"), "side entries added");
+    assert.match(r.stdout, /^~ \.claude\/settings\.json  \(se agregaron 18 bloqueos de secretos de backend\/ y frontend\/\)$/m);
 
     // A rerun takes the db from the manifest and does not touch the infrastructure again.
     gitCommitAll(d);
@@ -487,5 +487,125 @@ describe("single-stack projects keep their format (S16 regression)", () => {
       "Read(./**/*.pem)", "Read(./**/*.key)", "Bash(make clean:*)", "Bash(git push:*)", "Bash(rm -rf:*)",
       "Bash(curl:*)", "Bash(wget:*)", "Bash(sudo:*)", "Bash(cat .env:*)",
     ]);
+  });
+});
+
+describe("an existing .claude/settings.json gets the side secret entries on combine (S20)", () => {
+  const SETTINGS = ".claude/settings.json";
+  const SIDE = ["backend/", "frontend/"].flatMap((dir) => [
+    ...[".env", ".env.prod", ".env.local", ".env.production", ".env.*.local"].map((f) => `Read(./${dir}${f})`),
+    ...[".env", ".env.prod", ".env.local", ".env.production"].map((f) => `Edit(./${dir}${f})`),
+  ]);
+  const MERGED = /^~ \.claude\/settings\.json  \(se agregaron (\d+) bloqueos de secretos de backend\/ y frontend\/\)$/m;
+  const warning = (reason: string) => new RegExp(`^! \\.claude\\/settings\\.json  \\(${reason}: se conserva y no niega los secretos ` +
+    "de backend\\/ ni de frontend\\/ \\(Read\\(\\.\\/backend\\/\\.env\\)…\\); agrégalos a mano\\)$", "m");
+
+  /** A single-stack project whose settings.json the user edited, committed. */
+  const single = (edit: (settings: string) => string) => {
+    const d = scratch();
+    assert.equal(init(d, "--stack", "fastapi", "--agents", "claude-code").code, 0);
+    writeFileSync(join(d, SETTINGS), edit(read(d, SETTINGS)));
+    gitCommitAll(d);
+    return d;
+  };
+  const withExtras = (text: string) => {
+    const s = JSON.parse(text);
+    s.permissions.allow.push("Bash(make mine:*)");
+    s.permissions.deny.push("Bash(terraform:*)");
+    return JSON.stringify({ model: "opus", ...s, custom: { keep: [1, "two"] } }, null, 2) + "\n";
+  };
+
+  it("appends only the missing side entries and keeps every other key, value and order", () => {
+    const d = single(withExtras);
+    const before = JSON.parse(read(d, SETTINGS));
+    const r = init(d, "--stack", "fastapi+react");
+    assert.equal(r.code, 0, r.stderr);
+    assert.equal(MERGED.exec(r.stdout)?.[1], "18");
+    assert.doesNotMatch(r.stdout, /^= \.claude\/settings\.json/m);
+    const expected = { ...before, permissions: { ...before.permissions, deny: [...before.permissions.deny, ...SIDE] } };
+    assert.equal(read(d, SETTINGS), JSON.stringify(expected, null, 2) + "\n");
+    assert.deepEqual(Object.keys(JSON.parse(read(d, SETTINGS))), ["model", "permissions", "custom"]);
+  });
+
+  it("appends only the entries that are still missing, and creates permissions.deny when absent", () => {
+    const d = single((text) => {
+      const s = JSON.parse(text);
+      s.permissions.deny.push("Edit(./frontend/.env)", "Read(./backend/.env)");
+      return JSON.stringify(s, null, 2) + "\n";
+    });
+    const before = JSON.parse(read(d, SETTINGS));
+    const r = init(d, "--stack", "fastapi+react");
+    assert.equal(MERGED.exec(r.stdout)?.[1], "16");
+    const added = SIDE.filter((e) => e !== "Edit(./frontend/.env)" && e !== "Read(./backend/.env)");
+    assert.deepEqual(JSON.parse(read(d, SETTINGS)).permissions.deny, [...before.permissions.deny, ...added]);
+
+    const bare = single(() => '{"model":"opus"}');
+    assert.equal(MERGED.exec(init(bare, "--stack", "fastapi+react").stdout)?.[1], "18");
+    assert.equal(read(bare, SETTINGS), JSON.stringify({ model: "opus", permissions: { deny: SIDE } }, null, 2) + "\n");
+  });
+
+  it("a rerun changes nothing (idempotent)", () => {
+    const d = single(withExtras);
+    assert.equal(init(d, "--stack", "fastapi+react").code, 0);
+    gitCommitAll(d);
+    const after = read(d, SETTINGS);
+    const again = init(d, "--stack", "fastapi+react");
+    assert.equal(again.code, 0, again.stderr);
+    assert.match(again.stdout, /^= \.claude\/settings\.json$/m);
+    assert.doesNotMatch(again.stdout, MERGED);
+    assert.equal(read(d, SETTINGS), after);
+    assert.equal(sh("git", ["status", "--porcelain", SETTINGS], d).stdout, "");
+  });
+
+  it("an unparseable settings.json is kept, with a warning", () => {
+    const text = '{ "permissions": { "deny": ["Read(./.env)"], } }\n';
+    const d = single(() => text);
+    const r = init(d, "--stack", "fastapi+react");
+    assert.equal(r.code, 0, r.stderr);
+    assert.equal(read(d, SETTINGS), text);
+    assert.match(r.stdout, warning("no es JSON válido"));
+    assert.doesNotMatch(r.stdout, MERGED);
+  });
+
+  it("a permissions.deny that is not a list is kept, with a warning", () => {
+    for (const text of ['{"permissions":{"deny":"Read(./.env)"}}\n', '{"permissions":null}\n', "[]\n"]) {
+      const d = single(() => text);
+      const r = init(d, "--stack", "fastapi+react");
+      assert.equal(r.code, 0, r.stderr);
+      assert.equal(read(d, SETTINGS), text, text);
+      assert.match(r.stdout, warning("no tiene permissions\\.deny como lista"), text);
+    }
+  });
+
+  it("--dry-run shows the change and writes nothing", () => {
+    const d = single(withExtras);
+    const before = read(d, SETTINGS);
+    const r = init(d, "--stack", "fastapi+react", "--dry-run");
+    assert.equal(r.code, 0, r.stderr);
+    assert.equal(MERGED.exec(r.stdout)?.[1], "18");
+    assert.equal(read(d, SETTINGS), before);
+    assert.equal(sh("git", ["status", "--porcelain"], d).stdout, "");
+  });
+
+  it("sync, which writes the same adapters, adds them too", () => {
+    const d = scratch();
+    assert.equal(init(d, "--stack", "fastapi+react", "--agents", "claude-code").code, 0);
+    const full = read(d, SETTINGS);
+    const s = JSON.parse(full);
+    s.permissions.deny = s.permissions.deny.filter((e: string) => !e.includes("./frontend/"));
+    writeFileSync(join(d, SETTINGS), JSON.stringify(s, null, 2) + "\n");
+    const r = basekit(["sync", d, "--no-external-skills"]);
+    assert.equal(r.code, 0, r.stderr);
+    assert.equal(MERGED.exec(r.stdout)?.[1], "9");
+    assert.deepEqual(new Set(JSON.parse(read(d, SETTINGS)).permissions.deny), new Set(JSON.parse(full).permissions.deny));
+  });
+
+  it("a single-stack rerun leaves an edited settings.json untouched", () => {
+    const d = single(withExtras);
+    const before = read(d, SETTINGS);
+    const r = init(d, "--stack", "fastapi");
+    assert.equal(r.code, 0, r.stderr);
+    assert.match(r.stdout, /^= \.claude\/settings\.json$/m);
+    assert.equal(read(d, SETTINGS), before);
   });
 });

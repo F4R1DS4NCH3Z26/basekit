@@ -153,27 +153,60 @@ function claudeMd(project) {
     else
         project.generated("CLAUDE.md", `@AGENTS.md\n\n${cur}`);
 }
+const isObject = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+/** The value of `key`, `fallback` when it is absent (an explicit null is kept: it is not a list). */
+const member = (o, key, fallback) => (Object.hasOwn(o, key) ? o[key] : fallback);
 /**
- * settings.json is the user's once it exists (for example, from before the project was combined): say so when it does
- * not deny the side secrets (S19), instead of rewriting it.
+ * settings.json is the user's once it exists (for example, from before the project was combined). In a combined
+ * project init appends to its permissions.deny only the side secret entries it lacks (S20) and keeps every other key,
+ * value and entry in order; a file it cannot read as JSON with a deny list is kept, with a warning.
  */
-function warnSideSecrets(project, parts) {
+function claudeSettingsFile(project, parts) {
+    const rel = ".claude/settings.json";
     const sides = parts.filter((p) => p.side).map((p) => inPart(p, ""));
-    const cur = project.read(".claude/settings.json") ?? "";
-    const missing = secretDeny(parts).filter((e) => sides.some((s) => e.includes(`./${s}`)) && !cur.includes(JSON.stringify(e)));
-    if (missing.length === 0)
+    const cur = sides.length > 0 && project.isFile(rel) ? project.read(rel) : undefined;
+    if (cur === undefined) {
+        project.create(rel, claudeSettings(parts));
         return;
-    project.report("!", ".claude/settings.json", `ya existe y no niega los secretos de ${sides.join(" ni de ")} (${missing[0]}…): agrégalos a permissions.deny o bórralo y vuelve a ejecutar init`);
+    }
+    const required = secretDeny(parts).filter((e) => sides.some((s) => e.includes(`./${s}`)));
+    let settings;
+    let reason = "no tiene permissions.deny como lista";
+    try {
+        settings = JSON.parse(cur);
+    }
+    catch {
+        reason = "no es JSON válido";
+    }
+    const permissions = isObject(settings) ? member(settings, "permissions", {}) : undefined;
+    const deny = isObject(permissions) ? member(permissions, "deny", []) : undefined;
+    if (!isObject(settings) || !isObject(permissions) || !Array.isArray(deny)) {
+        const missing = required.filter((e) => !cur.includes(JSON.stringify(e)));
+        if (missing.length === 0)
+            project.report("=", rel);
+        else
+            project.report("!", rel, `${reason}: se conserva y no niega los secretos de ${sides.join(" ni de ")} (${missing[0]}…); agrégalos a mano`);
+        return;
+    }
+    const missing = required.filter((e) => !deny.includes(e));
+    if (missing.length === 0) {
+        project.report("=", rel);
+        return;
+    }
+    const next = { ...settings, permissions: { ...permissions, deny: [...deny, ...missing] } };
+    project.update(rel, json(next), `se agregaron ${missing.length} bloqueos de secretos de ${sides.join(" y ")}`);
 }
-/** Generated subagents are rewritten when they differ; config files are created only if missing. */
+/**
+ * Generated subagents are rewritten when they differ; config files are created only if missing, except the side secret
+ * entries a combined project adds to Claude's settings (S20).
+ */
 export function writeAdapters(project, parts, agents) {
     const roles = readRoles(project, parts);
     if (agents.includes("claude-code")) {
         claudeMd(project);
         for (const r of roles)
             project.generated(`.claude/agents/${r.name}.md`, claudeAgent(r));
-        if (project.create(".claude/settings.json", claudeSettings(parts)) === "=")
-            warnSideSecrets(project, parts);
+        claudeSettingsFile(project, parts);
     }
     if (agents.includes("opencode")) {
         for (const r of roles)

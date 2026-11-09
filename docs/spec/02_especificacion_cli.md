@@ -57,7 +57,7 @@ Flags de `init`:
    - Copiar el `starter/` si falta el `appMarker`.
    - Agregar el bloque de `.gitignore`.
 9. **Documentación**: `README.md`, `docs/PROJECT.md`, `docs/ARCHITECTURE.md`, `docs/RUNBOOK.md`, `docs/AUTH.md` y `docs/specs/.gitkeep`, solo si no existen. **No crear** `GLOSSARY.md` ni `docs/adr/`: los crea `domain-modeling` cuando hay contenido real.
-10. **Adaptadores** para cada agente elegido (guía 03, sección 3).
+10. **Adaptadores** para cada agente elegido (guía 03, sección 3). En un proyecto combinado, un `.claude/settings.json` que ya existe recibe al final de `permissions.deny` solo los bloqueos de secretos de `backend/` y `frontend/` que le falten (`~`); si no es JSON válido o `deny` no es una lista, se conserva con un aviso `!`.
 11. **Enlaces de skills** para los agentes que no leen `.agents/skills/`: enlace relativo y, si falla (Windows sin permisos), copia.
 12. **Skills externas** (sección 9), salvo con `--no-external-skills`.
 13. **Infraestructura**: si `--db ≠ auto`, ejecutar `bash .agents/skills/infra-setup/scripts/infra.sh --db <db> [--redis]`. Es el **mismo script** que usa el agente, así que la lógica vive en un solo lugar. El script trabaja en el proyecto que lo contiene (`$(dirname "$0")/../../../..`, nunca `git rev-parse --show-toplevel`): en un combinado se ejecuta, desde la raíz, la copia del backend (`bash backend/.agents/skills/infra-setup/scripts/infra.sh …`). También se ejecuta, sin `--db`, cuando un proyecto de un solo stack pasa a combinado y la base de datos (o Redis) del manifest pasa al backend: el lado nuevo aún no tiene overlays. `--dry-run` solo lo muestra.
@@ -188,7 +188,7 @@ DISABLE_TELEMETRY=1 DO_NOT_TRACK=1 npx -y skills@1.7.4 add \
 1. Lee el manifest (error si no existe). Con `--agents`, reemplaza la lista y la valida.
 2. Re-renderiza el bloque de `AGENTS.md`.
 3. Regenera los archivos **generados**: `.claude/agents/*.md` y `.opencode/agents/*.md`, desde `.agents/roles/` y `.agents/zones/`.
-4. Crea solo si faltan: `CLAUDE.md`, `.claude/settings.json`, `opencode.json` y `.gemini/settings.json`. Son del usuario una vez creados.
+4. Crea solo si faltan: `CLAUDE.md`, `.claude/settings.json`, `opencode.json` y `.gemini/settings.json`. Son del usuario una vez creados; la única excepción es que, en un proyecto combinado, a `.claude/settings.json` se le agregan los bloqueos de secretos de `backend/` y `frontend/` que le falten (guía 03, sección 3).
 5. Rehace los enlaces de skills que falten. Si se añadieron agentes, reinstala las skills externas para ellos.
 
 ## 11. `doctor`
