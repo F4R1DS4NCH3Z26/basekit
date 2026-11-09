@@ -2,6 +2,7 @@
   "id": "laravel",
   "name": "PHP · Laravel (monolito modular)",
   "language": "PHP",
+  "kind": "fullstack",
   "port": 8000,
   "health": "/up",
   "detect": { "files": ["artisan"], "manifest": "composer.json", "contains": "laravel/framework" },

@@ -50,6 +50,7 @@ En caso de duda: sí.
 | **PostgreSQL** (por defecto) | Casi siempre |
 | MySQL 8.4 | El hosting o el equipo ya lo usa |
 | SQLite | Prototipos y herramientas de una sola instancia (no con Spring) |
+| Ninguna | Los stacks frontend (React, Vue, TypeScript + Vite): no tienen base de datos; los datos y la auth viven en el backend |
 | + Redis | Caché, rate limit, colas o sesiones; nunca como BD principal |
 | Otros | Solo con ADR; no hay overlay incluido |
 
@@ -61,6 +62,15 @@ En caso de duda: sí.
 | FastAPI | **JWT propio**: access de 15 min + refresh opaco rotado con detección de reutilización | El mismo JWT | Validar los JWT del IdP |
 | Laravel | **Sanctum** (cookie para SPA) + Fortify | Tokens de Sanctum con expiración | Socialite u OIDC |
 | Spring | **Spring Security + JWT** (resource server con emisor propio) | El mismo JWT | `issuer-uri` del IdP |
+| Django | **SimpleJWT**: access + refresh rotado con lista negra; `User(AbstractUser)` propio antes de la primera migración | El mismo JWT | — (con ADR) |
+| Django + HTMX | **Sesión de Django** (`LoginView`/`LogoutView` incluidos, cookie `HttpOnly` + `SameSite=Lax`, CSRF) | — (con ADR) | — (con ADR) |
+| Flask, Python nativo | **JWT propio**: access + refresh rotado (`pyjwt` + `pwdlib[argon2]`) | El mismo JWT | — (con ADR) |
+| NestJS | **JWT** (`@nestjs/jwt`, `JwtAuthGuard` con HS256 fijo, `iss` y `aud`) + argon2id | El mismo JWT | — (con ADR) |
+| Express, Node nativo | **JWT propio** (`jose`, `requireUser` con HS256 fijo, `iss` y `aud`); refresh solo si el contrato lo pide | El mismo JWT | — (con ADR) |
+| Symfony | **Access tokens** opacos (se guarda su sha256, con expiración) en el firewall `main`, sin estado | El mismo token | — (con ADR) |
+| PHP nativo | **Tokens opacos** (sha256 en `access_tokens`, límite de intentos); toda ruta exige auth salvo `public: true` | El mismo token | — (con ADR) |
+| Gin, Go nativo | **JWT propio**: access corto + refresh rotado por familia (`golang-jwt/jwt/v5`) | El mismo JWT | — (con ADR) |
+| React, Vue, TypeScript + Vite | **La SPA no autentica**: el backend pone una cookie `HttpOnly` y valida cada endpoint; `credentials: "include"`, nunca tokens en `localStorage` | Lo resuelve el backend | Lo resuelve el backend |
 
 Reglas comunes:
 - Contraseñas con argon2id o bcrypt.
@@ -73,7 +83,7 @@ Reglas comunes:
 
 "Sin auth" solo es válido con una ADR que lo justifique.
 
-La implementación de cada stack está en `plantillas/stacks/<s>/skills/<x>-patterns/references/auth.md`.
+La implementación de cada stack está en `plantillas/stacks/<s>/skills/<x>-patterns/references/auth.md`, y el resumen en `docs/stacks/<s>.md`.
 
 ## 5. Documentación resultante (convenciones de `domain-modeling`)
 

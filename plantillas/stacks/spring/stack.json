@@ -2,6 +2,7 @@
   "id": "spring",
   "name": "Java · Spring Boot (DDD modular)",
   "language": "Java",
+  "kind": "backend",
   "port": 8080,
   "health": "/actuator/health",
   "detect": { "files": [], "manifest": "pom.xml", "contains": "spring-boot" },

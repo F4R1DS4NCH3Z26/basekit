@@ -25,33 +25,73 @@ function prompter(...answers: string[]): { p: Prompter; output: () => string } {
 
 const stacks = loadStacks();
 
-describe("stack question", () => {
-  it("lists every stack numbered and accepts an id", async () => {
-    const { p, output } = prompter("nextjs");
-    assert.equal(await p.stack(stacks), "nextjs");
-    stacks.forEach((s, i) => assert.match(output(), new RegExp(`${i + 1}\\) ${s.id} +${s.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`)));
+/** The stacks of one kind and language, in id order (the order of the framework menu). */
+const of = (kind: string, language?: string) => stacks.filter((s) => s.kind === kind && (language === undefined || s.language === language));
+const languages = (kind: string) => [...new Set(of(kind).map((s) => s.language))].sort();
+const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+describe("stack question: tipo, lenguaje and framework", () => {
+  it("asks the three steps numbered, each one filtered by the previous answers", async () => {
+    const { p, output } = prompter("1", "Python", "flask");
+    assert.equal(await p.stack(stacks), "flask");
+    const text = output();
+    assert.match(text, /¿Qué tipo de app es\?\n {2}1\) Backend .*\n {2}2\) Frontend .*\n {2}3\) Fullstack /);
+    assert.match(text, /¿En qué lenguaje\?/);
+    languages("backend").forEach((l, i) => assert.match(text, new RegExp(`${i + 1}\\) ${escape(l)}\\b`)));
+    assert.match(text, /¿Con qué framework\?/);
+    of("backend", "Python").forEach((s, i) => assert.match(text, new RegExp(`${i + 1}\\) ${escape(s.name)} +${s.id}\n`)));
+    for (const s of stacks.filter((x) => x.kind !== "backend" || x.language !== "Python")) {
+      assert.doesNotMatch(text, new RegExp(`${escape(s.name)} +${s.id}\n`), `${s.id} is not a backend Python stack`);
+    }
     p.close();
   });
 
-  it("accepts the option number", async () => {
-    const { p } = prompter("3");
-    assert.equal(await p.stack(stacks), stacks[2]!.id);
+  it("accepts the option number at every step", async () => {
+    const backend = languages("backend");
+    const lang = backend.indexOf("Go");
+    const { p } = prompter("1", String(lang + 1), "2");
+    assert.equal(await p.stack(stacks), of("backend", "Go")[1]!.id);
     p.close();
   });
 
-  it("asks again after an invalid or empty answer", async () => {
-    const { p, output } = prompter("foo", "9", "", "spring");
+  it("chooses a step with a single option by itself and says so", async () => {
+    const frontend = prompter("2", "vue");
+    assert.equal(await frontend.p.stack(stacks), "vue");
+    assert.equal(languages("frontend").length, 1);
+    assert.match(frontend.output(), new RegExp(`Lenguaje: ${languages("frontend")[0]} \\(única opción\\)`));
+    assert.doesNotMatch(frontend.output(), /¿En qué lenguaje\?/);
+    frontend.p.close();
+
+    const [htmx] = of("fullstack", "Python");
+    const fullstack = prompter("3", "Python");
+    assert.equal(await fullstack.p.stack(stacks), htmx!.id);
+    assert.match(fullstack.output(), new RegExp(`Framework: ${escape(htmx!.name)} \\(única opción\\)`));
+    assert.doesNotMatch(fullstack.output(), /¿Con qué framework\?/);
+    assert.doesNotMatch(fullstack.output(), /\) Go\b|\) Java\b/, "fullstack only offers its own languages");
+    fullstack.p.close();
+  });
+
+  it("asks again after an invalid or empty answer, at every step", async () => {
+    const { p, output } = prompter("foo", "9", "", "backend", "Cobol", "python", "7", "flask");
+    assert.equal(await p.stack(stacks), "flask");
+    for (const bad of ["foo", "9", "Cobol", "7"]) assert.match(output(), new RegExp(`«${bad}» no es una opción válida`));
+    assert.match(output(), /Hace falta elegir una opción/);
+    p.close();
+  });
+
+  it("still accepts a stack id typed at any step", async () => {
+    const { p, output } = prompter("spring");
     assert.equal(await p.stack(stacks), "spring");
-    assert.match(output(), /«foo» no es una opción válida/);
-    assert.match(output(), /«9» no es una opción válida/);
-    assert.match(output(), /Hace falta elegir un stack/);
+    assert.doesNotMatch(output(), /¿En qué lenguaje\?/);
     p.close();
   });
 
-  it("fails with a hint when the input ends without a valid answer", async () => {
-    const { p } = prompter("foo");
-    await assert.rejects(p.stack(stacks), /--stack/);
-    p.close();
+  it("fails with a hint when the input ends at any step", async () => {
+    for (const answers of [[], ["foo"], ["1"], ["1", "Python"]]) {
+      const { p } = prompter(...answers);
+      await assert.rejects(p.stack(stacks), /--stack <id>/, JSON.stringify(answers));
+      p.close();
+    }
   });
 });
 
@@ -138,12 +178,12 @@ const quietInit = (o: Partial<InitOptions> & { dir: string }, prompt?: Prompter)
 describe("init with interactive answers", () => {
   it("uses the stack, agents and context answered, re-asking after an invalid stack", async () => {
     const d = join(scratch(), "app");
-    const { p, output } = prompter("nope", "3", "1,2", "Tienda de bicis");
+    const { p, output } = prompter("nope", "1", "Python", "flask", "1,2", "Tienda de bicis");
     assert.equal(await quietInit({ dir: d }, p), 0);
     p.close();
     assert.match(output(), /«nope» no es una opción válida/);
     const m = JSON.parse(readFileSync(join(d, ".agents/manifest.json"), "utf8"));
-    assert.equal(m.stack, stacks[2]!.id);
+    assert.equal(m.stack, "flask");
     assert.deepEqual(m.agents, ["claude-code", "opencode"]);
     assert.match(readFileSync(join(d, "docs/PROJECT.md"), "utf8"), /Tienda de bicis/);
   });
@@ -153,7 +193,7 @@ describe("init with interactive answers", () => {
     const first = prompter("Reservas");
     assert.equal(await quietInit({ dir: d, stack: "fastapi", agents: "codex" }, first.p), 0);
     first.p.close();
-    assert.doesNotMatch(first.output(), /stack usa|herramientas/);
+    assert.doesNotMatch(first.output(), /tipo de app|lenguaje|framework|herramientas/);
     assert.match(first.output(), /¿De qué trata el proyecto\?/);
 
     const rerun = prompter();

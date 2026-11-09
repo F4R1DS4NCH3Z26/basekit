@@ -1,6 +1,13 @@
 import { createInterface, emitKeypressEvents } from "node:readline";
 import { AGENTS } from "../kit/agents.js";
 import { CancelledError, UsageError } from "../kit/errors.js";
+import { KINDS } from "../kit/stacks.js";
+/** How the kinds of app (S1b) read in the first step of the stack question. */
+const KIND_LABELS = {
+    backend: { label: "Backend", hint: "API o servicio, con base de datos" },
+    frontend: { label: "Frontend", hint: "SPA que corre en el navegador, sin base de datos" },
+    fullstack: { label: "Fullstack", hint: "Servidor y vistas en una sola app" },
+};
 /** `text` cut to `max` characters, with "…" when it had to be shortened. */
 const cut = (text, max) => ([...text].length <= max ? text : `${[...text].slice(0, Math.max(0, max - 1)).join("")}…`);
 const ESC = "\x1b[";
@@ -125,23 +132,54 @@ export class Prompter {
             input.once("close", onEnd);
         });
     }
+    /**
+     * Which stack: Tipo → Lenguaje → Framework (S1b), each step filtered by the previous answers.
+     * A step with a single option is chosen by itself and announced. Without a terminal it is numbered:
+     * a number or a name is accepted (a stack id too, at any step), an invalid answer asks again and
+     * the end of the input fails pointing at --stack.
+     */
     async stack(stacks) {
-        if (this.arrows) {
-            const [i] = await this.select("¿Qué stack usa el proyecto?", stacks.map((s) => ({ label: s.id, hint: s.name })), false);
-            return stacks[i].id;
+        const kinds = KINDS.filter((k) => stacks.some((s) => s.kind === k));
+        const kind = await this.step("Tipo", "¿Qué tipo de app es?", kinds.map((k) => ({ label: KIND_LABELS[k].label, hint: KIND_LABELS[k].hint, keys: [k] })), stacks);
+        if (typeof kind === "string")
+            return kind;
+        const ofKind = stacks.filter((s) => s.kind === kinds[kind]);
+        const languages = [...new Set(ofKind.map((s) => s.language))].sort();
+        const language = await this.step("Lenguaje", "¿En qué lenguaje?", languages.map((l) => ({ label: l, hint: ofKind.filter((s) => s.language === l).map((s) => s.id).join(", "), keys: [l] })), stacks);
+        if (typeof language === "string")
+            return language;
+        const candidates = ofKind.filter((s) => s.language === languages[language]);
+        const framework = await this.step("Framework", "¿Con qué framework?", candidates.map((s) => ({ label: s.name, hint: s.id, keys: [s.id] })), stacks);
+        return typeof framework === "string" ? framework : candidates[framework].id;
+    }
+    /**
+     * One step of the stack question. Returns the chosen option's index, or the id of a stack typed
+     * directly (numbered mode only). With a single option it asks nothing and says which one it took.
+     */
+    async step(title, question, options, stacks) {
+        if (options.length === 1) {
+            this.say(`${title}: ${options[0].label} (única opción)`);
+            return 0;
         }
-        const width = Math.max(...stacks.map((s) => s.id.length));
-        this.say("¿Qué stack usa el proyecto?");
-        stacks.forEach((s, i) => this.say(`  ${i + 1}) ${s.id.padEnd(width)}  ${s.name}`));
+        if (this.arrows)
+            return (await this.select(question, options, false))[0];
+        const width = Math.max(...options.map((o) => o.label.length));
+        this.say(question);
+        options.forEach((o, i) => this.say(`  ${i + 1}) ${o.hint ? `${o.label.padEnd(width)}  ${o.hint}` : o.label}`));
         for (;;) {
-            const answer = await this.line("Número o id: ");
+            const answer = await this.line("Número o nombre: ");
             if (answer === undefined)
                 throw new UsageError("No se eligió un stack. Usa --stack <id>");
-            const byNumber = /^\d+$/.test(answer) ? stacks[Number(answer) - 1] : undefined;
-            const chosen = byNumber ?? stacks.find((s) => s.id === answer);
-            if (chosen)
-                return chosen.id;
-            this.say(answer ? `  «${answer}» no es una opción válida.` : "  Hace falta elegir un stack.");
+            const lower = answer.toLowerCase();
+            const index = /^\d+$/.test(answer)
+                ? Number(answer) - 1
+                : options.findIndex((o) => o.label.toLowerCase() === lower || o.keys.some((k) => k.toLowerCase() === lower));
+            if (options[index])
+                return index;
+            const typed = stacks.find((s) => s.id === answer);
+            if (typed)
+                return typed.id;
+            this.say(answer ? `  «${answer}» no es una opción válida.` : "  Hace falta elegir una opción.");
         }
     }
     async agents(defaults) {

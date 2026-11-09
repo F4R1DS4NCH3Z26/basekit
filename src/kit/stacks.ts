@@ -4,11 +4,20 @@ import { UsageError } from "./errors.js";
 import type { Project } from "./project.js";
 import { TEMPLATES } from "./templates.js";
 
+/** The kinds of app a stack builds (S1b). A frontend stack has no database. */
+export const KINDS = ["backend", "frontend", "fullstack"] as const;
+export type Kind = (typeof KINDS)[number];
+
 /** `plantillas/stacks/<id>/stack.json` (spec 02 §6). Everything stack-specific lives there, never in code. */
 export interface Stack {
   id: string;
+  /** "<language> · <framework> (<kind of app>)": the label of the framework question. */
   name: string;
+  language: string;
+  kind: Kind;
   port: number;
+  /** Path of the health endpoint (`/health`, `/up`…). */
+  health: string;
   detect: { files?: string[]; manifest?: string; contains?: string };
   appMarker?: string;
   roles: string[];
@@ -19,8 +28,7 @@ export interface Stack {
 const ID = /^[a-z0-9][a-z0-9-]*$/;
 
 /** Every stack, sorted by id (that is also the detection order). */
-export function loadStacks(): Stack[] {
-  const dir = join(TEMPLATES, "stacks");
+export function loadStacks(dir = join(TEMPLATES, "stacks")): Stack[] {
   return readdirSync(dir, { withFileTypes: true })
     .filter((e) => e.isDirectory())
     .map((e) => e.name)
@@ -31,6 +39,11 @@ export function loadStacks(): Stack[] {
         s.id === name &&
         ID.test(s.id) &&
         typeof s.name === "string" &&
+        typeof s.language === "string" &&
+        s.language.trim() !== "" &&
+        KINDS.includes(s.kind) &&
+        typeof s.health === "string" &&
+        s.health.startsWith("/") &&
         Number.isInteger(s.port) &&
         typeof s.detect === "object" &&
         Array.isArray(s.roles) &&
@@ -39,6 +52,11 @@ export function loadStacks(): Stack[] {
       if (!valid) throw new Error(`stack.json inválido: stacks/${name}/stack.json`);
       return s;
     });
+}
+
+/** S1b: a frontend stack has no database, so neither a database engine nor Redis applies to it. */
+export function hasDatabase(stack: Stack): boolean {
+  return stack.kind !== "frontend";
 }
 
 export function stackDir(stack: Stack): string {

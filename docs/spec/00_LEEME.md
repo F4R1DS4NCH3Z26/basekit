@@ -17,7 +17,7 @@ Objetivo del CLI: que en cualquier proyecto baste con instalarlo y decirle al ag
 | `03_agentes_agnosticos.md` | Cómo lee cada herramienta y el formato exacto de cada adaptador que genera el CLI |
 | `04_docker_make.md` | Contrato del `Makefile`, de compose y de los overlays, el servicio `migrate`, endurecimiento y cómo añadir un stack |
 | `05_bootstrap_bd_auth.md` | Flujo del agente: entrevista → decisiones de BD y auth → documentación → infraestructura |
-| `../stacks/*.md` (en `docs/stacks/`) | Next.js, FastAPI, Laravel y Spring: arquitectura, roles, Docker y auth |
+| `../stacks/*.md` (en `docs/stacks/`) | Una guía por stack (backend, frontend y fullstack; ver `basekit stacks`): arquitectura, roles, Docker y auth |
 | `plantillas/` (en la raíz del repo) | **Los archivos que el CLI copia**, tal cual. El CLI no debe contener nada específico de un stack: todo sale de aquí |
 
 ## Estructura de `plantillas/`
@@ -36,21 +36,21 @@ plantillas/
 3. **Adaptadores** de Claude Code y OpenCode, y después Gemini y Hermes (guía 03). Pruebas 10–11.
 4. **Skills externas** con versión fijada (guía 02, sección 9).
 5. **`sync`** y **`doctor`**.
-6. **CI con Docker**: pruebas 9 y 12 para los cuatro stacks. Son las que yo no pude ejecutar.
+6. **CI con Docker**: pruebas 9 y 12 para todos los stacks (la 9 solo para los que tienen base de datos: los frontend no tienen). Son las que yo no pude ejecutar.
 
 ## Qué está verificado y qué no
 
 - **Verificado**:
-  - `make help`, `make env` (secretos únicos, permisos 600) y `make -n` de todos los objetivos en los cuatro stacks.
+  - `make help`, `make env` (secretos únicos, permisos 600) y `make -n` de todos los objetivos en los cuatro stacks originales (Next.js, FastAPI, Laravel y Spring); `make help` y `make new-app` con la app ya creada, en todos.
   - Las validaciones de `NAME`, `SCOPE`, `ENV` y `clean`.
-  - La fusión de compose (base + entorno + overlay de BD) en los cuatro stacks.
+  - La fusión de compose (base + entorno + overlay de BD) en todos los stacks con base de datos.
   - `zone-check --owners` con 0 archivos sin dueño.
   - Los scripts de scaffold y verify (heredados de la v2).
   - La instalación real de las skills externas para 4 agentes, con enlaces y `skills-lock.json`.
   - El frontmatter de los subagentes de OpenCode.
 - **No verificado** (sin Docker en mi entorno):
   - La construcción de imágenes y `docker compose up`.
-  - `make new-app` en los cuatro stacks.
+  - `make new-app` real en todos los stacks.
   - Los healthchecks.
 - **Versiones a confirmar al adoptar**:
   - `create-next-app@16.4.3` (la versión fijada en `.make/stack.mk`).

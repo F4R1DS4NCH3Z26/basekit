@@ -2,7 +2,8 @@ import { after, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { basekit, cleanup, hasDocker, scratch, sh } from "../helpers.js";
+import { loadStacks } from "../../src/kit/stacks.js";
+import { basekit, cleanup, hasDocker, REPO, scratch, sh } from "../helpers.js";
 
 after(cleanup);
 
@@ -19,12 +20,21 @@ function fakeBin(names: Record<string, string>): { path: string; calls: () => st
 }
 
 describe("make new-app when the app already exists", () => {
-  const markers: Record<string, string[]> = {
-    nextjs: ["package.json"],
-    fastapi: ["uv.lock"], // pyproject.toml comes from the starter
-    laravel: ["composer.json"],
-    spring: ["pom.xml"],
-  };
+  // The file whose presence makes each stack's new-app a no-op, read from its own guard in stack.mk.
+  const markers: Record<string, string[]> = Object.fromEntries(
+    loadStacks().map((s) => {
+      const mk = readFileSync(join(REPO, "plantillas/stacks", s.id, "files/.make/stack.mk"), "utf8");
+      const marker = /Ya existe (\S+); nada que hacer/.exec(mk)?.[1];
+      assert.ok(marker, `${s.id}: stack.mk has no "Ya existe <file>; nada que hacer" guard`);
+      return [s.id, [marker]];
+    }),
+  );
+  it("covers every stack, with the markers the stacks were written with", () => {
+    assert.deepEqual(Object.keys(markers), loadStacks().map((s) => s.id));
+    assert.deepEqual(markers.fastapi, ["uv.lock"]); // pyproject.toml comes from the starter
+    assert.deepEqual(markers.gin, ["go.sum"]);
+    assert.deepEqual(markers["php-native"], ["composer.lock"]);
+  });
   for (const [stack, files] of Object.entries(markers)) {
     it(`${stack}: does nothing and never calls docker`, () => {
       const d = scratch();

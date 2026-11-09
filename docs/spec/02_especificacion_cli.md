@@ -25,11 +25,11 @@ Flags de `init`:
 
 | Flag | Valores | Por defecto |
 |---|---|---|
-| `--stack` | `nextjs`, `fastapi`, `laravel`, `spring` | detectado; si no, se pregunta |
+| `--stack` | backend: `django`, `express`, `fastapi`, `flask`, `gin`, `go-native`, `nestjs`, `node-native`, `php-native`, `python-native`, `spring`, `symfony` · frontend: `react`, `vanilla-ts`, `vue` · fullstack: `django-htmx`, `laravel`, `nextjs` (la lista sale de `plantillas/stacks/`; `basekit stacks` la imprime) | manifest; si no, detectado; si no, se pregunta |
 | `--agents` | lista separada por comas (ver guía 03) | detectados; si no, se pregunta (sugerencia: `claude-code,opencode`) |
 | `--context` | texto libre: "de qué trata el proyecto" | se pregunta (puede ir vacío) |
-| `--db` | `auto`, `postgres`, `mysql`, `sqlite`, `none` | `auto` (lo decide el bootstrap) |
-| `--redis` | booleano | no |
+| `--db` | `auto`, `postgres`, `mysql`, `sqlite`, `none`. Un stack frontend solo admite `auto` o `none` | `auto` (lo decide el bootstrap; en un stack frontend, `none`) |
+| `--redis` | booleano. Error en un stack frontend | no |
 | `--no-external-skills` | omite `npx skills add` (CI o sin red) | no |
 | `--force` | reemplaza las skills del kit modificadas localmente | no |
 | `--dry-run` | muestra lo que haría sin escribir | no |
@@ -38,9 +38,14 @@ Flags de `init`:
 ## 3. Algoritmo de `init` (orden exacto)
 
 1. **Directorio**: resolverlo (expandir `~`) y crearlo si no existe.
-2. **Stack**: flag → detección (sección 6) → pregunta → error si sigue sin definirse.
+2. **Stack**: flag → `manifest.json` → detección (sección 6) → pregunta → error si sigue sin definirse. La pregunta tiene tres pasos, cada uno filtrado por los anteriores:
+   1. **Tipo**: Backend, Frontend o Fullstack (`stack.json → kind`).
+   2. **Lenguaje**: los lenguajes de ese tipo (`stack.json → language`), en orden alfabético.
+   3. **Framework**: los stacks de ese tipo y lenguaje; la etiqueta es `stack.json → name`, que nombra el framework y el tipo de app.
+
+   Un paso con una sola opción no se pregunta: se elige solo y se anuncia (`Lenguaje: TypeScript (única opción)`). En una terminal cada paso es un menú con flechas; sin TTY con modo raw, una lista numerada que acepta el número o el nombre (y, en cualquier paso, un id de stack), vuelve a preguntar ante una respuesta inválida y, si la entrada termina, falla con un error de uso que sugiere `--stack <id>`.
 3. **Agentes**: flag → detección (guía 03, sección 1) → pregunta. Valida contra la lista blanca.
-4. **Contexto** (texto) y **BD** (`auto` por defecto).
+4. **Contexto** (texto) y **BD** (`auto` por defecto). Un stack frontend no tiene base de datos: `--db` distinto de `auto`/`none` o `--redis` es un error de uso (exit 2) antes de escribir nada, y `auto` se guarda como `none`.
 5. **Git**: si no hay `.git`, ejecutar `git init` (zone-check lo necesita).
 6. **Núcleo `.agents/`**, siguiendo la tabla de la sección 4: README, roles, zonas, skills del kit (scripts con permisos 755) y `manifest.json`.
 7. **`AGENTS.md`**: bloque gestionado (sección 7) con los placeholders resueltos (sección 5). Si supera 18.000 caracteres, avisar: Hermes trunca a partir de 20.000.
@@ -77,7 +82,7 @@ Cada acción se reporta con `+` (creado), `~` (actualizado), `=` (existía, se c
 | `stacks/<s>/zones/*.txt` (menos `orchestrator.stack.txt`) | `.agents/zones/` | Crear |
 | `stacks/<s>/skills/*/` | `.agents/skills/` | Igual que las skills core |
 | `stacks/<s>/files/**` (incluye `.make/`, `.dockerignore`, `.env.example`) | raíz | Crear sin sobrescribir |
-| `stacks/<s>/starter/**` | raíz | Solo si falta `appMarker` (hoy solo FastAPI) |
+| `stacks/<s>/starter/**` | raíz | Solo si falta `appMarker` (hoy: `django`, `django-htmx`, `express`, `fastapi`, `flask`, `gin`, `go-native`, `node-native`, `php-native`, `python-native`) |
 | `stacks/<s>/AGENTS.section.md` | dentro del bloque de `AGENTS.md` | Placeholder `{{STACK_SECTION}}` |
 
 ## 5. Placeholders
@@ -100,8 +105,11 @@ Cada acción se reporta con `+` (creado), `~` (actualizado), `=` (existía, se c
 ```json
 {
   "id": "nextjs",
-  "name": "Next.js (App Router) + TypeScript",
+  "name": "TypeScript · Next.js (App Router, fullstack)",
+  "language": "TypeScript",
+  "kind": "fullstack",
   "port": 3000,
+  "health": "/api/health",
   "detect": { "files": ["next.config.ts"], "manifest": "package.json", "contains": "\"next\"" },
   "appMarker": "package.json",
   "roles": ["data-writer", "logic-writer", "ui-writer", "qa-writer"],
@@ -110,7 +118,10 @@ Cada acción se reporta con `+` (creado), `~` (actualizado), `=` (existía, se c
 }
 ```
 
-**Detección**: para cada stack, se detecta si existe alguno de `detect.files`, o si `detect.manifest` existe y contiene `detect.contains`. Gana el primero que coincida.
+- `name` empieza por `<language> · ` y nombra el framework y el tipo de app: es la etiqueta del paso Framework.
+- `language` (texto no vacío), `kind` (`backend` | `frontend` | `fullstack`) y `health` (ruta del healthcheck, empieza por `/`) son obligatorios: un `stack.json` sin ellos o con otro `kind` es inválido.
+
+**Detección**: los stacks se recorren por id en orden alfabético; para cada uno, se detecta si existe alguno de `detect.files`, o si `detect.manifest` existe y contiene `detect.contains`. Gana el primero que coincida. Con `detect: {}` un stack nunca se detecta (solo por pregunta o `--stack`): así están `express` (su dependencia aparece en NestJS y Next.js), `django-htmx` (`manage.py` ya es de `django`) y los nativos (`go-native`, `node-native`, `php-native`, `python-native`, `vanilla-ts`). `react` exige `"@vitejs/plugin-react` en `package.json`.
 
 **Agregar un stack** = una carpeta nueva en `plantillas/stacks/` con esta estructura. El CLI no debe tener nada específico de un stack en su código.
 

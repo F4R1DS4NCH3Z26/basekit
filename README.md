@@ -74,6 +74,22 @@ basekit stacks        # stacks y agentes soportados
 
 Opciones de `init`: `--stack`, `--agents a,b`, `--context`, `--db auto|postgres|mysql|sqlite|none`, `--redis`, `--no-external-skills`, `--force`, `--dry-run`, `-y/--yes`. Detalle en `basekit help`.
 
+### Stacks
+
+| Tipo | Lenguaje | `--stack` |
+|---|---|---|
+| Backend | Go | `gin`, `go-native` |
+| Backend | Java | `spring` |
+| Backend | PHP | `symfony`, `php-native` |
+| Backend | Python | `fastapi`, `django`, `flask`, `python-native` |
+| Backend | TypeScript | `nestjs`, `express`, `node-native` |
+| Frontend | TypeScript | `react`, `vue`, `vanilla-ts` |
+| Fullstack | PHP | `laravel` |
+| Fullstack | Python | `django-htmx` |
+| Fullstack | TypeScript | `nextjs` |
+
+Los `*-native` (y `vanilla-ts`) no usan framework web. Cada stack se describe en `plantillas/stacks/<id>/stack.json` (`kind`, `language`, `name`…) y en su guía `docs/stacks/<id>.md`. Un stack frontend no tiene base de datos: `init` rechaza `--db` (salvo `auto` o `none`) y `--redis`. `express`, `django-htmx` y los nativos nunca se detectan solos: se eligen con `--stack` o en la pregunta.
+
 Cada acción se reporta con `+` (creado), `~` (actualizado), `=` (existía, se conserva) o `!` (aviso). Ejecutarlo dos veces no cambia nada la segunda vez.
 
 ## Estado
@@ -84,11 +100,11 @@ Cada acción se reporta con `+` (creado), `~` (actualizado), `=` (existía, se c
 | Adaptadores (Claude Code, OpenCode, Gemini CLI, Hermes) y enlaces de skills | Hecho |
 | Skills externas fijadas (`grill-me`, `grill-with-docs`, `grilling`, `domain-modeling`) | Hecho |
 | Prueba 9 (`docker compose config` con overlays) | Pasa en `npm test` si hay Docker |
-| Prueba 12 (`make new-app` + `make dev` reales) | `scripts/e2e.sh <stack> [db]`; pasa en los 4 stacks (Spring con `postgres`) |
+| Prueba 12 (`make new-app` + `make dev` reales) | `scripts/e2e.sh <stack> [db]`; el CI la corre en todos los stacks (Spring con `postgres`; los frontend sin base de datos). Pasa en `fastapi`, `laravel`, `nextjs` y `spring`; en los demás falta su primera corrida con Docker |
 
 ## Comandos
 
-- `init [dir]`: crea la base. Sin flags reutiliza lo guardado en `.agents/manifest.json`; `infra.sh` solo corre si pasas `--db`. En una terminal (sin `-y`) pregunta solo lo que no resolvió con flags, manifest o detección: el stack (menú con flechas), los agentes (casillas: espacio marca, Enter confirma; arrancan marcados `claude-code` y `opencode`) y, en la primera corrida, de qué trata el proyecto.
+- `init [dir]`: crea la base. Sin flags reutiliza lo guardado en `.agents/manifest.json`; `infra.sh` solo corre si pasas `--db`. En una terminal (sin `-y`) pregunta solo lo que no resolvió con flags, manifest o detección: el stack en tres pasos (tipo de app → lenguaje → framework; un paso con una sola opción se elige solo y se anuncia), los agentes (casillas: espacio marca, Enter confirma; arrancan marcados `claude-code` y `opencode`) y, en la primera corrida, de qué trata el proyecto.
 - `sync [dir] [--agents a,b] [--no-external-skills] [--dry-run]`: regenera el bloque de `AGENTS.md`, los subagentes de `.claude/agents/` y `.opencode/agents/` desde `.agents/roles/` y `.agents/zones/`, y los enlaces de skills. Con `--agents`, los agentes nuevos reciben adaptadores, enlaces y skills externas.
 - `doctor [dir]`: imprime `OK` o `FALTA` con la sugerencia; sale con código 1 si falta algo. Nunca lee `.env`.
 

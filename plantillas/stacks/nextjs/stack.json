@@ -1,7 +1,8 @@
 {
   "id": "nextjs",
-  "name": "Next.js (App Router) + TypeScript",
+  "name": "TypeScript · Next.js (App Router, fullstack)",
   "language": "TypeScript",
+  "kind": "fullstack",
   "port": 3000,
   "health": "/api/health",
   "detect": { "files": ["next.config.js", "next.config.mjs", "next.config.ts"], "manifest": "package.json", "contains": "\"next\"" },

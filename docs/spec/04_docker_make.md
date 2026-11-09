@@ -83,7 +83,7 @@ services:
   migrate: { depends_on: { db: { condition: service_healthy } }, environment: *db-env }
 ```
 
-**Por qué**: en producción, la imagen mínima de Next.js (*standalone*) no incluye el CLI de Prisma. Un servicio `migrate` con el target adecuado resuelve los cuatro stacks igual:
+**Por qué**: en producción, la imagen mínima de Next.js (*standalone*) no incluye el CLI de Prisma. Un servicio `migrate` con el target adecuado resuelve todos los stacks con base de datos igual:
 
 | Stack | `migrate` |
 |---|---|
@@ -91,6 +91,13 @@ services:
 | FastAPI | Target `dev` o `prod`, con `alembic upgrade head` (Alembic es dependencia de runtime) |
 | Laravel | Target `dev` o `prod`, con `php artisan migrate --force` |
 | Spring | Imagen `flyway/flyway:11` sobre `src/main/resources/db/migration`, usando `SPRING_DATASOURCE_*`. La app también migra al arrancar |
+| Django, Django + HTMX | Target `dev` o `prod`, con `python manage.py migrate --noinput` |
+| Flask, Python nativo | Target `dev` o `prod`, con `alembic upgrade head` |
+| NestJS, Express, Node nativo | Target `dev` o `prod`, con `prisma migrate deploy` (solo si existe `prisma/schema.prisma`) |
+| Symfony | Target `dev` o `prod`, con `php bin/console doctrine:migrations:migrate --no-interaction --allow-no-migration` |
+| PHP nativo | Target `dev` o `prod`, con su propio migrador: `php bin/migrate.php up` |
+| Gin, Go nativo | Dev: `go run ./cmd/api migrate`. Prod: el binario estático de la imagen `scratch` con `api migrate` (goose embebido) |
+| React, Vue, TypeScript + Vite (frontend) | Sin servicio `migrate`: un stack frontend no tiene base de datos (`init` rechaza `--db` y `--redis`). `make migrate`, `migration` y `db-shell` solo avisan |
 
 **Requisito**: `environment` siempre como **mapa** (no lista) en todos los archivos compose; si no, Compose no los fusiona.
 
@@ -98,10 +105,10 @@ services:
 
 | Formato | Lo usa |
 |---|---|
-| `DATABASE_URL=postgresql://…` / `mysql://…` / `file:/app/data/app.db` | Prisma, Drizzle. FastAPI la convierte a `postgresql+psycopg://`, `mysql+pymysql://` o `sqlite:///` en `core/config.py` |
-| `DB_CONNECTION`, `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD` | Laravel, de forma nativa |
+| `DATABASE_URL=postgresql://…` / `mysql://…` / `file:/app/data/app.db` | Prisma (Next.js, NestJS, Express, Node nativo), Drizzle, Django, Gin y Go nativo. Los stacks Python con SQLAlchemy (FastAPI, Flask, Python nativo) la convierten a `postgresql+psycopg://`, `mysql+pymysql://` o `sqlite:///` |
+| `DB_CONNECTION`, `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD` | Laravel, de forma nativa. Symfony y PHP nativo leen `DATABASE_URL` |
 | `SPRING_DATASOURCE_URL`, `_USERNAME`, `_PASSWORD` | Spring, de forma nativa |
-| `REDIS_URL`, `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD` | Todos |
+| `REDIS_URL`, `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD` | Todos menos los frontend |
 
 Los secretos de la BD están en `.env.example` como bloques marcados (`# >>> db`). `infra.sh` los reemplaza de forma idempotente.
 
@@ -111,11 +118,11 @@ Los secretos de la BD están en `.env.example` como bloques marcados (`# >>> db`
 |---|---|---|
 | Puerto de la app | `127.0.0.1:${APP_PORT}` (no se expone a la LAN) | `${APP_PORT}` (detrás de tu proxy o TLS) |
 | BD y Redis | Sin `ports` (acceso con `make db-shell`) | Igual |
-| Usuario | root (por los bind mounts) | **No root** (uid 1001) |
+| Usuario | root (por los bind mounts) | **No root** (uid 1001; los frontend usan `nginx-unprivileged`) |
 | `no-new-privileges` | sí | sí |
 | `cap_drop: [ALL]` | — | sí |
-| `read_only` + `tmpfs: /tmp` | — | FastAPI y Spring (Next.js y Laravel escriben caché) |
-| Healthcheck | — | `/api/health`, `/health`, `/up` o `/actuator/health` |
+| `read_only` + `tmpfs: /tmp` | — | Todos menos Next.js y Laravel, que escriben caché |
+| Healthcheck | — | `stack.json → health`: `/api/health` (Next.js), `/up` (Laravel), `/actuator/health` (Spring) y `/health` en el resto |
 | Debug | activo | `APP_DEBUG=false`, sin `/docs` (FastAPI), sin stacktrace (Spring), cookie `Secure` (Laravel) |
 | Redis | `--requirepass` | Igual |
 
@@ -125,13 +132,17 @@ Lo que cambia entre entornos (debug, perfil) lo fija **compose**, no `.env`: as�
 
 | Imagen | Tag en las plantillas | Comentario |
 |---|---|---|
-| Node | `node:22-alpine` | LTS |
-| Python | `python:3.12-slim` + `ghcr.io/astral-sh/uv:0.13.4` | uv del 20 de octubre de 2026 |
-| PHP | `dunglas/frankenphp:1-php8.3-alpine` + `composer:2` | Se usa `frankenphp php-server` para no depender de la ruta del Caddyfile |
+| Node | `node:22-alpine` | LTS. Next.js, NestJS, Express, Node nativo y el build de los frontend |
+| Frontend (prod) | `nginxinc/nginx-unprivileged:1.30-alpine` | Sirve la SPA compilada (React, Vue, TypeScript + Vite) sin root |
+| Python | `python:3.12-slim` + `ghcr.io/astral-sh/uv:0.13.4` | uv del 20 de octubre de 2026. FastAPI, Django, Django + HTMX, Flask y Python nativo |
+| PHP | `dunglas/frankenphp:1-php8.3-alpine` + `composer:2` | Laravel y Symfony. Se usa `frankenphp php-server` para no depender de la ruta del Caddyfile |
+| PHP nativo | `dunglas/frankenphp:1.13.2-php8.5-alpine` + `composer:2.10.2` | Un solo proceso, no root, `read_only` |
 | Java | `eclipse-temurin:21-jdk` / `-jre` | LTS |
+| Go | `golang:1.27.3-trixie` (dev y build) + `scratch` (prod) | Gin y Go nativo. Binario estático sin CGO; recarga en dev con `air` v1.67.4; migra con `api migrate` |
 | BD | `postgres:17-alpine`, `mysql:8.4` (LTS), `redis:7.4-alpine` | Postgres 18 cambia la ruta del volumen: si subes, ajusta el montaje |
 | Migraciones Spring | `flyway/flyway:11` | Fija el minor exacto al adoptar |
-| Generadores | `create-next-app@16.4.3`, `laravel/laravel:^12.0`, Spring Initializr | Actualiza a versiones con ≥ 14 días |
+| Generadores | `create-next-app@16.4.3`, `laravel/laravel:^12.0`, `symfony/skeleton:7.4.*`, `@nestjs/cli@12.0.10`, `create-vite@9.3.1`, Spring Initializr | Actualiza a versiones con ≥ 14 días |
+| ORM de Node | `prisma@7.10.1` (NestJS, Express y Node nativo) con un driver adapter por `DB_DRIVER` | Versión exacta |
 
 Para producción seria, fija **por digest** (`image@sha256:…`) y deja que Renovate o Dependabot lo actualicen.
 

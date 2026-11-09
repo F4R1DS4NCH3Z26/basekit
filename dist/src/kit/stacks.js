@@ -2,10 +2,11 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { UsageError } from "./errors.js";
 import { TEMPLATES } from "./templates.js";
+/** The kinds of app a stack builds (S1b). A frontend stack has no database. */
+export const KINDS = ["backend", "frontend", "fullstack"];
 const ID = /^[a-z0-9][a-z0-9-]*$/;
 /** Every stack, sorted by id (that is also the detection order). */
-export function loadStacks() {
-    const dir = join(TEMPLATES, "stacks");
+export function loadStacks(dir = join(TEMPLATES, "stacks")) {
     return readdirSync(dir, { withFileTypes: true })
         .filter((e) => e.isDirectory())
         .map((e) => e.name)
@@ -15,6 +16,11 @@ export function loadStacks() {
         const valid = s.id === name &&
             ID.test(s.id) &&
             typeof s.name === "string" &&
+            typeof s.language === "string" &&
+            s.language.trim() !== "" &&
+            KINDS.includes(s.kind) &&
+            typeof s.health === "string" &&
+            s.health.startsWith("/") &&
             Number.isInteger(s.port) &&
             typeof s.detect === "object" &&
             Array.isArray(s.roles) &&
@@ -24,6 +30,10 @@ export function loadStacks() {
             throw new Error(`stack.json inválido: stacks/${name}/stack.json`);
         return s;
     });
+}
+/** S1b: a frontend stack has no database, so neither a database engine nor Redis applies to it. */
+export function hasDatabase(stack) {
+    return stack.kind !== "frontend";
 }
 export function stackDir(stack) {
     return join(TEMPLATES, "stacks", stack.id);

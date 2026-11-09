@@ -32,11 +32,13 @@ Uso:
   basekit stacks                  Lista los stacks y los agentes soportados
 
 Opciones de init:
-  --stack <id>            Stack (por defecto: detectado; si no, se pregunta)
+  --stack <id>            Stack (ver \`basekit stacks\`; por defecto: detectado; si no, se pregunta
+                          tipo de app → lenguaje → framework)
   --agents <a,b>          Agentes (por defecto: detectados; si no, claude-code,opencode)
   --context <texto>       De qué trata el proyecto
-  --db <motor>            auto | postgres | mysql | sqlite | none (por defecto: auto)
-  --redis                 Agrega Redis
+  --db <motor>            auto | postgres | mysql | sqlite | none (por defecto: auto;
+                          un stack frontend solo admite auto o none)
+  --redis                 Agrega Redis (no en un stack frontend)
   --no-external-skills    No instala las skills externas (CI o sin red)
   --force                 Reemplaza las skills del kit modificadas localmente
   --dry-run               Muestra lo que haría sin escribir nada

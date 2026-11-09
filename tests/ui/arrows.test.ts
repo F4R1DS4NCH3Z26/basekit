@@ -29,7 +29,16 @@ function terminal(columns?: number) {
   const p = new Prompter(input, out);
   /** Types the keys once the prompt is listening. */
   const type = (...keys: string[]) => setImmediate(() => input.write(keys.join("")));
-  return { p, input, type, modes, output: () => text };
+  /** Types the keys once `question` is printed (the first time only). */
+  const when = (question: string, ...keys: string[]) => {
+    const watch = () => {
+      if (!text.includes(question)) return;
+      out.removeListener("data", watch);
+      setImmediate(() => input.write(keys.join("")));
+    };
+    out.on("data", watch);
+  };
+  return { p, input, type, when, modes, output: () => text };
 }
 
 const OPTIONS = [
@@ -59,11 +68,32 @@ describe("arrow-key menus in a terminal", { timeout: 5000 }, () => {
     }
   });
 
-  it("stack: arrows over the stacks", async () => {
+  it("stack: one menu per step (tipo, lenguaje, framework), each filtered by the previous answers", async () => {
     const stacks = loadStacks();
     const t = terminal();
-    t.type(DOWN, DOWN, ENTER);
-    assert.equal(await t.p.stack(stacks), stacks[2]!.id);
+    // Each menu reads keys only while it is open: type them once its question is on screen.
+    t.when("¿Qué tipo de app es?", DOWN, ENTER); // Frontend
+    t.when("¿Con qué framework?", DOWN, DOWN, ENTER);
+    const frontend = stacks.filter((s) => s.kind === "frontend");
+    assert.equal(await t.p.stack(stacks), frontend[2]!.id);
+    assert.match(t.output(), new RegExp(`Lenguaje: ${frontend[0]!.language} \\(única opción\\)`));
+    assert.doesNotMatch(t.output(), /¿En qué lenguaje\?/);
+    for (const s of frontend) assert.ok(t.output().includes(s.name), s.id);
+    for (const s of stacks.filter((x) => x.kind !== "frontend")) assert.ok(!t.output().includes(s.name), s.id);
+    t.p.close();
+  });
+
+  it("stack: a framework step with a single option is chosen by itself", async () => {
+    const stacks = loadStacks();
+    const fullstack = stacks.filter((s) => s.kind === "fullstack");
+    const languages = [...new Set(fullstack.map((s) => s.language))].sort();
+    const only = fullstack.find((s) => s.language === languages[1])!;
+    const t = terminal();
+    t.when("¿Qué tipo de app es?", DOWN, DOWN, ENTER); // Fullstack
+    t.when("¿En qué lenguaje?", DOWN, ENTER);
+    assert.equal(await t.p.stack(stacks), only.id);
+    assert.ok(t.output().includes(`Framework: ${only.name} (única opción)`));
+    assert.doesNotMatch(t.output(), /¿Con qué framework\?/);
     t.p.close();
   });
 

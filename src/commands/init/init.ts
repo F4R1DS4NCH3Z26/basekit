@@ -10,7 +10,7 @@ import { Project, resolveRoot } from "../../kit/project.js";
 import { detectStack, findStack, loadStacks, stackDir, type Stack } from "../../kit/stacks.js";
 import { modeOf, render, template, TEMPLATES, walk } from "../../kit/templates.js";
 import type { Context } from "../context.js";
-import { checkDb, validateFlags, type InitOptions } from "./options.js";
+import { checkDb, checkStackDb, validateFlags, type InitOptions } from "./options.js";
 
 const INFRA = ".agents/skills/infra-setup/scripts/infra.sh";
 
@@ -41,6 +41,8 @@ export async function init(o: InitOptions, ctx: Context): Promise<number> {
     throw new UsageError(`No se pudo detectar el stack. Usa --stack <id> (disponibles: ${stacks.map((s) => s.id).join(", ")})`);
   }
   const stack = findStack(stacks, stackId.trim());
+  // A frontend stack has no database: checked before any other question or write.
+  const db = checkStackDb(stack, checkDb(o.db ?? prev?.options?.db ?? "auto"), o.redis);
 
   // 3 · Agents: flag → manifest → detection → question.
   let agents = flags.agents ?? (prev?.agents ? parseAgents(prev.agents.join(",")) : undefined);
@@ -51,7 +53,6 @@ export async function init(o: InitOptions, ctx: Context): Promise<number> {
 
   // 4 · Context (asked only on the first run) and database.
   const context = (o.context ?? (!prev && ctx.prompt ? await ctx.prompt.context() : "")).trim();
-  const db = checkDb(o.db ?? prev?.options?.db ?? "auto");
   const redis = o.redis ?? prev?.options?.redis ?? false;
 
   if (o.dryRun) ctx.log(`(dry-run: no se escribe nada en ${root})`);
@@ -133,7 +134,7 @@ export async function init(o: InitOptions, ctx: Context): Promise<number> {
 
   // 13 · Infrastructure, through the same script the agent uses. Only when --db is passed:
   // a rerun that takes the db from the manifest must not touch the infrastructure again.
-  if (o.db !== undefined && db !== "auto") {
+  if (o.db !== undefined && o.db !== "auto") {
     const args = [INFRA, "--db", db, ...(redis ? ["--redis"] : [])];
     if (o.dryRun) ctx.log(`· ejecutaría: bash ${args.join(" ")}`);
     else if (!ctx.runner.run(ctx.log, "bash", args, root)) project.report("!", INFRA, `falló; reinténtalo con: bash ${args.join(" ")}`);
