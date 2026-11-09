@@ -1,0 +1,2 @@
+src/modules/*/router.ts
+src/modules/*/middleware.ts
