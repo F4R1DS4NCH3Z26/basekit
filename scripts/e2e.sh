@@ -81,6 +81,11 @@ can_write_data() {
   cid="$(compose ps -q app)"
   [ -n "$cid" ] || { echo "el servicio app no está corriendo"; return 1; }
   user="$(docker inspect -f '{{.Config.User}}' "$cid")"
+  # Without a shell in the app container, a named user (USER app) cannot be resolved to uid:gid for the helper.
+  case "$user" in
+    "" | [0-9]* ) ;;
+    *) echo "no se pudo ejecutar sh en app para revisar /app/data (usuario '$user' sin uid numérico); revisa 'compose ps'"; return 1 ;;
+  esac
   docker image inspect alpine:3.22 >/dev/null 2>&1 || docker pull -q alpine:3.22 >/dev/null 2>&1 ||
     { echo "no se pudo descargar alpine:3.22 para revisar /app/data (red o registro), no es un error del stack"; return 1; }
   docker run --rm ${user:+--user "$user"} --volumes-from "$cid" alpine:3.22 sh -c "$WRITE_TEST" </dev/null ||

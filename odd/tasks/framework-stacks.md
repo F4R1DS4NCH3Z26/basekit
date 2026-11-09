@@ -198,4 +198,9 @@ Selected scope (user choice): "Set base (Recommended)": Python: Django + Flask Â
     - A4: `--stack ' fastapi '` is accepted by trim;
     - A5: the mermaid parentheses were already in the baseline;
     - A7: the labels repeat the language.
+- **L50** Review of 7d7778a..f20c2b6 (reliability, resilience, readability) approved and acknowledged (review-0ff13a4d70564d6f). Its WARNINGs were fixed in a small commit:
+  - django.md claimed django goes before fastapi; with the priorities, fastapi (10) goes first.
+  - Spec 02 tiers: 20 means a signal unique to the framework (its own file or module), 30 a short name in a shared manifest.
+  - e2e: a named user without a shell gives a clear message.
+  - e2e PASS: gin and fastapi prod sqlite; verify OK.
 - **L6** Engram mirror `odd/framework-stacks/tasks`: PENDING. Auto mode blocks `mem_save` because a hook rewrites its input.
