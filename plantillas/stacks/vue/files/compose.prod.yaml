@@ -1,0 +1,16 @@
+services:
+  app:
+    build:
+      target: prod
+      args:
+        # Public build-time value (Vite embeds it in the JS); comes from .env.prod through `make` (--env-file).
+        VITE_API_URL: ${VITE_API_URL:-}
+    env_file: [.env.prod]
+    ports:
+      - "${APP_PORT:-5173}:8080"
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /var/cache/nginx
+    cap_drop: [ALL]

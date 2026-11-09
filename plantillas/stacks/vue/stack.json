@@ -1,0 +1,17 @@
+{
+  "id": "vue",
+  "name": "TypeScript · Vue + Vite (SPA frontend)",
+  "language": "TypeScript",
+  "kind": "frontend",
+  "port": 5173,
+  "health": "/health",
+  "detect": { "files": [], "manifest": "package.json", "contains": "\"vue\"" },
+  "appMarker": "package.json",
+  "roles": ["logic-writer", "ui-writer", "qa-writer"],
+  "skills": [
+    ["vue-scaffold", "Feature nueva: estructura + contrato"],
+    ["vue-patterns", "Antes de escribir cualquier capa; auth en references/auth.md"],
+    ["vue-verify", "Lo usa `make verify`"]
+  ],
+  "defaultAuth": "backend-session"
+}
