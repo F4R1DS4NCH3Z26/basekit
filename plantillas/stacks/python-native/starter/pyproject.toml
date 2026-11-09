@@ -1,0 +1,45 @@
+[project]
+name = "app"
+version = "0.1.0"
+requires-python = ">=3.12"
+# Sin framework web: WSGI de la stdlib (src/core/) servido por gunicorn.
+# Alembic and the drivers are runtime dependencies: the prod `migrate` service runs `alembic upgrade head`.
+# Pydantic only validates request data (it is not a web framework): hand-written validation is where mass assignment bugs come from.
+dependencies = [
+    "sqlalchemy==2.1.6",
+    "alembic==1.20.1",
+    "pydantic==2.14.1",
+    "gunicorn==26.2.0",
+    "psycopg[binary]==3.3.6",
+    "pymysql[rsa]==1.2.3",
+]
+
+[dependency-groups]
+dev = ["pytest==9.1.1", "ruff==0.17.2", "mypy==2.4.0"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+# Agent files and docs hold Markdown with sample code: ruff must not reformat them.
+extend-exclude = ["alembic/versions", ".agents", ".claude", ".opencode", ".hermes", "docs"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S", "SIM"]   # S = reglas de seguridad (bandit)
+
+[tool.ruff.lint.isort]
+# The local alembic/ folder must not turn the alembic package into first-party code.
+known-first-party = ["src"]
+known-third-party = ["alembic"]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["S101"]
+"tests/**" = ["S101"]
+"conftest.py" = ["S101"]
+
+[tool.mypy]
+strict = true
+plugins = ["pydantic.mypy"]
+exclude = ["alembic/versions/"]
+
+[tool.pytest.ini_options]
+testpaths = ["src", "tests"]
