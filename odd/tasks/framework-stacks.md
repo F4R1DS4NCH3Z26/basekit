@@ -235,4 +235,11 @@ Selected scope (user choice): "Set base (Recommended)": Python: Django + Flask Â
   - OpenCode needed no change: its `*` matches `/`, so `*.env` already denies backend/.env.
   - Gap: an existing `.claude/settings.json` is not edited (config files are created only if missing). Init warns with "!" instead. Pending: the user's decision.
   - The Go test helper uses `-c maintenance.auto=false`, because detached git maintenance broke the t.TempDir cleanup.
+- **L56** Final reviews, approved and acknowledged: Node 8337562..328d0d3 (medium; review-8bd29780f3a076da) and Go 49e3436 (high; review-aa10e329f1de5f19).
+  - Advisories left open (documented, not fixed):
+    - R3-db-auto-switch, both repos: an explicit `--db auto` while switching to combined drops the saved db and does not create backend overlays, yet still warns "vive en backend/". Changing `--db auto` semantics would affect existing projects.
+    - R3-offline-staticcheck, Go: `make verify` now needs the network the first time (`go run â€¦@v0.8.2`). This is the trade-off of the requested pin.
+    - R1-staticcheck-unvalidated-command, Go: STATICCHECK can be overridden from the command line. It is the user's own invocation, so it is not a boundary.
+  - Pending user decisions: add the side deny entries to an existing settings.json (today: warning only); Go: a combined project always uses Docker (`--no-docker` with a pair is exit 2).
+- **L57** Feature closed. Node dev/farid 328d0d3, Go dev/farid 49e3436. Nothing pushed (push/PR/merge are the user's).
 - **L6** Engram mirror `odd/framework-stacks/tasks`: PENDING. Auto mode blocks `mem_save` because a hook rewrites its input.
