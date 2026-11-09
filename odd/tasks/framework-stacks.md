@@ -56,7 +56,7 @@ Objective: `init` asks the language and then the framework, with 5 new stacks (d
   - Combined projects: Claude's deny list must cover the side secrets (`backend/.env`, `backend/.env.prod`, and so on), just as the allowlist covers the side scripts.
   - Switching an existing backend project that has a database to combined, with the db carried from the manifest, must leave `backend/` with its overlays (infra.sh runs for the backend) and warn about the leftover overlays at the root.
   - Go: add the deny entries Node already has (`.env.local`, `.env.production`, `.env.*.local`).
-- **S20** "sí, que init agregue los bloqueos solo". Both repos: in a combined project, when an existing `.claude/settings.json` lacks the side secret deny entries, init appends only the missing entries to `permissions.deny`. Every other key, value and the order of the existing entries stay untouched, and the result is reported with `~`. An unparseable settings.json is left as is, with the current warning. Single-stack projects and a settings.json that already has the entries do not change (the run is idempotent).
+- **S20** "sí, que init agregue los bloqueos solo". Both repos: in a combined project, when an existing `.claude/settings.json` lacks the side secret deny entries, init appends only the missing entries to `permissions.deny`. Every other key, value and the order of the existing entries stay untouched, and the result is reported with `~`. An unparseable settings.json, or one whose `deny` is not a list, is left as is, with a "!" warning that says why. Single-stack projects and a settings.json that already has the entries do not change (the run is idempotent).
 - **S9** Go parity: basekit-go (`~/Documents/project-guiade`) gets the same feature once Node is done (L31): byte-identical `plantillas/` (except the CLI text), the Tipo → Lenguaje → Framework question, frontend without DB, Combine, tests, docs and CI.
 
 Selected scope (user choice): "Set base (Recommended)": Python: Django + Flask · TypeScript: NestJS + Express · PHP: Symfony.
@@ -251,4 +251,9 @@ Selected scope (user choice): "Set base (Recommended)": Python: Django + Flask �
   - Unparseable files or a non-list `deny` are kept, with a "!" warning (new text).
   - Go merges with an order-preserving JSON token walk.
   - Risk: item 3 (an existing user config file is rewritten).
+- **L61** T22 committed: Node 5b38a7b, Go 7abb2d1. Reviews (medium; risk, reliability) approved and acknowledged in both repos. Advisories, documented and not fixed:
+  - Node: the merge normalizes integers outside the safe range and duplicate keys (JSON.parse);
+  - Go: a read error (for example permissions) falls through to Create without the "!" warning.
+  - S20 wording adjusted: the warning names its reason (an intentional change in this feature).
+- **L62** Push of dev/farid in both repos (L59).
 - **L6** Engram mirror `odd/framework-stacks/tasks`: PENDING. Auto mode blocks `mem_save` because a hook rewrites its input.
