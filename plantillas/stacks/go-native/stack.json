@@ -1,0 +1,17 @@
+{
+  "id": "go-native",
+  "name": "Go · Nativo (net/http + database/sql, sin framework)",
+  "language": "Go",
+  "kind": "backend",
+  "port": 8080,
+  "health": "/health",
+  "detect": {},
+  "appMarker": "go.sum",
+  "roles": ["data-writer", "logic-writer", "web-writer", "qa-writer"],
+  "skills": [
+    ["gonative-scaffold", "Módulo nuevo: estructura + contrato"],
+    ["gonative-patterns", "Antes de escribir cualquier capa; auth en references/auth.md"],
+    ["gonative-verify", "Lo usa `make verify`"]
+  ],
+  "defaultAuth": "jwt"
+}
