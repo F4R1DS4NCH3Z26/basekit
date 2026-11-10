@@ -1,6 +1,6 @@
 import { after, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { basekit, cleanup, fakeNpx, scratch } from "../../helpers.js";
 
@@ -40,6 +40,23 @@ describe("doctor", () => {
     const empty = basekit(["doctor", scratch()]);
     assert.equal(empty.code, 1);
     assert.match(lineFor(empty.stdout, /manifest/), /^FALTA .*basekit init/);
+  });
+
+  it("checks only the chosen external skills, and none without agents (S1, S2)", () => {
+    const d = scratch();
+    const npx = fakeNpx();
+    assert.equal(basekit(["init", d, "-y", "--stack", "fastapi", "--agents", "codex", "--no-external-skills"], undefined, npx.env).code, 0);
+    const m = JSON.parse(readFileSync(join(d, ".agents/manifest.json"), "utf8"));
+    m.options.externalSkills = ["grilling"];
+    writeFileSync(join(d, ".agents/manifest.json"), JSON.stringify(m));
+    assert.equal(basekit(["init", d, "-y"], undefined, npx.env).code, 0);
+    const r = basekit(["doctor", d]);
+    assert.match(lineFor(r.stdout, /grilling/), /^OK /);
+    assert.equal(lineFor(r.stdout, /grill-me/), "", "an unchosen skill is not checked");
+
+    const none = scratch();
+    assert.equal(basekit(["init", none, "-y", "--stack", "fastapi", "--agents", "none"], undefined, npx.env).code, 0);
+    assert.equal(lineFor(basekit(["doctor", none]).stdout, /\(externa\)/), "", "no external skills are expected without agents");
   });
 
   it("never reads .env", () => {

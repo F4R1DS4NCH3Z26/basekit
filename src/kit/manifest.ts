@@ -16,7 +16,8 @@ export interface Manifest {
   version?: string;
   stack?: string;
   agents?: string[];
-  options?: { db?: string; redis?: boolean; [k: string]: unknown };
+  /** `externalSkills`: the pinned external skills the user chose (S1); missing means all of them. */
+  options?: { db?: string; redis?: boolean; externalSkills?: string[]; [k: string]: unknown };
   files?: Record<string, string>;
   createdAt?: string;
   updatedAt?: string;
@@ -35,14 +36,22 @@ export function readManifest(project: Project): Manifest | undefined {
 
 const withoutUpdatedAt = ({ updatedAt: _ignored, ...rest }: Manifest) => JSON.stringify(rest);
 
+/** The external skills to install: the persisted choice (only pinned names, in pinned order), or all of them. */
+export function chosenExternal(manifest: Manifest | undefined): string[] {
+  const chosen = manifest?.options?.externalSkills;
+  if (!Array.isArray(chosen)) return EXTERNAL_SKILLS.skills;
+  return EXTERNAL_SKILLS.skills.filter((s) => chosen.includes(s));
+}
+
 /**
  * Writes the manifest keeping `createdAt` and unknown fields (spec 02 §8).
- * `updatedAt` only moves when something else changed.
+ * `updatedAt` only moves when something else changed. `externalSkills` is written only when chosen
+ * in this run; otherwise the previous choice (if any) is kept.
  */
 export function writeManifest(
   project: Project,
   prev: Manifest | undefined,
-  data: { stack: string; agents: string[]; db: string; redis: boolean; files: Record<string, string> },
+  data: { stack: string; agents: string[]; db: string; redis: boolean; externalSkills?: string[]; files: Record<string, string> },
 ): void {
   const now = new Date().toISOString();
   const base = prev ?? {};
@@ -52,7 +61,12 @@ export function writeManifest(
     version: VERSION,
     stack: data.stack,
     agents: data.agents,
-    options: { ...(base.options ?? {}), db: data.db, redis: data.redis },
+    options: {
+      ...(base.options ?? {}),
+      db: data.db,
+      redis: data.redis,
+      ...(data.externalSkills ? { externalSkills: data.externalSkills } : {}),
+    },
     externalSkills: EXTERNAL_SKILLS,
     files: data.files,
     createdAt: base.createdAt ?? now,

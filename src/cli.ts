@@ -36,13 +36,16 @@ Opciones de init:
                           tipo de app → lenguaje → framework)
   --stack <back>+<front>  Fullstack combinado: un stack backend en backend/ y uno frontend en
                           frontend/, con un Makefile raíz que delega en los dos
-  --agents <a,b>          Agentes (por defecto: detectados; si no, claude-code,opencode)
+  --agents <a,b>          Agentes (por defecto: detectados; si no, claude-code,opencode).
+                          none: ninguno (solo AGENTS.md y .agents/, sin adaptadores)
   --context <texto>       De qué trata el proyecto
   --db <motor>            auto | postgres | mysql | sqlite | none (por defecto: auto;
                           un stack frontend solo admite auto o none; en un combinado, va al backend)
   --redis                 Agrega Redis (no en un stack frontend; en un combinado, va al backend)
   --no-git                No ejecuta git init (zone-check lo necesita)
-  --no-external-skills    No instala las skills externas (CI o sin red)
+  --no-external-skills    No instala las skills externas (CI o sin red). En una terminal se pregunta
+                          cuáles instalar (todas marcadas; sin menú: números o nombres, ninguna/ninguno)
+                          y la elección queda en el manifest
   --force                 Reemplaza las skills del kit modificadas localmente
   --dry-run               Muestra lo que haría sin escribir nada
   -y, --yes               No interactivo: usa flags y valores por defecto
@@ -53,7 +56,8 @@ Opciones de install (instala desde el repositorio de GitHub de basekit, nunca de
   --from <paquete>        Instala otro origen: un fork, una etiqueta (github:usuario/basekit#v0.2.0) o un .tgz
 
 Opciones de sync:
-  --agents <a,b>          Reemplaza la lista de agentes (los nuevos reciben adaptadores, enlaces y skills externas)
+  --agents <a,b>          Reemplaza la lista de agentes (los nuevos reciben adaptadores, enlaces y skills externas);
+                          none: ninguno
   --no-external-skills    No reinstala las skills externas
   --dry-run               Muestra lo que haría sin escribir nada
 `;

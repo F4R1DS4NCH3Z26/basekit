@@ -57,6 +57,39 @@ describe("sync", () => {
     assert.match(calls[1]!, / -a claude-code opencode -y$/);
   });
 
+  it("--agents none leaves the tools out of the manifest; none mixed with ids is a usage error (S2)", () => {
+    const d = scratch();
+    assert.equal(init(d, "--stack", "nextjs", "--agents", "codex").code, 0);
+    const bad = basekit(["sync", d, "--agents", "codex,none"]);
+    assert.equal(bad.code, 2);
+    assert.match(bad.stderr, /^ERROR: --agents none no se combina con otros agentes/);
+    assert.deepEqual(JSON.parse(read(d, ".agents/manifest.json")).agents, ["codex"]);
+
+    const r = basekit(["sync", d, "--agents", "none", "--no-external-skills"]);
+    assert.equal(r.code, 0, r.stderr);
+    assert.deepEqual(JSON.parse(read(d, ".agents/manifest.json")).agents, []);
+  });
+
+  it("--agents later installs the external skills for a project without agents, honoring the persisted choice (S1, S2)", () => {
+    const d = scratch();
+    const npx = fakeNpx();
+    assert.equal(basekit(["init", d, "-y", "--stack", "nextjs", "--agents", "none"], undefined, npx.env).code, 0);
+    assert.deepEqual(npx.log(), []);
+    const m = JSON.parse(read(d, ".agents/manifest.json"));
+    m.options.externalSkills = ["grill-with-docs"];
+    writeFileSync(join(d, ".agents/manifest.json"), `${JSON.stringify(m, null, 2)}\n`);
+
+    const r = basekit(["sync", d, "--agents", "claude-code"], undefined, npx.env);
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    const calls = npx.log().filter((l) => l.startsWith("ARGS"));
+    assert.equal(calls.length, 1);
+    assert.match(calls[0]!, / -s grill-with-docs -a claude-code -y$/);
+    assert.ok(existsSync(join(d, ".claude/agents/data-writer.md")));
+    assert.ok(existsSync(join(d, ".claude/skills/grill-with-docs/SKILL.md")));
+    assert.ok(!existsSync(join(d, ".agents/skills/grilling")));
+    assert.deepEqual(JSON.parse(read(d, ".agents/manifest.json")).options.externalSkills, ["grill-with-docs"]);
+  });
+
   it("is idempotent", () => {
     const d = scratch();
     assert.equal(init(d, "--stack", "laravel", "--agents", "claude-code,opencode,gemini-cli,hermes-agent").code, 0);

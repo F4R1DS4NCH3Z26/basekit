@@ -188,6 +188,53 @@ describe("acceptance 5: invalid values", () => {
   });
 });
 
+describe("--agents none (S2)", () => {
+  it("writes AGENTS.md and .agents/ but no tool adapters or links, and stores agents: []", () => {
+    const d = scratch();
+    const npx = fakeNpx();
+    const r = basekit(["init", d, "-y", "--stack", "nextjs", "--agents", "none"], undefined, npx.env);
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    for (const f of ["AGENTS.md", ".agents/README.md", ".agents/roles/data-writer.md", ".agents/zones/orchestrator.txt", ".agents/skills/zone-check/SKILL.md", "docs", "Makefile", "compose.yaml"]) {
+      assert.ok(existsSync(join(d, f)), f);
+    }
+    for (const f of [".claude", "CLAUDE.md", ".opencode", "opencode.json", ".gemini", ".hermes"]) assert.ok(!existsSync(join(d, f)), f);
+    assert.deepEqual(JSON.parse(read(d, ".agents/manifest.json")).agents, []);
+    assert.deepEqual(npx.log(), [], "the skills CLI needs -a: nothing is installed without agents");
+    assert.match(r.stdout, /^! skills externas {2}\(sin agentes: se instalan cuando agregues uno con basekit sync --agents <a,b>\)$/m);
+  });
+
+  it("a rerun keeps agents: [] without detecting the tools present", () => {
+    const d = scratch();
+    assert.equal(init(d, "--stack", "nextjs", "--agents", "none").code, 0);
+    mkdirSync(join(d, ".claude"));
+    const r = init(d);
+    assert.equal(r.code, 0, r.stderr);
+    assert.deepEqual(JSON.parse(read(d, ".agents/manifest.json")).agents, []);
+    assert.ok(!existsSync(join(d, ".claude/agents")), "no detection: claude-code was not added");
+  });
+
+  it("mixed with other ids is a usage error (exit 2) and writes nothing", () => {
+    const d = scratch();
+    const r = init(d, "--stack", "nextjs", "--agents", "none,codex");
+    assert.equal(r.code, 2);
+    assert.match(r.stderr, /^ERROR: --agents none no se combina con otros agentes/);
+    assert.deepEqual(readdirSync(d), []);
+  });
+
+  it("--agents with ids still works as before", () => {
+    const d = scratch();
+    assert.equal(init(d, "--stack", "nextjs", "--agents", "codex,claude-code").code, 0);
+    assert.deepEqual(JSON.parse(read(d, ".agents/manifest.json")).agents, ["claude-code", "codex"]);
+    assert.ok(existsSync(join(d, ".claude/agents/data-writer.md")));
+  });
+
+  it("is documented in the help, with the external skills list", () => {
+    const help = basekit(["--help"]).stdout;
+    assert.match(help, /--agents <a,b> +Agentes [^\n]*\n +none: ninguno/);
+    assert.match(help, /ninguna\/ninguno/);
+  });
+});
+
 describe("frontend stacks have no database (S1b)", () => {
   it("has at least one frontend stack to check", () => assert.ok(FRONTEND.length > 0));
 

@@ -19,9 +19,17 @@ export function readManifest(project) {
     }
 }
 const withoutUpdatedAt = ({ updatedAt: _ignored, ...rest }) => JSON.stringify(rest);
+/** The external skills to install: the persisted choice (only pinned names, in pinned order), or all of them. */
+export function chosenExternal(manifest) {
+    const chosen = manifest?.options?.externalSkills;
+    if (!Array.isArray(chosen))
+        return EXTERNAL_SKILLS.skills;
+    return EXTERNAL_SKILLS.skills.filter((s) => chosen.includes(s));
+}
 /**
  * Writes the manifest keeping `createdAt` and unknown fields (spec 02 §8).
- * `updatedAt` only moves when something else changed.
+ * `updatedAt` only moves when something else changed. `externalSkills` is written only when chosen
+ * in this run; otherwise the previous choice (if any) is kept.
  */
 export function writeManifest(project, prev, data) {
     const now = new Date().toISOString();
@@ -32,7 +40,12 @@ export function writeManifest(project, prev, data) {
         version: VERSION,
         stack: data.stack,
         agents: data.agents,
-        options: { ...(base.options ?? {}), db: data.db, redis: data.redis },
+        options: {
+            ...(base.options ?? {}),
+            db: data.db,
+            redis: data.redis,
+            ...(data.externalSkills ? { externalSkills: data.externalSkills } : {}),
+        },
         externalSkills: EXTERNAL_SKILLS,
         files: data.files,
         createdAt: base.createdAt ?? now,

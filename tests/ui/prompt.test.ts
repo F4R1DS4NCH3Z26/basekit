@@ -164,6 +164,51 @@ describe("agents question", () => {
     assert.deepEqual(await p.agents(DEFAULT_AGENTS), DEFAULT_AGENTS);
     p.close();
   });
+
+  it("ninguno or ninguna, in any case, chooses no agent (S2)", async () => {
+    for (const answer of ["ninguno", "NINGUNA", " Ninguno "]) {
+      const { p, output } = prompter(answer);
+      assert.deepEqual(await p.agents(DEFAULT_AGENTS), [], answer);
+      assert.match(output(), /¿Con qué herramientas vas a trabajar\?/);
+      assert.doesNotMatch(output(), /No reconozco/);
+      p.close();
+    }
+  });
+});
+
+describe("external skills question (S1)", () => {
+  const SKILLS = ["grill-me", "grill-with-docs", "grilling", "domain-modeling"];
+
+  it("lists the four skills numbered, in order, and keeps them all on Enter or at the end of the input", async () => {
+    const { p, output } = prompter("");
+    assert.deepEqual(await p.externalSkills(SKILLS), SKILLS);
+    assert.match(output(), /¿Qué skills externas instalo\? \(usan npx y red\)\n {2}1\) grill-me\n {2}2\) grill-with-docs\n {2}3\) grilling\n {2}4\) domain-modeling\n/);
+    p.close();
+    const ended = prompter();
+    assert.deepEqual(await ended.p.externalSkills(SKILLS), SKILLS);
+    ended.p.close();
+  });
+
+  it("accepts numbers and names mixed, in the pinned order without duplicates", async () => {
+    const { p } = prompter("domain-modeling, 1,4");
+    assert.deepEqual(await p.externalSkills(SKILLS), ["grill-me", "domain-modeling"]);
+    p.close();
+  });
+
+  it("ninguna or ninguno, in any case, chooses none", async () => {
+    for (const answer of ["ninguna", "Ninguno", "NINGUNA"]) {
+      const { p } = prompter(answer);
+      assert.deepEqual(await p.externalSkills(SKILLS), [], answer);
+      p.close();
+    }
+  });
+
+  it("asks again naming what it did not recognise", async () => {
+    const { p, output } = prompter("grilling, x, 9", "3");
+    assert.deepEqual(await p.externalSkills(SKILLS), ["grilling"]);
+    assert.match(output(), /No reconozco: x, 9/);
+    p.close();
+  });
 });
 
 describe("menu and yes/no questions", () => {
@@ -213,6 +258,29 @@ describe("context question", () => {
     c.p.close();
   });
 });
+
+/** A runner that fakes `npx skills add` (creates each `-s` skill) and runs anything else for real. */
+function fakeRunner(): { runner: Runner; calls: string[][] } {
+  const calls: string[][] = [];
+  const runner: Runner = {
+    ...processRunner,
+    run: (log, cmd, args, cwd, env) => {
+      if (cmd !== "npx") return processRunner.run(log, cmd, args, cwd, env);
+      calls.push(args);
+      for (const s of skillsOfCall(args)) {
+        mkdirSync(join(cwd, ".agents/skills", s), { recursive: true });
+        writeFileSync(join(cwd, ".agents/skills", s, "SKILL.md"), `---\nname: ${s}\n---\n`);
+      }
+      return true;
+    },
+  };
+  return { runner, calls };
+}
+
+/** The skills an `npx skills add` call names after `-s`. */
+const skillsOfCall = (args: string[]) => args.slice(args.indexOf("-s") + 1, args.indexOf("-a"));
+const EXTERNAL = ["grill-me", "grill-with-docs", "grilling", "domain-modeling"];
+const manifest = (d: string) => JSON.parse(readFileSync(join(d, ".agents/manifest.json"), "utf8"));
 
 const quietInit = (o: Partial<InitOptions> & { dir: string }, prompt?: Prompter) =>
   init({ externalSkills: false, force: false, dryRun: false, ...o }, { log: () => {}, prompt, fs: nodeFileSystem, runner: processRunner });
@@ -276,18 +344,85 @@ describe("init with interactive answers", () => {
     assert.match(readFileSync(join(d, "docs/PROJECT.md"), "utf8"), /Reservas/, "the context is still asked");
   });
 
-  it("lists the included skills and installs the external ones when the answer is the default", async () => {
+  it("lists the included skills and installs all the external ones when the answer is the default", async () => {
     const d = join(scratch(), "app");
-    const calls: string[] = [];
-    const runner: Runner = { ...processRunner, run: (log, cmd, args, cwd, env) => (calls.push(cmd), cmd === "npx" ? true : processRunner.run(log, cmd, args, cwd, env)) };
+    const { runner, calls } = fakeRunner();
     const { p, output } = prompter("", "", "");
     const lines: string[] = [];
     const code = await init({ dir: d, stack: "flask", agents: "codex", externalSkills: true, force: false, dryRun: false }, { log: (l) => lines.push(l), prompt: p, fs: nodeFileSystem, runner });
     p.close();
     assert.equal(code, 0);
-    assert.match(output(), /¿Instalar también las skills externas/);
+    assert.match(output(), /¿Qué skills externas instalo\? \(usan npx y red\)/);
+    assert.doesNotMatch(output(), /¿Instalar también/);
     assert.match(lines.join("\n"), /Skills incluidas: .*zone-check/);
-    assert.ok(calls.includes("npx"), `npx did not run: ${calls.join(" ")}`);
+    assert.deepEqual(calls.map(skillsOfCall), [EXTERNAL]);
+    assert.deepEqual(manifest(d).options.externalSkills, EXTERNAL);
+  });
+
+  it("installs only the chosen external skills, persists the choice and does not ask again (S1)", async () => {
+    const d = join(scratch(), "app");
+    const { runner, calls } = fakeRunner();
+    const { p, output } = prompter("1,grilling", "", "");
+    const lines: string[] = [];
+    assert.equal(await init({ dir: d, stack: "flask", agents: "codex", externalSkills: true, force: false, dryRun: false }, { log: (l) => lines.push(l), prompt: p, fs: nodeFileSystem, runner }), 0);
+    p.close();
+    assert.match(output(), /¿Qué skills externas instalo/);
+    assert.deepEqual(calls.map(skillsOfCall), [["grill-me", "grilling"]]);
+    assert.match(lines.join("\n"), /^\+ skills externas/m);
+    assert.deepEqual(manifest(d).options.externalSkills, ["grill-me", "grilling"]);
+    assert.ok(!existsSync(join(d, ".agents/skills/domain-modeling")), "an unchosen skill is not installed");
+
+    // A rerun takes the persisted choice: nothing missing, no question, no npx.
+    const rerun = prompter();
+    const again: string[] = [];
+    assert.equal(await init({ dir: d, externalSkills: true, force: false, dryRun: false }, { log: (l) => again.push(l), prompt: rerun.p, fs: nodeFileSystem, runner }), 0);
+    rerun.p.close();
+    assert.equal(rerun.output(), "", "a rerun with a persisted choice asks nothing");
+    assert.equal(calls.length, 1);
+    assert.match(again.join("\n"), /^= skills externas  \(grill-me, grilling\)$/m);
+    assert.deepEqual(manifest(d).options.externalSkills, ["grill-me", "grilling"]);
+  });
+
+  it("ninguna installs nothing, reports it and persists an empty choice (S1)", async () => {
+    const d = join(scratch(), "app");
+    const { runner, calls } = fakeRunner();
+    const { p } = prompter("ninguna", "", "");
+    const lines: string[] = [];
+    assert.equal(await init({ dir: d, stack: "flask", agents: "codex", externalSkills: true, force: false, dryRun: false }, { log: (l) => lines.push(l), prompt: p, fs: nodeFileSystem, runner }), 0);
+    p.close();
+    assert.deepEqual(calls, [], "npx must not run");
+    assert.ok(lines.includes("= skills externas  (ninguna elegida)"), lines.join("\n"));
+    assert.deepEqual(manifest(d).options.externalSkills, []);
+
+    const rerun = prompter();
+    const again: string[] = [];
+    assert.equal(await init({ dir: d, externalSkills: true, force: false, dryRun: false }, { log: (l) => again.push(l), prompt: rerun.p, fs: nodeFileSystem, runner }), 0);
+    rerun.p.close();
+    assert.equal(rerun.output(), "");
+    assert.deepEqual(calls, []);
+    assert.ok(again.includes("= skills externas  (ninguna elegida)"));
+  });
+
+  it("ninguno as the agents answer writes no tool files and a rerun keeps it without detection (S2)", async () => {
+    const d = join(scratch(), "app");
+    const { runner, calls } = fakeRunner();
+    const { p, output } = prompter("", "ninguno", "", "");
+    const lines: string[] = [];
+    assert.equal(await init({ dir: d, stack: "flask", externalSkills: true, force: false, dryRun: false }, { log: (l) => lines.push(l), prompt: p, fs: nodeFileSystem, runner }), 0);
+    p.close();
+    assert.match(output(), /¿Con qué herramientas vas a trabajar\?/);
+    assert.deepEqual(manifest(d).agents, []);
+    for (const f of ["AGENTS.md", ".agents/README.md", ".agents/roles", ".agents/skills/zone-check/SKILL.md", "docs", "Makefile"]) assert.ok(existsSync(join(d, f)), f);
+    for (const f of [".claude", "CLAUDE.md", ".opencode", "opencode.json", ".gemini", ".hermes"]) assert.ok(!existsSync(join(d, f)), f);
+    assert.deepEqual(calls, [], "no external skills without agents");
+    assert.ok(lines.includes("! skills externas  (sin agentes: se instalan cuando agregues uno con basekit sync --agents <a,b>)"), lines.join("\n"));
+
+    mkdirSync(join(d, ".cursor"));
+    const rerun = prompter();
+    assert.equal(await quietInit({ dir: d }, rerun.p), 0);
+    rerun.p.close();
+    assert.equal(rerun.output(), "", "agents: [] is a decided answer");
+    assert.deepEqual(manifest(d).agents, []);
   });
 
   it("does not ask about the external skills when they are already installed", async () => {
@@ -301,17 +436,5 @@ describe("init with interactive answers", () => {
     p.close();
     assert.equal(code, 0);
     assert.doesNotMatch(output(), /skills externas/);
-  });
-
-  it("asks before installing the external skills and skips npx when the answer is no", async () => {
-    const d = join(scratch(), "app");
-    const calls: string[] = [];
-    const runner: Runner = { ...processRunner, run: (log, cmd, args, cwd, env) => (calls.push(cmd), cmd === "npx" ? true : processRunner.run(log, cmd, args, cwd, env)) };
-    const { p, output } = prompter("n", "", "");
-    const code = await init({ dir: d, stack: "flask", agents: "codex", externalSkills: true, force: false, dryRun: false }, { log: () => {}, prompt: p, fs: nodeFileSystem, runner });
-    p.close();
-    assert.equal(code, 0);
-    assert.match(output(), /¿Instalar también las skills externas \(grill-me, grill-with-docs, grilling, domain-modeling\)\? Usan npx y red \[S\/n\]/);
-    assert.ok(!calls.includes("npx"), `npx ran: ${calls.join(" ")}`);
   });
 });
