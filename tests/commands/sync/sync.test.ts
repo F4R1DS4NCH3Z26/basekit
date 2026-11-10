@@ -115,6 +115,20 @@ describe("sync", () => {
     assert.equal(calls().length, 2);
   });
 
+  it("--dry-run --external-skills prints the npx call and changes nothing (S4)", () => {
+    const d = scratch();
+    const npx = fakeNpx();
+    const calls = () => npx.log().filter((l) => l.startsWith("ARGS"));
+    assert.equal(basekit(["init", d, "-y", "--stack", "nextjs", "--agents", "codex", "--external-skills", "grilling"], undefined, npx.env).code, 0);
+    const before = read(d, ".agents/manifest.json");
+    const s = basekit(["sync", d, "--dry-run", "--external-skills", "grill-me"], undefined, npx.env);
+    assert.equal(s.code, 0, s.stdout + s.stderr);
+    assert.match(s.stdout, /ejecutaría: npx -y skills@1\.7\.4 add .* -s grill-me -a codex -y/);
+    assert.equal(calls().length, 1, "only the npx call from init");
+    assert.equal(read(d, ".agents/manifest.json"), before, "the dry run leaves the manifest as it was");
+    assert.ok(!existsSync(join(d, ".agents/skills/grill-me/SKILL.md")), "the dry run installs nothing");
+  });
+
   it("--external-skills without agents stores the choice but installs nothing (S4)", () => {
     const d = scratch();
     const npx = fakeNpx();
