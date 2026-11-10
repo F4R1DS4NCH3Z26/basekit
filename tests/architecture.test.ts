@@ -45,6 +45,17 @@ describe("architecture", () => {
     }
   });
 
+  it("only node: built-ins outside ui/; ui/ may also import @clack/prompts, the one runtime dependency (ADR 0002)", () => {
+    for (const f of sources()) {
+      const text = readFileSync(join(SRC_DIR, f), "utf8");
+      const specifiers = [...text.matchAll(/^\s*(?:import|export)\b[^;]*?\bfrom\s+"([^"]+)"|^\s*import\s+"([^"]+)"|\bimport\(\s*"([^"]+)"\s*\)/gm)].map((m) => m[1] ?? m[2] ?? m[3]!);
+      for (const pkg of specifiers) {
+        if (pkg.startsWith(".") || pkg.startsWith("node:")) continue;
+        assert.ok(layer(f) === "ui" && pkg === "@clack/prompts", `${f} imports the package "${pkg}"`);
+      }
+    }
+  });
+
   it("a command never reaches into another command; outside commands/ only its index.ts is public", () => {
     for (const f of sources()) {
       for (const target of imports(f)) {

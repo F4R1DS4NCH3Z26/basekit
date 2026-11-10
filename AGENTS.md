@@ -1,6 +1,6 @@
 # basekit: reglas para agentes
 
-CLI en Node + TypeScript (cero dependencias de runtime) que prepara proyectos para agentes de IA. Especificación del producto: `docs/spec/` (00–05) y `docs/stacks/`. Lo que genera en otros proyectos sale de `plantillas/`.
+CLI en Node + TypeScript (una sola dependencia de runtime, `@clack/prompts`, para los menús; ADR 0002) que prepara proyectos para agentes de IA. Especificación del producto: `docs/spec/` (00–05) y `docs/stacks/`. Lo que genera en otros proyectos sale de `plantillas/`.
 
 **Los agentes se reparten territorio, no tareas. La especificación manda y los tests verifican.**
 
@@ -9,7 +9,7 @@ CLI en Node + TypeScript (cero dependencias de runtime) que prepara proyectos pa
 - `infra/`: puertos `FileSystem` y `Runner` (todo `spawn` vive aquí). No importa nada de `src/`.
 - `kit/`: dominio. `Project` es la única puerta de escritura (marcas `+` `~` `=` `!`). Plantillas, stacks, manifest, adaptadores por herramienta y skills externas.
 - `commands/<cmd>/`: un comando por carpeta. Fuera de su carpeta solo es público su `index.ts`; un comando nunca importa a otro.
-- `ui/`: preguntas interactivas (menú con flechas y respaldo numerado sin TTY).
+- `ui/`: preguntas interactivas (menús de `@clack/prompts` en una terminal y respaldo numerado sin modo raw). Es la única carpeta que importa `@clack/prompts`.
 - `dist/src` se commitea: tras cambiar `src/`, `npm run compile`.
 
 ## Zonas (`.agents/zones/<rol>.txt`)

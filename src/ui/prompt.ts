@@ -1,4 +1,6 @@
-import { createInterface, emitKeypressEvents, type Interface } from "node:readline";
+import { createInterface, type Interface } from "node:readline";
+import type { Readable, Writable } from "node:stream";
+import * as clack from "@clack/prompts";
 import { AGENTS } from "../kit/agents.js";
 import { CancelledError, UsageError } from "../kit/errors.js";
 import { SIDES, type Side } from "../kit/layout.js";
@@ -25,31 +27,24 @@ function optionIndex(options: { label: string; keys: string[] }[], answer: strin
 }
 
 /** A readable stream that may be a terminal (process.stdin, or a test double). */
-type Input = NodeJS.ReadableStream & { isTTY?: boolean; isRaw?: boolean; setRawMode?: (raw: boolean) => unknown };
-
-/** `text` cut to `max` characters, with "…" when it had to be shortened. */
-const cut = (text: string, max: number) => ([...text].length <= max ? text : `${[...text].slice(0, Math.max(0, max - 1)).join("")}…`);
+type Input = NodeJS.ReadableStream & { isTTY?: boolean; setRawMode?: (raw: boolean) => unknown };
 
 interface Item {
   label: string;
   hint: string;
 }
 
-interface Key {
-  name?: string;
-  ctrl?: boolean;
+/** What every clack question receives: the Prompter's own streams, and a signal that cancels it. */
+interface Streams {
+  input: Readable;
+  output: Writable;
+  signal: AbortSignal;
 }
 
-const ESC = "\x1b[";
-const color = !process.env.NO_COLOR;
-const accent = (s: string) => (color ? `${ESC}36m${s}${ESC}39m` : s);
-const dim = (s: string) => (color ? `${ESC}2m${s}${ESC}22m` : s);
-
 /**
- * Interactive questions. In a real terminal the menus move with the arrow keys (raw mode, no
- * dependencies); otherwise, and for text answers, it reads whole lines through one async iterator,
- * so piped answers and lines typed before a text question are kept. Keys typed in a terminal
- * before a menu is drawn are discarded: the menu reads keys, not lines.
+ * Interactive questions. In a real terminal (raw mode) every question is a @clack/prompts prompt
+ * (ADR 0002): menus with the arrow keys, checkboxes, yes/no and text. Otherwise it is numbered and
+ * reads whole lines through one async iterator, so piped answers are kept.
  */
 export class Prompter {
   private rl: Interface | undefined;
@@ -84,70 +79,38 @@ export class Prompter {
   }
 
   /**
-   * Arrow-key menu: ↑/↓ (or k/j) move, 1–9 jump to that option, Enter chooses; with `multi`, space toggles
-   * and Enter with nothing checked chooses none. Returns the chosen indexes. Ctrl+C, Ctrl+D, Esc or the end of the input restore the terminal and throw CancelledError.
+   * Runs one clack question on this Prompter's streams. Ctrl+C or Esc (clack's cancel), Ctrl+D and the
+   * end of the input throw CancelledError; clack restores the terminal before it returns.
    */
-  private select(question: string, items: Item[], multi: boolean, checked: number[] = []): Promise<number[]> {
-    // The line reader would also consume the keys: it is recreated by the next text question.
+  private async ask<A>(prompt: (streams: Streams) => Promise<A>): Promise<Exclude<A, symbol>> {
+    // A line reader would also consume the keys: the numbered mode recreates it when needed.
     this.close();
-    const input = this.input;
-    const n = items.length;
-    const width = Math.max(...items.map((i) => i.label.length));
-    const picked = new Set(checked);
-    let cursor = 0;
-    const help = multi ? "↑/↓ mover · espacio marcar · Enter confirmar" : "↑/↓ mover · Enter elegir";
-    // Every row must fit on one line: the redraw moves the cursor up one line per row.
-    const columns = Math.max(20, ((this.out as { columns?: number }).columns ?? 80) - 1);
-    const row = (i: number) => {
-      const here = i === cursor;
-      const box = multi ? (picked.has(i) ? "◉ " : "◯ ") : "";
-      const label = cut(items[i]!.label.padEnd(width), columns - 2 - box.length);
-      const room = columns - 2 - box.length - label.length - 2;
-      const hint = room > 1 ? cut(items[i]!.hint, room) : "";
-      const text = hint ? `${label}  ${dim(hint)}` : label;
-      return `${here ? accent("❯") : " "} ${box}${here ? accent(text) : text}`;
+    const input = this.input as Input & Readable;
+    if (input.readableEnded) throw new CancelledError();
+    const abort = new AbortController();
+    const stop = () => abort.abort();
+    const onKey = (_: unknown, key?: { name?: string; ctrl?: boolean }) => {
+      if (key?.ctrl && key.name === "d") stop();
     };
-    const footer = () => `  ${dim(cut(help, columns - 2))}`;
-    const draw = (again: boolean) => {
-      if (again) this.out.write(`${ESC}${n + 1}A`);
-      for (let i = 0; i < n; i++) this.out.write(`${ESC}2K${row(i)}\n`);
-      this.out.write(`${ESC}2K${footer()}\n`);
-    };
+    input.on("keypress", onKey);
+    input.once("end", stop);
+    input.once("close", stop);
+    try {
+      const answer = await prompt({ input, output: this.out as Writable, signal: abort.signal });
+      if (clack.isCancel(answer)) throw new CancelledError();
+      return answer as Exclude<A, symbol>;
+    } finally {
+      input.removeListener("keypress", onKey);
+      input.removeListener("end", stop);
+      input.removeListener("close", stop);
+    }
+  }
 
-    this.say(question);
-    this.out.write(`${ESC}?25l`);
-    draw(false);
-    emitKeypressEvents(input);
-    const wasRaw = input.isRaw === true;
-    input.setRawMode!(true);
-    input.resume();
-
-    return new Promise((resolve, reject) => {
-      const finish = (result: number[] | Error) => {
-        input.removeListener("keypress", onKey);
-        input.removeListener("end", onEnd);
-        input.removeListener("close", onEnd);
-        input.setRawMode!(wasRaw);
-        input.pause();
-        this.out.write(`${ESC}?25h`);
-        if (result instanceof Error) reject(result);
-        else resolve(result);
-      };
-      // A closed terminal or an ended stdin must not leave the menu waiting forever.
-      const onEnd = () => finish(new CancelledError());
-      const onKey = (str: string | undefined, key: Key | undefined) => {
-        if ((key?.ctrl && (key.name === "c" || key.name === "d")) || key?.name === "escape") return finish(new CancelledError());
-        if (key?.name === "up" || key?.name === "k") cursor = (cursor - 1 + n) % n;
-        else if (key?.name === "down" || key?.name === "j") cursor = (cursor + 1) % n;
-        else if (multi && key?.name === "space") picked.has(cursor) ? picked.delete(cursor) : picked.add(cursor);
-        else if (str && /^[1-9]$/.test(str) && Number(str) <= n) cursor = Number(str) - 1;
-        else if (key?.name === "return" || key?.name === "enter") return finish(multi ? [...picked].sort((a, b) => a - b) : [cursor]);
-        draw(true);
-      };
-      input.on("keypress", onKey);
-      input.once("end", onEnd);
-      input.once("close", onEnd);
-    });
+  /** A clack menu among `items`; returns the chosen index. Hints show next to the focused option. */
+  private select(question: string, items: Item[]): Promise<number> {
+    return this.ask((streams) =>
+      clack.select<number>({ ...streams, message: question, options: items.map((it, i) => ({ value: i, label: it.label, ...(it.hint ? { hint: it.hint } : {}) })) }),
+    );
   }
 
   /**
@@ -215,7 +178,7 @@ export class Prompter {
       this.say(`${title}: ${options[0]!.label} (única opción)`);
       return 0;
     }
-    if (this.arrows) return (await this.select(question, options, false))[0]!;
+    if (this.arrows) return this.select(question, options);
     const width = Math.max(...options.map((o) => o.label.length));
     this.say(question);
     options.forEach((o, i) => this.say(`  ${i + 1}) ${o.hint ? `${o.label.padEnd(width)}  ${o.hint}` : o.label}`));
@@ -237,7 +200,7 @@ export class Prompter {
       "¿Con qué herramientas vas a trabajar? (puedes elegir varias, separadas por comas)",
       AGENTS.map((a) => a.id),
       defaults,
-      { hint: "(por defecto)", names: "ids" },
+      { hint: "por defecto", names: "ids" },
     );
   }
 
@@ -254,17 +217,20 @@ export class Prompter {
    */
   private async many(question: string, lineQuestion: string, ids: string[], defaults: string[], o: { hint: string; names: string }): Promise<string[]> {
     if (this.arrows) {
-      const chosen = await this.select(
-        question,
-        ids.map((id) => ({ label: id, hint: defaults.includes(id) ? o.hint : "" })),
-        true,
-        ids.flatMap((id, i) => (defaults.includes(id) ? [i] : [])),
+      const chosen = await this.ask((streams) =>
+        clack.multiselect<string>({
+          ...streams,
+          message: question,
+          options: ids.map((id) => ({ value: id, label: id, ...(o.hint && defaults.includes(id) ? { hint: o.hint } : {}) })),
+          initialValues: ids.filter((id) => defaults.includes(id)),
+          required: false,
+        }),
       );
-      return chosen.map((i) => ids[i]!);
+      return ids.filter((id) => chosen.includes(id));
     }
     const width = Math.max(...ids.map((id) => id.length));
     this.say(lineQuestion);
-    ids.forEach((id, i) => this.say(`  ${i + 1}) ${o.hint ? `${id.padEnd(width)}${defaults.includes(id) ? `  ${o.hint}` : ""}` : id}`));
+    ids.forEach((id, i) => this.say(`  ${i + 1}) ${o.hint ? `${id.padEnd(width)}${defaults.includes(id) ? `  (${o.hint})` : ""}` : id}`));
     for (;;) {
       const answer = await this.line(`Números o ${o.names} [${defaults.join(",")}]: `);
       if (!answer) return defaults;
@@ -277,20 +243,20 @@ export class Prompter {
     }
   }
 
+  /** What the project is about, in a sentence or two; Enter alone (or the end of the input without a terminal) leaves it empty. */
   async context(): Promise<string> {
-    return (await this.line("¿De qué trata el proyecto? (una o dos frases; Enter para dejarlo vacío): ")) ?? "";
+    const question = "¿De qué trata el proyecto? (una o dos frases; Enter para dejarlo vacío)";
+    if (this.arrows) return ((await this.ask((streams) => clack.text({ ...streams, message: question }))) ?? "").trim();
+    return (await this.line(`${question}: `)) ?? "";
   }
 
   /**
-   * Menu of options; returns the chosen option's `id`. In a terminal it moves with the arrow keys;
+   * Menu of options; returns the chosen option's `id`. In a terminal it is a clack menu;
    * otherwise it is numbered: Enter takes the first option, an invalid answer asks again, and the
    * end of the input fails.
    */
   async choose(question: string, options: { id: string; label: string; hint: string }[]): Promise<string> {
-    if (this.arrows) {
-      const [i] = await this.select(question, options, false);
-      return options[i!]!.id;
-    }
+    if (this.arrows) return options[await this.select(question, options)]!.id;
     const width = Math.max(...options.map((o) => o.label.length));
     this.say(question);
     options.forEach((o, i) => this.say(`  ${i + 1}) ${o.label.padEnd(width)}  ${o.hint}`));
@@ -304,8 +270,9 @@ export class Prompter {
     }
   }
 
-  /** Yes/no question; Enter (or the end of the input) takes the default. */
+  /** Yes/no question; Enter (or the end of the input without a terminal) takes the default. */
   async confirm(question: string, byDefault: boolean): Promise<boolean> {
+    if (this.arrows) return this.ask((streams) => clack.confirm({ ...streams, message: question, active: "Sí", inactive: "No", initialValue: byDefault }));
     for (;;) {
       const answer = await this.line(`${question} ${byDefault ? "[S/n]" : "[s/N]"}: `);
       if (!answer) return byDefault;
