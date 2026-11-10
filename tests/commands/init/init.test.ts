@@ -410,6 +410,7 @@ describe("--no-git", () => {
     assert.ok(!existsSync(join(d, ".git")), "no repository");
     assert.ok(!existsSync(join(d, ".gitattributes")), "no .gitattributes without a repository basekit creates");
     assert.match(r.stdout, /^! \.git .*sin git: zone-check no funciona hasta que ejecutes git init/m);
+    assert.doesNotMatch(r.stdout, /^! \.gitattributes/m, "the CRLF hint is only for an existing repository");
     assert.ok(existsSync(join(d, ".agents/manifest.json")));
   });
 

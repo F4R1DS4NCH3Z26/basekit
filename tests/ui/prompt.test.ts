@@ -1,6 +1,6 @@
 import { after, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
 import { AGENTS, DEFAULT_AGENTS } from "../../src/kit/agents.js";
@@ -245,7 +245,7 @@ describe("init with interactive answers", () => {
     const first = prompter("", "Reservas");
     assert.equal(await quietInit({ dir: d, stack: "fastapi", agents: "codex" }, first.p), 0);
     first.p.close();
-    assert.doesNotMatch(first.output(), /tipo de app|lenguaje|framework|herramientas/);
+    assert.doesNotMatch(first.output(), /tipo de app|lenguaje|framework|herramientas|skills externas/);
     assert.match(first.output(), /¿De qué trata el proyecto\?/);
 
     const rerun = prompter();
@@ -264,6 +264,43 @@ describe("init with interactive answers", () => {
     assert.ok(!existsSync(join(d, ".git")), "no repository");
     assert.ok(!existsSync(join(d, ".gitattributes")), ".gitattributes only comes with a repository basekit creates");
     assert.ok(existsSync(join(d, ".agents/manifest.json")));
+  });
+
+  it("does not ask about git with --no-git", async () => {
+    const d = join(scratch(), "app");
+    const { p, output } = prompter("Reservas");
+    assert.equal(await quietInit({ dir: d, stack: "flask", agents: "codex", noGit: true }, p), 0);
+    p.close();
+    assert.doesNotMatch(output(), /Inicializar git/);
+    assert.ok(!existsSync(join(d, ".git")));
+    assert.match(readFileSync(join(d, "docs/PROJECT.md"), "utf8"), /Reservas/, "the context is still asked");
+  });
+
+  it("lists the included skills and installs the external ones when the answer is the default", async () => {
+    const d = join(scratch(), "app");
+    const calls: string[] = [];
+    const runner: Runner = { ...processRunner, run: (log, cmd, args, cwd, env) => (calls.push(cmd), cmd === "npx" ? true : processRunner.run(log, cmd, args, cwd, env)) };
+    const { p, output } = prompter("", "", "");
+    const lines: string[] = [];
+    const code = await init({ dir: d, stack: "flask", agents: "codex", externalSkills: true, force: false, dryRun: false }, { log: (l) => lines.push(l), prompt: p, fs: nodeFileSystem, runner });
+    p.close();
+    assert.equal(code, 0);
+    assert.match(output(), /¿Instalar también las skills externas/);
+    assert.match(lines.join("\n"), /Skills incluidas: .*zone-check/);
+    assert.ok(calls.includes("npx"), `npx did not run: ${calls.join(" ")}`);
+  });
+
+  it("does not ask about the external skills when they are already installed", async () => {
+    const d = join(scratch(), "app");
+    for (const s of ["grill-me", "grill-with-docs", "grilling", "domain-modeling"]) {
+      mkdirSync(join(d, ".agents/skills", s), { recursive: true });
+      writeFileSync(join(d, ".agents/skills", s, "SKILL.md"), "---\nname: x\n---\n");
+    }
+    const { p, output } = prompter("", "");
+    const code = await init({ dir: d, stack: "flask", agents: "codex", externalSkills: true, force: false, dryRun: false }, { log: () => {}, prompt: p, fs: nodeFileSystem, runner: processRunner });
+    p.close();
+    assert.equal(code, 0);
+    assert.doesNotMatch(output(), /skills externas/);
   });
 
   it("asks before installing the external skills and skips npx when the answer is no", async () => {
