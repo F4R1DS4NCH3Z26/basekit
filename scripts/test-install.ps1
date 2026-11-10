@@ -241,3 +241,6 @@ try {
 
 if ($script:fails -ne 0) { Write-Host "test-install.ps1: $($script:fails) fallo(s)"; exit 1 }
 Write-Host 'test-install.ps1: OK'
+# Explicit success: some cases end with a child process that exits 1 on purpose, and hosts such as GitHub
+# Actions' pwsh step exit with $LASTEXITCODE when it is set.
+exit 0
