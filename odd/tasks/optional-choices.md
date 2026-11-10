@@ -28,8 +28,8 @@ Objective: the external skills question becomes a multi-select list, and choosin
 |---|---|---|---|---|
 | T1 | S1, S2, S3 (Node) | delegated writer (parallel units in separate repos) | done | 90bf759 |
 | T2 | S1, S2, S3 (Go) | delegated writer (parallel units in separate repos) | done | basekit-go d6ff5fe |
-| T3 | S4, S5 (Go) | delegated writer (context backstop) | pending | |
-| T4 | S4, S5 (Node) | after clack-prompts T2 lands (same files) | pending | |
+| T3 | S4, S5 (Go) | delegated writer (context backstop) | done | basekit-go 705e368 |
+| T4 | S4, S5 (Node) | delegated writer, after clack-prompts T2 | done | this commit |
 
 ## Log
 
@@ -37,3 +37,4 @@ Objective: the external skills question becomes a multi-select list, and choosin
 - **L2** Design decisions taken by the parent (not asked): `options.externalSkills` persistence; `ninguna`/`ninguno` for none in line mode; `--agents none`; no external skills without agents, because `npx skills add` needs `-a`. Route: two parallel writers, one per repo (disjoint edit surfaces, several minutes each).
 - **L3** T1 (Node) and T2 (Go) done, RED before GREEN, full suites green (`verify: OK` in both). Writer decisions kept in both repos: usage error `--agents none no se combina con otros agentes`; line prompt `Números o nombres [...]`; `options.externalSkills` written only when the question was answered; doctor checks only the chosen external skills. Parent fix: Go now names every unknown answer part like Node. Go-only: `init --global` hints `basekit init --global --agents <a,b>` (no sync there) and persists no choice (the global manifest has no options). Differential checks against the base showed no unrequested output changes.
 - **L4** (2026-11-10) User: "arregla el 1 y el 2 de la revisión de Go" (review of d6ff5fe: R3-002 no way to change the persisted choice; R3-001 a lone comma counts as none). Both apply to Node too; Node waits for the clack-prompts writer, which owns src/cli.ts and src/commands/ right now.
+- **L5** T3 (Go) and T4 (Node) done with identical strings; both check `--no-external-skills` conflict, then `none` mixed, then unknown names. Node's agents line-mode question also rejects a lone comma now (it returned none), matching Go, which already rejected it. Gentle AI review of 705e368 approved (advisories: no test for `sync --dry-run --external-skills`, nor `init --global --external-skills none`).

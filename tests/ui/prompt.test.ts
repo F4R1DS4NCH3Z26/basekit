@@ -165,6 +165,13 @@ describe("agents question", () => {
     p.close();
   });
 
+  it("rejects a lone comma and asks again, like basekit-go (S5)", async () => {
+    const { p, output } = prompter(",", "");
+    assert.deepEqual(await p.agents(DEFAULT_AGENTS), DEFAULT_AGENTS, "the second answer (Enter) keeps the defaults");
+    assert.match(output(), /No reconozco: ,\. Usa los números o los ids de la lista\./);
+    p.close();
+  });
+
   it("ninguno or ninguna, in any case, chooses no agent (S2)", async () => {
     for (const answer of ["ninguno", "NINGUNA", " Ninguno "]) {
       const { p, output } = prompter(answer);
@@ -208,6 +215,19 @@ describe("external skills question (S1)", () => {
     assert.deepEqual(await p.externalSkills(SKILLS), ["grilling"]);
     assert.match(output(), /No reconozco: x, 9/);
     p.close();
+  });
+
+  it("an answer made only of commas or spaces is not none: it is named and the list asked again (S5)", async () => {
+    for (const answer of [",", ", ,"]) {
+      const { p, output } = prompter(answer, "3");
+      assert.deepEqual(await p.externalSkills(SKILLS), ["grilling"], answer);
+      const prompt = "Números o nombres [grill-me,grill-with-docs,grilling,domain-modeling]: ";
+      assert.ok(
+        output().includes(`${prompt}  No reconozco: ${answer}. Usa los números o los nombres de la lista.\n${prompt}`),
+        output(),
+      );
+      p.close();
+    }
   });
 });
 
@@ -423,6 +443,28 @@ describe("init with interactive answers", () => {
     rerun.p.close();
     assert.equal(rerun.output(), "", "agents: [] is a decided answer");
     assert.deepEqual(manifest(d).agents, []);
+  });
+
+  it("--external-skills skips the question, installs the chosen skills and persists them (S4)", async () => {
+    const d = join(scratch(), "app");
+    const { runner, calls } = fakeRunner();
+    const { p, output } = prompter("", "");
+    const lines: string[] = [];
+    const o = { dir: d, stack: "flask", agents: "codex", externalSkills: true, externalChoice: "grilling,grill-me", force: false, dryRun: false };
+    assert.equal(await init(o, { log: (l) => lines.push(l), prompt: p, fs: nodeFileSystem, runner }), 0);
+    p.close();
+    assert.doesNotMatch(output(), /skills externas/);
+    assert.deepEqual(calls.map(skillsOfCall), [["grill-me", "grilling"]]);
+    assert.match(lines.join("\n"), /^\+ skills externas  \(grill-me, grilling\)$/m);
+    assert.deepEqual(manifest(d).options.externalSkills, ["grill-me", "grilling"]);
+
+    // A rerun with a new --external-skills replaces the persisted choice without asking.
+    const rerun = prompter();
+    assert.equal(await init({ dir: d, externalSkills: true, externalChoice: "domain-modeling", force: false, dryRun: false }, { log: () => {}, prompt: rerun.p, fs: nodeFileSystem, runner }), 0);
+    rerun.p.close();
+    assert.equal(rerun.output(), "");
+    assert.deepEqual(calls.map(skillsOfCall), [["grill-me", "grilling"], ["domain-modeling"]]);
+    assert.deepEqual(manifest(d).options.externalSkills, ["domain-modeling"]);
   });
 
   it("does not ask about the external skills when they are already installed", async () => {

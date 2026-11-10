@@ -168,17 +168,21 @@ export class Prompter {
     }
     /** Which tools (S2): the defaults start checked; none is a valid answer (`ninguno`/`ninguna` without a terminal). */
     async agents(defaults) {
-        return this.many("¿Con qué herramientas vas a trabajar?", "¿Con qué herramientas vas a trabajar? (puedes elegir varias, separadas por comas)", AGENTS.map((a) => a.id), defaults, { hint: "por defecto", names: "ids" });
+        return this.many("¿Con qué herramientas vas a trabajar?", "¿Con qué herramientas vas a trabajar? (puedes elegir varias, separadas por comas)", AGENTS.map((a) => a.id), defaults, { hint: "por defecto", names: "ids", rejectBlank: true });
     }
-    /** Which of the pinned external skills to install (S1): all start checked; none is a valid answer. */
+    /**
+     * Which of the pinned external skills to install (S1): all start checked; none is a valid answer.
+     * Without a terminal, an answer made only of commas or spaces is not none (S5): it asks again.
+     */
     async externalSkills(skills) {
         const question = "¿Qué skills externas instalo? (usan npx y red)";
-        return this.many(question, question, skills, skills, { hint: "", names: "nombres" });
+        return this.many(question, question, skills, skills, { hint: "", names: "nombres", rejectBlank: true });
     }
     /**
      * Multiple choice among `ids`, in their order, with `defaults` checked. In a terminal it is a menu
      * with checkboxes; otherwise numbered: numbers or names separated by commas, Enter (or the end of the
-     * input) keeps the defaults, `ninguno`/`ninguna` chooses none and an unknown answer asks again.
+     * input) keeps the defaults, `ninguno`/`ninguna` chooses none and an unknown answer asks again
+     * (with `rejectBlank`, also an answer made only of commas or spaces).
      */
     async many(question, lineQuestion, ids, defaults, o) {
         if (this.arrows) {
@@ -201,6 +205,10 @@ export class Prompter {
             if (/^ningun[oa]$/i.test(answer))
                 return [];
             const tokens = answer.split(",").map((t) => t.trim()).filter(Boolean);
+            if (tokens.length === 0 && o.rejectBlank) {
+                this.say(`  No reconozco: ${answer}. Usa los números o los ${o.names} de la lista.`);
+                continue;
+            }
             const picked = tokens.map((t) => (/^\d+$/.test(t) ? ids[Number(t) - 1] : ids.find((id) => id === t)));
             const unknown = tokens.filter((_, i) => picked[i] === undefined);
             if (unknown.length === 0)

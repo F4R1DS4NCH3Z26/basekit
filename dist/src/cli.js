@@ -12,8 +12,8 @@ import { VERSION } from "./kit/templates.js";
 import { Prompter } from "./ui/prompt.js";
 /** Options each command accepts; anything else is an error instead of being silently ignored. */
 const ALLOWED = {
-    init: ["stack", "agents", "context", "db", "redis", "no-git", "no-external-skills", "force", "dry-run", "yes"],
-    sync: ["agents", "no-external-skills", "dry-run"],
+    init: ["stack", "agents", "context", "db", "redis", "no-git", "external-skills", "no-external-skills", "force", "dry-run", "yes"],
+    sync: ["agents", "external-skills", "no-external-skills", "dry-run"],
     install: ["global", "project", "from"],
     doctor: [],
     stacks: [],
@@ -31,7 +31,7 @@ Uso:
 En una terminal, init pregunta cuáles skills externas instalar (todas marcadas) y con qué
 herramientas vas a trabajar. Las dos son listas opcionales: desmarca todo, o responde ninguna o
 ninguno en texto plano, para no elegir ninguno. La elección de skills externas queda en el
-manifest y no se vuelve a preguntar.
+manifest y no se vuelve a preguntar; cámbiala con --external-skills.
 
 Opciones de init:
   --stack <id>            Stack (ver \`basekit stacks\`; por defecto: detectado; si no, se pregunta
@@ -45,6 +45,8 @@ Opciones de init:
                           un stack frontend solo admite auto o none; en un combinado, va al backend)
   --redis                 Agrega Redis (no en un stack frontend; en un combinado, va al backend)
   --no-git                No ejecuta git init (zone-check lo necesita)
+  --external-skills <a,b> Skills externas a instalar: grill-me, grill-with-docs, grilling, domain-modeling.
+                          Reemplaza la elección guardada y no pregunta; --external-skills none: ninguna
   --no-external-skills    No instala las skills externas (CI o sin red)
   --force                 Reemplaza las skills del kit modificadas localmente
   --dry-run               Muestra lo que haría sin escribir nada
@@ -58,6 +60,8 @@ Opciones de install (instala desde el repositorio de GitHub de basekit, nunca de
 Opciones de sync:
   --agents <a,b>          Reemplaza la lista de agentes (los nuevos reciben adaptadores, enlaces y skills externas);
                           none: ninguno
+  --external-skills <a,b> Reemplaza la elección de skills externas e instala las elegidas que falten
+                          (las ya instaladas que quites se quedan); --external-skills none: ninguna
   --no-external-skills    No reinstala las skills externas
   --dry-run               Muestra lo que haría sin escribir nada
 `;
@@ -91,6 +95,7 @@ async function main(argv) {
             db: { type: "string" },
             redis: { type: "boolean" },
             "no-git": { type: "boolean" },
+            "external-skills": { type: "string" },
             "no-external-skills": { type: "boolean" },
             force: { type: "boolean" },
             "dry-run": { type: "boolean" },
@@ -134,7 +139,13 @@ async function main(argv) {
         case "doctor":
             return doctor(dir, makeContext(false));
         case "sync":
-            return sync({ dir, agents: values.agents, externalSkills: !values["no-external-skills"], dryRun: values["dry-run"] ?? false }, makeContext(false));
+            return sync({
+                dir,
+                agents: values.agents,
+                externalSkills: !values["no-external-skills"],
+                externalChoice: values["external-skills"],
+                dryRun: values["dry-run"] ?? false,
+            }, makeContext(false));
         default: {
             const ctx = makeContext(process.stdin.isTTY === true && !values.yes);
             try {
@@ -146,6 +157,7 @@ async function main(argv) {
                     db: values.db,
                     redis: values.redis,
                     externalSkills: !values["no-external-skills"],
+                    externalChoice: values["external-skills"],
                     noGit: values["no-git"] ?? false,
                     force: values.force ?? false,
                     dryRun: values["dry-run"] ?? false,

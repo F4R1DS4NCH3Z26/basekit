@@ -1,13 +1,14 @@
 import { linkSkills, writeAdapters } from "../../kit/adapters.js";
 import { parseAgents, savedAgents } from "../../kit/agents.js";
 import { writeAgentsMd } from "../../kit/agents-md.js";
-import { installExternalSkills } from "../../kit/external-skills.js";
+import { installExternalSkills, parseExternalSkills } from "../../kit/external-skills.js";
 import { resolveParts, specOf } from "../../kit/layout.js";
 import { chosenExternal, MANIFEST, readManifest, writeManifest } from "../../kit/manifest.js";
 import { Project, resolveRoot } from "../../kit/project.js";
 import { loadStacks } from "../../kit/stacks.js";
 /** Spec 02 §10: regenerates the AGENTS.md block, the adapters and the links from `.agents/`. */
 export async function sync(o, ctx) {
+    const choice = parseExternalSkills(o.externalChoice, !o.externalSkills);
     const project = new Project(resolveRoot(o.dir), o.dryRun, ctx.log, ctx.fs);
     const prev = readManifest(project);
     if (!prev?.stack)
@@ -21,13 +22,14 @@ export async function sync(o, ctx) {
     writeAgentsMd(project, parts, "");
     writeAdapters(project, parts, agents);
     if (o.externalSkills)
-        installExternalSkills(project, agents, ctx.log, ctx.runner, added.length > 0, chosenExternal(prev));
+        installExternalSkills(project, agents, ctx.log, ctx.runner, added.length > 0, choice ?? chosenExternal(prev));
     linkSkills(project, parts, agents);
     writeManifest(project, prev, {
         stack: specOf(parts),
         agents,
         db: prev.options?.db ?? "auto",
         redis: prev.options?.redis ?? false,
+        externalSkills: choice,
         files: prev.files ?? {},
     });
     ctx.log("");

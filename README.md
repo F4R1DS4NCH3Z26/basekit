@@ -72,7 +72,7 @@ basekit init mi-proyecto --stack nextjs --context "Reservas de canchas de pádel
 basekit stacks        # stacks y agentes soportados
 ```
 
-Opciones de `init`: `--stack <id>` (o `<backend>+<frontend>`), `--agents a,b` (o `none`: sin adaptadores, solo `AGENTS.md` y `.agents/`), `--context`, `--db auto|postgres|mysql|sqlite|none`, `--redis`, `--no-git`, `--no-external-skills`, `--force`, `--dry-run`, `-y/--yes`. Detalle en `basekit help`.
+Opciones de `init`: `--stack <id>` (o `<backend>+<frontend>`), `--agents a,b` (o `none`: sin adaptadores, solo `AGENTS.md` y `.agents/`), `--context`, `--db auto|postgres|mysql|sqlite|none`, `--redis`, `--no-git`, `--external-skills a,b` (o `none`: reemplaza la elección guardada de skills externas sin preguntar), `--no-external-skills`, `--force`, `--dry-run`, `-y/--yes`. Detalle en `basekit help`.
 
 ### Stacks
 
@@ -119,8 +119,8 @@ Cada acción se reporta con `+` (creado), `~` (actualizado), `=` (existía, se c
 
 ## Comandos
 
-- `init [dir]`: crea la base. Sin flags reutiliza lo guardado en `.agents/manifest.json`; `infra.sh` solo corre si pasas `--db`. En una terminal (sin `-y`) pregunta solo lo que no resolvió con flags, manifest o detección: el stack en tres pasos (tipo de app → lenguaje → framework; un paso con una sola opción se elige solo y se anuncia; en Fullstack, «Combinar backend + frontend» pregunta lenguaje y framework de cada lado), qué skills externas instalar (`¿Qué skills externas instalo? (usan npx y red)`: casillas con las cuatro marcadas; sin menú, números o nombres, y `ninguna`/`ninguno`; la elección queda en el manifest), los agentes (casillas: espacio marca, Enter confirma; arrancan marcados `claude-code` y `opencode`; ninguno marcado, o `ninguno`/`ninguna` sin menú, es no usar ninguna herramienta) y, en la primera corrida, de qué trata el proyecto.
-- `sync [dir] [--agents a,b] [--no-external-skills] [--dry-run]`: regenera el bloque de `AGENTS.md`, los subagentes de `.claude/agents/` y `.opencode/agents/` desde `.agents/roles/` y `.agents/zones/`, y los enlaces de skills. Con `--agents`, los agentes nuevos reciben adaptadores, enlaces y las skills externas elegidas; `--agents none` deja el proyecto sin herramientas.
+- `init [dir]`: crea la base. Sin flags reutiliza lo guardado en `.agents/manifest.json`; `infra.sh` solo corre si pasas `--db`. En una terminal (sin `-y`) pregunta solo lo que no resolvió con flags, manifest o detección: el stack en tres pasos (tipo de app → lenguaje → framework; un paso con una sola opción se elige solo y se anuncia; en Fullstack, «Combinar backend + frontend» pregunta lenguaje y framework de cada lado), qué skills externas instalar (`¿Qué skills externas instalo? (usan npx y red)`: casillas con las cuatro marcadas; sin menú, números o nombres, y `ninguna`/`ninguno`; la elección queda en el manifest y se cambia con `--external-skills`), los agentes (casillas: espacio marca, Enter confirma; arrancan marcados `claude-code` y `opencode`; ninguno marcado, o `ninguno`/`ninguna` sin menú, es no usar ninguna herramienta) y, en la primera corrida, de qué trata el proyecto.
+- `sync [dir] [--agents a,b] [--external-skills a,b] [--no-external-skills] [--dry-run]`: regenera el bloque de `AGENTS.md`, los subagentes de `.claude/agents/` y `.opencode/agents/` desde `.agents/roles/` y `.agents/zones/`, y los enlaces de skills. Con `--agents`, los agentes nuevos reciben adaptadores, enlaces y las skills externas elegidas; `--agents none` deja el proyecto sin herramientas. Con `--external-skills a,b` (o `none`), reemplaza la elección de skills externas e instala las elegidas que falten; las ya instaladas que quites se quedan.
 - `doctor [dir]`: imprime `OK` o `FALTA` con la sugerencia; sale con código 1 si falta algo. Nunca lee `.env`.
 
 ## Estructura

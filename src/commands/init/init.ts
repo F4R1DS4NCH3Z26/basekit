@@ -94,9 +94,10 @@ export async function init(o: InitOptions, ctx: Context): Promise<number> {
 
   // Skills: the kit and stack skills are always installed because the roles and `make verify` depend on them;
   // only the external pack is optional (S1): the choice is asked once and persisted in the manifest.
-  let chosen = chosenExternal(prev);
-  let choice: string[] | undefined;
-  const decided = Array.isArray(prev?.options?.externalSkills);
+  // `--external-skills` replaces it without asking (S4).
+  let chosen = flags.externalSkills ?? chosenExternal(prev);
+  let choice = flags.externalSkills;
+  const decided = choice !== undefined || Array.isArray(prev?.options?.externalSkills);
   if (o.externalSkills && ctx.prompt && !decided && missingExternal(project, chosen).length > 0) {
     ctx.log(`Skills incluidas: ${skillsOf(parts).join(", ")}`);
     chosen = choice = await ctx.prompt.externalSkills(EXTERNAL_SKILLS.skills);
