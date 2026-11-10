@@ -231,7 +231,9 @@ describe("--agents none (S2)", () => {
   it("is documented in the help, with the external skills list", () => {
     const help = basekit(["--help"]).stdout;
     assert.match(help, /--agents <a,b> +Agentes [^\n]*\n +none: ninguno/);
-    assert.match(help, /ninguna\/ninguno/);
+    assert.match(help, /cuáles skills externas instalar \(todas marcadas\)/);
+    assert.match(help, /responde ninguna o\s+ninguno en texto plano/);
+    assert.match(help, /--no-external-skills +No instala las skills externas \(CI o sin red\)\n/, "the flag line no longer describes the question");
   });
 });
 

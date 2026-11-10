@@ -28,6 +28,11 @@ Uso:
   basekit doctor [dir]            Diagnóstico del entorno y del proyecto (OK / FALTA)
   basekit stacks                  Lista los stacks y los agentes soportados
 
+En una terminal, init pregunta cuáles skills externas instalar (todas marcadas) y con qué
+herramientas vas a trabajar. Las dos son listas opcionales: desmarca todo, o responde ninguna o
+ninguno en texto plano, para no elegir ninguno. La elección de skills externas queda en el
+manifest y no se vuelve a preguntar.
+
 Opciones de init:
   --stack <id>            Stack (ver \`basekit stacks\`; por defecto: detectado; si no, se pregunta
                           tipo de app → lenguaje → framework)
@@ -40,9 +45,7 @@ Opciones de init:
                           un stack frontend solo admite auto o none; en un combinado, va al backend)
   --redis                 Agrega Redis (no en un stack frontend; en un combinado, va al backend)
   --no-git                No ejecuta git init (zone-check lo necesita)
-  --no-external-skills    No instala las skills externas (CI o sin red). En una terminal se pregunta
-                          cuáles instalar (todas marcadas; sin menú: números o nombres, ninguna/ninguno)
-                          y la elección queda en el manifest
+  --no-external-skills    No instala las skills externas (CI o sin red)
   --force                 Reemplaza las skills del kit modificadas localmente
   --dry-run               Muestra lo que haría sin escribir nada
   -y, --yes               No interactivo: usa flags y valores por defecto
