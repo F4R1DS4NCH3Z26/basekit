@@ -21,10 +21,11 @@ Objective: the external skills question becomes a multi-select list, and choosin
 
 | ID | Specs | Route | Status | Commit |
 |---|---|---|---|---|
-| T1 | S1, S2, S3 (Node) | delegated writer (parallel units in separate repos) | pending | |
-| T2 | S1, S2, S3 (Go) | delegated writer (parallel units in separate repos) | pending | |
+| T1 | S1, S2, S3 (Node) | delegated writer (parallel units in separate repos) | done | 90bf759 |
+| T2 | S1, S2, S3 (Go) | delegated writer (parallel units in separate repos) | done | basekit-go d6ff5fe |
 
 ## Log
 
 - **L1** (2026-11-10) User: "- sí, una lista para elegir las skills externas (ambos repos)\n- si no escojo el modelo para adaptar los agentes saegun el modelo, la idea es que no se obligatorio"
 - **L2** Design decisions taken by the parent (not asked): `options.externalSkills` persistence; `ninguna`/`ninguno` for none in line mode; `--agents none`; no external skills without agents, because `npx skills add` needs `-a`. Route: two parallel writers, one per repo (disjoint edit surfaces, several minutes each).
+- **L3** T1 (Node) and T2 (Go) done, RED before GREEN, full suites green (`verify: OK` in both). Writer decisions kept in both repos: usage error `--agents none no se combina con otros agentes`; line prompt `Números o nombres [...]`; `options.externalSkills` written only when the question was answered; doctor checks only the chosen external skills. Parent fix: Go now names every unknown answer part like Node. Go-only: `init --global` hints `basekit init --global --agents <a,b>` (no sync there) and persists no choice (the global manifest has no options). Differential checks against the base showed no unrequested output changes.
