@@ -34,6 +34,8 @@ curl -fsSL https://raw.githubusercontent.com/F4R1DS4NCH3Z26/basekit/main/install
 & ([scriptblock]::Create((irm https://raw.githubusercontent.com/F4R1DS4NCH3Z26/basekit/main/install.ps1))) -Version <ref>
 ```
 
+Si `irm … | iex` falla en una terminal abierta, muestra el error y deja `$LASTEXITCODE` en 1 sin cerrar la ventana. Si PowerShell ejecuta un solo comando y termina (`powershell -c "irm … | iex"`, `powershell "irm … | iex"`, `-EncodedCommand` o `-NonInteractive`, sin `-NoExit`), lanza el error, así que el proceso sale con código 1 y un script o el CI ven el fallo.
+
 `BASEKIT_VERSION=<ref>` hace lo mismo, y `BASEKIT_SOURCE` instala otro origen (un fork o un `.tgz`). Una vez que tienes basekit, `basekit install --global` hace exactamente lo mismo. Si prefieres un solo binario, sin Node, usa el instalador de [basekit-go](https://github.com/F4R1DS4NCH3Z26/basekit-go).
 
 **Con npx**: ejecútalo una vez sin instalarlo y te pregunta dónde lo quieres.

@@ -11,8 +11,9 @@
 #
 # Errors: run as a file (-File), the script exits 1, or 2 for usage errors. Under `irm | iex` (or a scriptblock)
 # an `exit` would close the user's window, so it never exits: it prints the error and sets $LASTEXITCODE, and
-# when the session is not interactive (powershell -Command, -EncodedCommand, -File or -NonInteractive, without
-# -NoExit) it throws the error instead, so `powershell -Command "irm ... | iex"` fails with exit code 1.
+# when the session is not interactive (powershell -Command, -EncodedCommand, -File, -NonInteractive or a bare
+# command such as `powershell "irm ... | iex"`, without -NoExit) it throws the error instead, so
+# `powershell -Command "irm ... | iex"` fails with exit code 1.
 #
 # The file is kept ASCII-only: Windows PowerShell 5.1 reads BOM-less scripts with the ANSI code page, so the
 # Spanish accents in messages are written as [char] codes.
@@ -38,15 +39,50 @@ function Invoke-BasekitNative([string]$Path, [string[]]$Arguments) {
   return [pscustomobject]@{ Code = $LASTEXITCODE; Output = $out.Trim() }
 }
 
-# Test-BasekitBatchSession: true when this PowerShell runs a command or a file and then ends (-Command,
-# -EncodedCommand, -File, -NonInteractive, or their abbreviations) rather than an interactive prompt.
+# Test-BasekitBatchSession: true when this PowerShell runs one command or script and then ends, rather than
+# leaving an interactive prompt. It reads the host's own command line left to right, the way powershell.exe
+# (5.1) and pwsh parse it, and the first argument that decides wins:
+#   -NoExit                           interactive (after the command it would be part of the command)
+#   -NonInteractive                   batch
+#   -Command, -EncodedCommand, -File  batch; everything after them belongs to the command or the script
+#   a bare argument (no - or /)       batch: powershell.exe runs it as -Command and pwsh as -File, so
+#                                     `powershell "irm ... | iex"` runs that one command and exits
+# Parameters that take a value are skipped together with it, so `-ExecutionPolicy Bypass` does not make Bypass a
+# bare argument. The hosts accept any prefix of a parameter name at least as long as its shortest form (-noe,
+# -c, -ex, ...). The en dash, em dash and horizontal bar count as a dash, as they do for the hosts.
 function Test-BasekitBatchSession {
-  foreach ($arg in @([Environment]::GetCommandLineArgs() | Select-Object -Skip 1)) {
-    if ($arg -notmatch '^[-/]([A-Za-z]+)$') { continue }
+  # Parameters that take a value, in powershell.exe and pwsh: full name = shortest accepted form. They are
+  # matched before -Command and -EncodedCommand, which -config, -ex, -ep, -ea and -encodeda would otherwise look
+  # like. pwsh's -Version takes no value, but it prints the version and exits, so skipping one more is harmless.
+  $valued = @{
+    'configurationname' = 'config'; 'configurationfile' = 'config'; 'custompipename' = 'cus'; 'windowstyle' = 'w'
+    'executionpolicy' = 'ex'; 'ep' = 'ep'; 'encodedarguments' = 'encodeda'; 'ea' = 'ea'; 'settingsfile' = 'settings'
+    'workingdirectory' = 'wo'; 'wd' = 'wd'; 'outputformat' = 'o'; 'of' = 'of'; 'inputformat' = 'in'; 'if' = 'if'
+    'version' = 'v'; 'psconsolefile' = 'psc'
+  }
+  $dashes = '-/' + [char]0x2013 + [char]0x2014 + [char]0x2015
+  $argv = @([Environment]::GetCommandLineArgs() | Select-Object -Skip 1)
+  for ($k = 0; $k -lt $argv.Count; $k++) {
+    # The hosts trim each argument and skip empty ones.
+    $arg = "$($argv[$k])".Trim()
+    if (-not $arg) { continue }
+    if ($dashes.IndexOf($arg[0]) -lt 0) {
+      # The console host runs a bare argument; the ISE opens it as a file to edit and stays interactive.
+      return ($Host.Name -eq 'ConsoleHost')
+    }
+    if ($arg.Substring(1) -notmatch '^([A-Za-z]+)$') { continue }
     $name = $Matches[1].ToLowerInvariant()
-    if ($name.Length -ge 3 -and 'noninteractive'.StartsWith($name)) { return $true }
+    # -noe is the hosts' shortest -NoExit. For -NonInteractive they need -noni; -non is accepted here too
+    # because a host never gives an interactive prompt for it (powershell.exe runs an unknown parameter as the
+    # start of the command, pwsh exits with an error).
     if ($name.Length -ge 3 -and 'noexit'.StartsWith($name)) { return $false }
-    # Everything after -Command or -File belongs to the command or the script.
+    if ($name.Length -ge 3 -and 'noninteractive'.StartsWith($name)) { return $true }
+    $takesValue = $false
+    foreach ($p in $valued.GetEnumerator()) {
+      if ($name.Length -ge $p.Value.Length -and $p.Key.StartsWith($name)) { $takesValue = $true; break }
+    }
+    if ($takesValue) { $k++; continue }
+    # -c, -f and -e (or -ec) are the shortest -Command, -File and -EncodedCommand.
     if ('command'.StartsWith($name) -or 'encodedcommand'.StartsWith($name) -or $name -eq 'ec' -or 'file'.StartsWith($name)) { return $true }
   }
   return $false

@@ -74,12 +74,15 @@ $system32 = Join-Path $env:SystemRoot 'System32'
 
 # Run-Install: runs install.ps1 in a child shell with PATH=<bins>;System32 (plus -ExtraPath), the fake npm prefix
 # in the case directory and the given env vars. Mode File (-File with -Arguments), Iex (piped into
-# Invoke-Expression, -After appended) or Block (a scriptblock with -Arguments, like the README's -Version form).
-# -NoExit runs the command in an interactive-style session (-NoExit, without -NonInteractive).
+# Invoke-Expression, -After appended), Block (a scriptblock with -Arguments, like the README's -Version form) or
+# Bare (the Iex command as a bare argument, without -Command, -File or -NonInteractive: powershell.exe runs a bare
+# argument as -Command, pwsh as -File, so pwsh gets a script file holding that command).
+# -NoExit runs the command in an interactive-style session (-NoExit, without -NonInteractive), after
+# `-ExecutionPolicy Bypass` so the value Bypass must not be taken for a bare argument.
 # Leaves $script:rc, $script:out, $script:caseDir and $script:prefix.
 function Run-Install {
   param([string]$Shell, [string]$Label, [string]$Bins, [hashtable]$Env = @{}, [string[]]$Arguments = @(),
-    [ValidateSet('File', 'Iex', 'Block')][string]$Mode = 'File', [string]$After = '', [string]$ExtraPath = '', [switch]$NoExit)
+    [ValidateSet('File', 'Iex', 'Block', 'Bare')][string]$Mode = 'File', [string]$After = '', [string]$ExtraPath = '', [switch]$NoExit)
   $script:label = "$Shell/$Label"
   $script:caseDir = Join-Path $work "$Shell-$Label"
   $script:prefix = Join-Path $script:caseDir 'prefix'
@@ -96,12 +99,22 @@ function Run-Install {
   foreach ($k in $vars.Keys) { $saved[$k] = [Environment]::GetEnvironmentVariable($k); [Environment]::SetEnvironmentVariable($k, $vars[$k]) }
   try {
     $exe = $script:shellPath
-    $session = if ($NoExit) { @('-NoProfile', '-NoExit', '-ExecutionPolicy', 'Bypass') } else { @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass') }
+    $session = if ($NoExit) { @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-NoExit') } else { @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass') }
     switch ($Mode) {
       'File' { $script:out = & $exe @session -File $installer @Arguments 2>&1 | Out-String }
       'Iex' {
         $cmd = "Get-Content -Raw -LiteralPath '$installer' | Invoke-Expression; $After"
         $script:out = & $exe @session -Command $cmd 2>&1 | Out-String
+      }
+      'Bare' {
+        $cmd = "Get-Content -Raw -LiteralPath '$installer' | Invoke-Expression; $After"
+        if ((Split-Path -Leaf $exe) -like 'powershell*') {
+          $script:out = & $exe -NoProfile -ExecutionPolicy Bypass $cmd 2>&1 | Out-String
+        } else {
+          $wrapper = Join-Path $script:caseDir 'iex.ps1'
+          Set-Content -LiteralPath $wrapper -Encoding Ascii -Value $cmd
+          $script:out = & $exe -NoProfile -ExecutionPolicy Bypass $wrapper 2>&1 | Out-String
+        }
       }
       'Block' {
         $cmd = "& ([scriptblock]::Create((Get-Content -Raw -LiteralPath '$installer'))) $($Arguments -join ' ')"
@@ -227,6 +240,13 @@ try {
     Run-Install $sh iex-batch $binNoNode -Mode Iex
     Expect-Rc 1
     Expect-Out 'node. basekit necesita Node.js'
+    Expect-NoNpm
+    # ...also when the command is a bare argument (`powershell "irm ... | iex"`, no -Command): the failure stops
+    # the command, so what follows it never runs, and the caller gets exit 1...
+    Run-Install $sh iex-bare $binNoNode -Mode Bare -After "Write-Output 'sigue tras iex'"
+    Expect-Rc 1
+    Expect-Out 'node. basekit necesita Node.js'
+    Expect-NoOut 'sigue tras iex'
     Expect-NoNpm
     # ...and in an interactive session it prints the error, keeps the session alive and sets $LASTEXITCODE.
     Run-Install $sh iex-interactive $binAll @{ BASEKIT_SOURCE = 'un fork' } -Mode Iex -NoExit -After "Write-Output ('sesion viva ' + `$LASTEXITCODE); exit 0"
