@@ -15,7 +15,7 @@ CLI en Node + TypeScript (una sola dependencia de runtime, `@clack/prompts`, par
 ## Zonas (`.agents/zones/<rol>.txt`)
 | Rol | Zona |
 |---|---|
-| orquestador (sesión principal) | `AGENTS.md`, `CLAUDE.md`, `README.md`, `GLOSSARY.md`, `skills-lock.json`, `docs/spec/**`, `docs/specs/**`, `docs/adr/**`, `.agents/**`, `.claude/**`, `odd/**`, `package*.json`, `tsconfig.json`, `.github/**`, `.gitattributes`, `.gitignore`, `.atl/**` |
+| orquestador (sesión principal) | `AGENTS.md`, `CLAUDE.md`, `README.md`, `GLOSSARY.md`, `skills-lock.json`, `docs/spec/**`, `docs/specs/**`, `docs/adr/**`, `.agents/**`, `.claude/**`, `odd/**`, `package*.json`, `install.sh`, `install.ps1`, `tsconfig.json`, `.github/**`, `.gitattributes`, `.gitignore`, `.atl/**` |
 | kit-writer | `src/kit/**` |
 | infra-writer | `src/infra/**` |
 | commands-writer | `src/cli.ts`, `src/commands/**`, `src/ui/**` |

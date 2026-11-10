@@ -121,6 +121,36 @@ jobs:
           if (-not (Test-Path "AGENTS.md")) { throw "init did not run" }
           Pop-Location
 
+  # install.sh and install.ps1 with fake node and npm: no network, no real global install.
+  install-sh:
+    name: install.sh (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      # shellcheck comes preinstalled on the Ubuntu runner image.
+      - name: shellcheck
+        if: runner.os == 'Linux'
+        run: shellcheck install.sh scripts/test-install.sh
+      # sh is dash on Ubuntu and bash in POSIX mode on macOS.
+      - name: install.sh with fake node and npm
+        run: sh scripts/test-install.sh
+      - name: install.sh under bash
+        if: runner.os == 'Linux'
+        run: INSTALL_SH=bash sh scripts/test-install.sh
+
+  install-ps1:
+    name: install.ps1 (Windows PowerShell 5.1 and PowerShell 7)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: install.ps1 with fake node and npm
+        shell: pwsh
+        run: ./scripts/test-install.ps1
+
   e2e:
     name: e2e ${{ matrix.env || 'dev' }} (${{ matrix.stack }}${{ matrix.db && format(' + {0}', matrix.db) || '' }})
     needs: test

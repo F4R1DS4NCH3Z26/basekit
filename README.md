@@ -6,13 +6,37 @@ La especificación completa está en `docs/spec/` (`00_LEEME.md` … `05_bootstr
 
 ## Requisitos
 
-Node ≥ 20 (sin dependencias en tiempo de ejecución) y git. Para usar el proyecto generado: Docker con Compose v2, GNU Make y OpenSSL.
+Node ≥ 20.12 (una sola dependencia en tiempo de ejecución, `@clack/prompts`) y git. Para usar el proyecto generado: Docker con Compose v2, GNU Make y OpenSSL.
 
 ## Instalación
 
 Se instala desde este repositorio (todavía no está publicado en npm). El repositorio incluye el CLI ya compilado (`dist/src`), así que instalar no compila nada.
 
-**Con el instalador** (recomendado): ejecútalo una vez sin instalarlo y te pregunta dónde lo quieres.
+**Con un comando** (global): necesita Node.js 20.12 o superior y git.
+
+```bash
+# macOS, Linux, WSL y Git Bash
+curl -fsSL https://raw.githubusercontent.com/F4R1DS4NCH3Z26/basekit/main/install.sh | sh
+```
+
+```powershell
+# Windows (PowerShell 5.1 o 7)
+irm https://raw.githubusercontent.com/F4R1DS4NCH3Z26/basekit/main/install.ps1 | iex
+```
+
+El instalador comprueba Node.js y npm y ejecuta lo mismo que `basekit install --global`: `npm install -g --install-links --no-audit --no-fund github:F4R1DS4NCH3Z26/basekit`. Al final corre `basekit --version` y, si la carpeta global de npm no está en tu `PATH`, te da la línea para agregarla. Nunca usa sudo: si npm no puede escribir en su carpeta global (`EACCES`), explica cómo arreglarlo sin él. Para instalar una etiqueta, rama o commit concreto:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/F4R1DS4NCH3Z26/basekit/main/install.sh | sh -s -- --version <ref>
+```
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/F4R1DS4NCH3Z26/basekit/main/install.ps1))) -Version <ref>
+```
+
+`BASEKIT_VERSION=<ref>` hace lo mismo, y `BASEKIT_SOURCE` instala otro origen (un fork o un `.tgz`). Una vez que tienes basekit, `basekit install --global` hace exactamente lo mismo. Si prefieres un solo binario, sin Node, usa el instalador de [basekit-go](https://github.com/F4R1DS4NCH3Z26/basekit-go).
+
+**Con npx**: ejecútalo una vez sin instalarlo y te pregunta dónde lo quieres.
 
 ```bash
 npx github:F4R1DS4NCH3Z26/basekit
@@ -52,6 +76,7 @@ Hay dos formas, según dónde vayas a trabajar:
 2. **En PowerShell (Windows nativo).** Sirve para instalar y preparar proyectos (`init`, `sync`, `doctor`). Para `make` y Docker igual necesitas WSL2. Requiere [Node.js 20 o superior](https://nodejs.org) y [Git for Windows](https://git-scm.com/download/win), autenticado con una cuenta que tenga acceso al repositorio.
 
    ```powershell
+   irm https://raw.githubusercontent.com/F4R1DS4NCH3Z26/basekit/main/install.ps1 | iex   # global, en un comando
    npx github:F4R1DS4NCH3Z26/basekit                                   # el instalador: global o este proyecto
    npm install -g --install-links github:F4R1DS4NCH3Z26/basekit        # o global, directo
    basekit init C:\proyectos\mi-app --stack nextjs

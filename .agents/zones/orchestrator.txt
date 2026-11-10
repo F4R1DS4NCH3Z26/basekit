@@ -11,6 +11,8 @@ docs/adr/**
 .claude/**
 odd/**
 package.json
+install.sh
+install.ps1
 package-lock.json
 tsconfig.json
 .github/**
