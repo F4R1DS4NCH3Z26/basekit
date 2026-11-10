@@ -271,6 +271,19 @@ while [ "$n" -lt "$lines" ]; do
   if [ -e "$case_dir/npm.log" ]; then ran="$ran $n"; fi
   n=$((n + 1))
 done
+# Cuts inside the last line, byte by byte (e.g. right after `main`, which would run main without its arguments).
+if [ "$lines" -ge 10 ]; then
+  body=$(head -n "$((lines - 1))" "$installer" | wc -c | tr -d ' ')
+  last=$(tail -n 1 "$installer" | wc -c | tr -d ' ')
+  k=1
+  while [ "$k" -lt "$((last - 1))" ]; do  # last - 1: the whole line without its newline is complete
+    head -c "$((body + k))" "$installer" > "$work/truncated.sh"
+    rm -rf "$work/case-truncated"
+    run_install truncated bin-all "$shell" -c "'$shell' -s < '$work/truncated.sh'"
+    if [ -e "$case_dir/npm.log" ]; then ran="$ran last+$k"; fi
+    k=$((k + 1))
+  done
+fi
 label=truncated out=""
 if [ "$lines" -lt 10 ]; then fail "install.sh no existe o está vacío"
 elif [ -n "$ran" ]; then fail "npm corrió con install.sh cortado en las líneas:$ran"

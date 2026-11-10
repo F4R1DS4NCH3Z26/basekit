@@ -156,4 +156,5 @@ EOF
   say "Siguiente: basekit init <carpeta-del-proyecto>"
 }
 
-main "$@"
+# A brace group: a download cut anywhere in this line leaves it unterminated, a syntax error, so nothing runs.
+{ main "$@"; }
