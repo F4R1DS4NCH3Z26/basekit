@@ -12,7 +12,7 @@ import { VERSION } from "./kit/templates.js";
 import { Prompter } from "./ui/prompt.js";
 /** Options each command accepts; anything else is an error instead of being silently ignored. */
 const ALLOWED = {
-    init: ["stack", "agents", "context", "db", "redis", "no-external-skills", "force", "dry-run", "yes"],
+    init: ["stack", "agents", "context", "db", "redis", "no-git", "no-external-skills", "force", "dry-run", "yes"],
     sync: ["agents", "no-external-skills", "dry-run"],
     install: ["global", "project", "from"],
     doctor: [],
@@ -38,6 +38,7 @@ Opciones de init:
   --db <motor>            auto | postgres | mysql | sqlite | none (por defecto: auto;
                           un stack frontend solo admite auto o none; en un combinado, va al backend)
   --redis                 Agrega Redis (no en un stack frontend; en un combinado, va al backend)
+  --no-git                No ejecuta git init (zone-check lo necesita)
   --no-external-skills    No instala las skills externas (CI o sin red)
   --force                 Reemplaza las skills del kit modificadas localmente
   --dry-run               Muestra lo que haría sin escribir nada
@@ -82,6 +83,7 @@ async function main(argv) {
             context: { type: "string" },
             db: { type: "string" },
             redis: { type: "boolean" },
+            "no-git": { type: "boolean" },
             "no-external-skills": { type: "boolean" },
             force: { type: "boolean" },
             "dry-run": { type: "boolean" },
@@ -137,6 +139,7 @@ async function main(argv) {
                     db: values.db,
                     redis: values.redis,
                     externalSkills: !values["no-external-skills"],
+                    noGit: values["no-git"] ?? false,
                     force: values.force ?? false,
                     dryRun: values["dry-run"] ?? false,
                 }, ctx);

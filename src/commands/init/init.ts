@@ -1,20 +1,29 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { linkSkills, writeAdapters } from "../../kit/adapters.js";
 import { DEFAULT_AGENTS, detectAgents, parseAgents } from "../../kit/agents.js";
 import { templateVars, writeAgentsMd } from "../../kit/agents-md.js";
 import { UsageError } from "../../kit/errors.js";
-import { installExternalSkills } from "../../kit/external-skills.js";
+import { installExternalSkills, missingExternal } from "../../kit/external-skills.js";
 import {
   displayName, INFRA, INFRA_SKILL, inPart, isCombined, nameCompose, newAppCommand, partsOf, resolveParts, roleFiles, specOf, wireEnv, zoneFiles,
   type Part,
 } from "../../kit/layout.js";
-import { readManifest, writeManifest } from "../../kit/manifest.js";
+import { EXTERNAL_SKILLS, readManifest, writeManifest } from "../../kit/manifest.js";
 import { Project, resolveRoot } from "../../kit/project.js";
 import { detectStack, hasDatabase, loadStacks, stackDir } from "../../kit/stacks.js";
 import { modeOf, render, template, TEMPLATES, walk } from "../../kit/templates.js";
 import type { Context } from "../context.js";
 import { checkDb, checkStackDb, validateFlags, type InitOptions } from "./options.js";
+
+/** The kit skills plus each part's stack skills, as installed in .agents/skills (shown before the external ones). */
+function skillsOf(parts: Part[]): string[] {
+  const names = (dir: string) =>
+    existsSync(dir) ? readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name).sort() : [];
+  const skills = names(join(TEMPLATES, "skills"));
+  for (const part of parts) for (const s of names(join(stackDir(part.stack), "skills"))) if (!skills.includes(s)) skills.push(s);
+  return skills;
+}
 
 function nextStep(ctx: Context, project: Project, parts: Part[], context: string): void {
   ctx.log("");
@@ -83,12 +92,25 @@ export async function init(o: InitOptions, ctx: Context): Promise<number> {
     }
   }
 
+  // Skills: the kit and stack skills are always installed because the roles and `make verify` depend on them;
+  // only the external pack is optional.
+  let externalSkills = o.externalSkills;
+  if (externalSkills && ctx.prompt && missingExternal(project).length > 0) {
+    ctx.log(`Skills incluidas: ${skillsOf(parts).join(", ")}`);
+    externalSkills = await ctx.prompt.confirm(`¿Instalar también las skills externas (${EXTERNAL_SKILLS.skills.join(", ")})? Usan npx y red`, true);
+  }
+
   // 3 · Agents: flag → manifest → detection → question.
   let agents = flags.agents ?? (prev?.agents ? parseAgents(prev.agents.join(",")) : undefined);
   if (!agents) {
     const detected = project.existsRoot() ? detectAgents(project) : [];
     agents = detected.length > 0 ? detected : ctx.prompt ? await ctx.prompt.agents(DEFAULT_AGENTS) : DEFAULT_AGENTS;
   }
+
+  // Git: only asked when .git is missing (zone-check needs it).
+  const hasGit = project.exists(".git");
+  let gitInit = !hasGit && !o.noGit;
+  if (gitInit && ctx.prompt) gitInit = await ctx.prompt.confirm("¿Inicializar git (git init)? zone-check lo necesita", true);
 
   // 4 · Context (asked only on the first run) and database.
   const context = (o.context ?? (!prev && ctx.prompt ? await ctx.prompt.context() : "")).trim();
@@ -97,10 +119,11 @@ export async function init(o: InitOptions, ctx: Context): Promise<number> {
   project.createRoot();
 
   // 5 · Git (zone-check needs it).
-  const newRepository = !project.exists(".git");
-  if (newRepository) {
+  if (gitInit) {
     project.report("+", ".git", "git init");
     if (!o.dryRun) ctx.runner.run(ctx.log, "git", ["init", "-q"], root);
+  } else if (!hasGit) {
+    project.report("!", ".git", "sin git: zone-check no funciona hasta que ejecutes git init");
   }
 
   const prevFiles = prev?.files ?? {};
@@ -163,9 +186,9 @@ export async function init(o: InitOptions, ctx: Context): Promise<number> {
   project.block(".gitignore", template("core/gitignore.block"), (l) => l.trim() === "# >>> basekit", "# <<< basekit");
   // LF for everyone: a Windows clone with core.autocrlf=true would otherwise break the scripts in WSL/Docker.
   // In a repository that already existed it is only suggested: it could renormalize files committed with CRLF.
-  if (newRepository || project.exists(".gitattributes")) {
+  if (gitInit || project.exists(".gitattributes")) {
     project.create(".gitattributes", template("core/gitattributes"));
-  } else {
+  } else if (hasGit) {
     project.report("!", ".gitattributes", "agrega `* text=auto eol=lf` (y ejecuta `git add --renormalize .`) para que Windows no convierta los scripts a CRLF");
   }
 
@@ -179,7 +202,7 @@ export async function init(o: InitOptions, ctx: Context): Promise<number> {
 
   // 10 · Adapters. 12 · External skills. 11 · Skill links last, so they also cover the external skills.
   writeAdapters(project, parts, agents);
-  if (o.externalSkills) installExternalSkills(project, agents, ctx.log, ctx.runner, false);
+  if (externalSkills) installExternalSkills(project, agents, ctx.log, ctx.runner, false);
   linkSkills(project, parts, agents);
 
   // 13 · Infrastructure, through the same script the agent uses: the copy of the part with the database, which

@@ -72,7 +72,7 @@ basekit init mi-proyecto --stack nextjs --context "Reservas de canchas de pádel
 basekit stacks        # stacks y agentes soportados
 ```
 
-Opciones de `init`: `--stack <id>` (o `<backend>+<frontend>`), `--agents a,b`, `--context`, `--db auto|postgres|mysql|sqlite|none`, `--redis`, `--no-external-skills`, `--force`, `--dry-run`, `-y/--yes`. Detalle en `basekit help`.
+Opciones de `init`: `--stack <id>` (o `<backend>+<frontend>`), `--agents a,b`, `--context`, `--db auto|postgres|mysql|sqlite|none`, `--redis`, `--no-git`, `--no-external-skills`, `--force`, `--dry-run`, `-y/--yes`. Detalle en `basekit help`.
 
 ### Stacks
 

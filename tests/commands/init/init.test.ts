@@ -401,3 +401,19 @@ describe("paths outside the project", () => {
     assert.ok(!existsSync(join(d, "pwned")));
   });
 });
+
+describe("--no-git", () => {
+  it("skips git init and warns that zone-check needs it", () => {
+    const d = scratch();
+    const r = init(d, "--stack", "flask", "--no-git");
+    assert.equal(r.code, 0, r.stderr);
+    assert.ok(!existsSync(join(d, ".git")), "no repository");
+    assert.ok(!existsSync(join(d, ".gitattributes")), "no .gitattributes without a repository basekit creates");
+    assert.match(r.stdout, /^! \.git .*sin git: zone-check no funciona hasta que ejecutes git init/m);
+    assert.ok(existsSync(join(d, ".agents/manifest.json")));
+  });
+
+  it("is listed in the help", () => {
+    assert.match(basekit(["--help"]).stdout, /--no-git\s+No ejecuta git init \(zone-check lo necesita\)/);
+  });
+});

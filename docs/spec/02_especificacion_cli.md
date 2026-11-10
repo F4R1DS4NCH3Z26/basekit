@@ -30,7 +30,8 @@ Flags de `init`:
 | `--context` | texto libre: "de qué trata el proyecto" | se pregunta (puede ir vacío) |
 | `--db` | `auto`, `postgres`, `mysql`, `sqlite`, `none`. Un stack frontend solo admite `auto` o `none`; en un combinado se aplica al backend | `auto` (lo decide el bootstrap; en un stack frontend, `none`) |
 | `--redis` | booleano. Error en un stack frontend; en un combinado, va al backend | no |
-| `--no-external-skills` | omite `npx skills add` (CI o sin red) | no |
+| `--no-git` | omite `git init` (zone-check lo necesita) | no; si falta `.git`, se pregunta |
+| `--no-external-skills` | omite `npx skills add` (CI o sin red) | no; si faltan, se pregunta |
 | `--force` | reemplaza las skills del kit modificadas localmente | no |
 | `--dry-run` | muestra lo que haría sin escribir | no |
 | `--yes`, `-y` | no interactivo; usa flags y valores por defecto | no |
@@ -46,9 +47,9 @@ Flags de `init`:
    En **Fullstack**, el paso Lenguaje ofrece los lenguajes de los stacks integrados y, al final, **«Combinar backend + frontend»** (si hay stacks de los dos tipos). Elegirla pregunta Lenguaje → Framework del backend (`¿En qué lenguaje es el backend?`, `¿Con qué framework de backend?`) y luego del frontend, y el resultado es `<backend>+<frontend>` (sección 14). En esos pasos solo se acepta un id de stack de ese lado.
 
    Un paso con una sola opción no se pregunta: se elige solo y se anuncia (`Lenguaje: TypeScript (única opción)`). En una terminal cada paso es un menú con flechas; sin TTY con modo raw, una lista numerada que acepta el número o el nombre (y, en cualquier paso, un id de stack), vuelve a preguntar ante una respuesta inválida y, si la entrada termina, falla con un error de uso que sugiere `--stack <id>`.
-3. **Agentes**: flag → detección (guía 03, sección 1) → pregunta. Valida contra la lista blanca.
+3. **Skills externas y agentes**: si faltan las skills externas y no se pasó `--no-external-skills`, se muestran las skills incluidas y se pregunta si instalar también las externas (`¿Instalar también las skills externas (…)? Usan npx y red`, sí por defecto). Agentes: flag → detección (guía 03, sección 1) → pregunta. Valida contra la lista blanca.
 4. **Contexto** (texto) y **BD** (`auto` por defecto). Un stack frontend no tiene base de datos: `--db` distinto de `auto`/`none` o `--redis` es un error de uso (exit 2) antes de escribir nada, y `auto` se guarda como `none`.
-5. **Git**: si no hay `.git`, ejecutar `git init` (zone-check lo necesita).
+5. **Git**: si no hay `.git` y no se pasó `--no-git`, se pregunta `¿Inicializar git (git init)? zone-check lo necesita` (sí por defecto; se pregunta antes del contexto) y se ejecuta `git init`. Sin git se avisa `!` (zone-check no funciona) y no se crea `.gitattributes`.
 6. **Núcleo `.agents/`**, siguiendo la tabla de la sección 4: README, roles, zonas, skills del kit (scripts con permisos 755) y `manifest.json`.
 7. **`AGENTS.md`**: bloque gestionado (sección 7) con los placeholders resueltos (sección 5). Si supera 18.000 caracteres, avisar: Hermes trunca a partir de 20.000.
 8. **Docker y Make**:
@@ -59,7 +60,7 @@ Flags de `init`:
 9. **Documentación**: `README.md`, `docs/PROJECT.md`, `docs/ARCHITECTURE.md`, `docs/RUNBOOK.md`, `docs/AUTH.md` y `docs/specs/.gitkeep`, solo si no existen. **No crear** `GLOSSARY.md` ni `docs/adr/`: los crea `domain-modeling` cuando hay contenido real.
 10. **Adaptadores** para cada agente elegido (guía 03, sección 3). En un proyecto combinado, un `.claude/settings.json` que ya existe recibe al final de `permissions.deny` solo los bloqueos de secretos de `backend/` y `frontend/` que le falten (`~`); si no es JSON válido o `deny` no es una lista, se conserva con un aviso `!`.
 11. **Enlaces de skills** para los agentes que no leen `.agents/skills/`: enlace relativo y, si falla (Windows sin permisos), copia.
-12. **Skills externas** (sección 9), salvo con `--no-external-skills`.
+12. **Skills externas** (sección 9), salvo con `--no-external-skills` o si se respondió que no.
 13. **Infraestructura**: si `--db ≠ auto`, ejecutar `bash .agents/skills/infra-setup/scripts/infra.sh --db <db> [--redis]`. Es el **mismo script** que usa el agente, así que la lógica vive en un solo lugar. El script trabaja en el proyecto que lo contiene (`$(dirname "$0")/../../../..`, nunca `git rev-parse --show-toplevel`): en un combinado se ejecuta, desde la raíz, la copia del backend (`bash backend/.agents/skills/infra-setup/scripts/infra.sh …`). También se ejecuta, sin `--db`, cuando un proyecto de un solo stack pasa a combinado y la base de datos (o Redis) del manifest pasa al backend: el lado nuevo aún no tiene overlays. `--dry-run` solo lo muestra.
 14. **Resumen y próximo paso.** Imprimir el prompt sugerido:
     > «Lee AGENTS.md y ejecuta el bootstrap. El proyecto trata de: `<contexto>`»
