@@ -1,8 +1,9 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { AGENTS } from "./agents.js";
+import { INFRA, inPart, roleFiles, zoneFiles, type Part } from "./layout.js";
 import type { Project } from "./project.js";
-import { stackDir, type Stack } from "./stacks.js";
+import { stackDir } from "./stacks.js";
 import { TEMPLATES, walk } from "./templates.js";
 
 /**
@@ -40,21 +41,21 @@ function parseRole(name: string, text: string): Role {
   return { name, description: meta.description || name, body: body.endsWith("\n") ? body : `${body}\n` };
 }
 
-/** Roles from the project's `.agents/roles/`, or from the stack templates when it does not exist yet (dry-run). */
-function readRoles(project: Project, stack: Stack): Role[] {
+/** Roles from the project's `.agents/roles/`, or the ones init would write when it does not exist yet (dry-run). */
+function readRoles(project: Project, parts: Part[]): Role[] {
   const own = project.files(".agents/roles").filter((f) => f.endsWith(".md"));
   const fromProject = own.length > 0 || project.exists(".agents/roles");
-  const names = fromProject ? own : walk(join(stackDir(stack), "roles")).filter((f) => f.endsWith(".md") && !f.includes("/"));
+  const kit = new Map(roleFiles(parts).filter((f) => f.rel.endsWith(".md") && !f.rel.includes("/")).map((f) => [f.rel, f.text]));
+  const names = fromProject ? own : [...kit.keys()].sort();
   return names
     .map((f) => f.slice(0, -3))
     .filter((n) => ROLE_NAME.test(n))
-    .map((n) => parseRole(n, fromProject ? project.read(`.agents/roles/${n}.md`)! : readFileSync(join(stackDir(stack), "roles", `${n}.md`), "utf8")));
+    .map((n) => parseRole(n, fromProject ? project.read(`.agents/roles/${n}.md`)! : kit.get(`${n}.md`)!));
 }
 
-function readZones(project: Project, stack: Stack, role: string): string[] {
+function readZones(project: Project, parts: Part[], role: string): string[] {
   const own = project.read(`.agents/zones/${role}.txt`);
-  const tpl = join(stackDir(stack), "zones", `${role}.txt`);
-  const text = own ?? (existsSync(tpl) ? readFileSync(tpl, "utf8") : "");
+  const text = own ?? zoneFiles(parts).find((f) => f.rel === `${role}.txt`)?.text ?? "";
   return [...new Set(text.split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("#")))];
 }
 
@@ -74,13 +75,23 @@ function claudeAgent(r: Role): string {
   ].join("\n");
 }
 
-const OPENCODE_BASH: [string, string][] = [
-  ["*", "ask"], ["make verify*", "allow"], ["make test*", "allow"], ["make lint*", "allow"],
-  ["git status*", "allow"], ["git diff*", "allow"], ["bash .agents/skills/*", "allow"],
-];
+const ROOT_SKILLS = "bash .agents/skills/*";
+
+/** The side copies of the skill scripts (`bash backend/.agents/skills/*`); empty for a single-stack project. */
+function sideSkills(parts: Part[]): string[] {
+  return [...new Set(parts.map((p) => `bash ${inPart(p, ".agents/skills/*")}`))].filter((g) => g !== ROOT_SKILLS);
+}
+
+function opencodeBash(parts: Part[]): [string, string][] {
+  return [
+    ["*", "ask"], ["make verify*", "allow"], ["make test*", "allow"], ["make lint*", "allow"],
+    ["git status*", "allow"], ["git diff*", "allow"], [ROOT_SKILLS, "allow"],
+    ...sideSkills(parts).map((g): [string, string] => [g, "allow"]),
+  ];
+}
 
 /** Zones become real edit permissions; every pattern is a JSON string, which is valid YAML. */
-function opencodeAgent(r: Role, zones: string[]): string {
+function opencodeAgent(r: Role, zones: string[], parts: Part[]): string {
   return [
     "---",
     `description: ${JSON.stringify(r.description)}`,
@@ -90,7 +101,7 @@ function opencodeAgent(r: Role, zones: string[]): string {
     '    "*": deny',
     ...zones.map((z) => `    ${JSON.stringify(z)}: allow`),
     "  bash:",
-    ...OPENCODE_BASH.map(([p, v]) => `    ${JSON.stringify(p)}: ${v}`),
+    ...opencodeBash(parts).map(([p, v]) => `    ${JSON.stringify(p)}: ${v}`),
     "  webfetch: deny",
     "---",
     generatedBy(r.name),
@@ -100,11 +111,30 @@ function opencodeAgent(r: Role, zones: string[]): string {
 
 const json = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`;
 
-function claudeSettings(stack: Stack): string {
-  const scaffolds = stack.skills
-    .map(([name]) => name)
-    .filter((name) => existsSync(join(stackDir(stack), "skills", name, "scripts/scaffold.sh")))
-    .map((name) => `Bash(bash .agents/skills/${name}/scripts/scaffold.sh:*)`);
+const READ_SECRETS = [".env", ".env.prod", ".env.local", ".env.production", ".env.*.local"];
+const EDIT_SECRETS = [".env", ".env.prod", ".env.local", ".env.production"];
+
+/**
+ * Claude's deny entries for the secrets of the root and, in a combined project, of each side (S19), as the allowlist
+ * covers each side's scripts. They are listed one by one: `Read(./.env.*)` would also block .env.example (deny wins
+ * over allow).
+ */
+function secretDeny(parts: Part[]): string[] {
+  const dirs = [...new Set(["", ...parts.filter((p) => p.side).map((p) => inPart(p, ""))])];
+  return dirs.flatMap((dir) => [...READ_SECRETS.map((f) => `Read(./${dir}${f})`), ...EDIT_SECRETS.map((f) => `Edit(./${dir}${f})`)]);
+}
+
+/**
+ * The skill scripts work on the project that holds them (S17): in a combined project the allowed invocations are the
+ * side copies, run from the root (`bash backend/.agents/skills/<skill>/scripts/scaffold.sh`), as AGENTS.md documents.
+ */
+function claudeSettings(parts: Part[]): string {
+  const scaffolds = parts.flatMap((part) =>
+    part.stack.skills
+      .map(([name]) => name)
+      .filter((name) => existsSync(join(stackDir(part.stack), "skills", name, "scripts/scaffold.sh")))
+      .map((name) => `Bash(bash ${inPart(part, `.agents/skills/${name}/scripts/scaffold.sh`)}:*)`),
+  );
   return json({
     permissions: {
       allow: [
@@ -115,13 +145,11 @@ function claudeSettings(stack: Stack): string {
       ask: [
         "Bash(make dev:*)", "Bash(make up:*)", "Bash(make migrate:*)", "Bash(make migration:*)", "Bash(make install:*)",
         "Bash(make new-app:*)", "Bash(make deps-add:*)", "Bash(make prod-build:*)", "Bash(make prod-up:*)",
-        "Bash(make prod-migrate:*)", "Bash(bash .agents/skills/infra-setup/scripts/infra.sh:*)",
+        "Bash(make prod-migrate:*)", `Bash(bash ${inPart(parts[0]!, INFRA)}:*)`,
         "Bash(docker:*)", "Bash(npx:*)", "Bash(git commit:*)", "Bash(git checkout:*)",
       ],
-      // Secrets are listed one by one: `Read(./.env.*)` would also block .env.example (deny wins over allow).
       deny: [
-        "Read(./.env)", "Read(./.env.prod)", "Read(./.env.local)", "Read(./.env.production)", "Read(./.env.*.local)",
-        "Edit(./.env)", "Edit(./.env.prod)", "Edit(./.env.local)", "Edit(./.env.production)",
+        ...secretDeny(parts),
         "Read(./**/*.pem)", "Read(./**/*.key)", "Bash(make clean:*)", "Bash(git push:*)", "Bash(rm -rf:*)",
         "Bash(curl:*)", "Bash(wget:*)", "Bash(sudo:*)", "Bash(cat .env:*)",
       ],
@@ -129,15 +157,17 @@ function claudeSettings(stack: Stack): string {
   });
 }
 
-const OPENCODE_JSON = json({
+const opencodeJson = (parts: Part[]) => json({
   $schema: "https://opencode.ai/config.json",
   permission: {
-    // In OpenCode the last matching rule wins, so *.env.example reopens what *.env.* closes.
+    // In OpenCode the last matching rule wins, so *.env.example reopens what *.env.* closes. `*` matches any character,
+    // `/` included, so these rules also cover backend/.env and frontend/.env.prod (S19).
     read: { "*": "allow", "*.env": "deny", "*.env.*": "deny", "*.env.example": "allow" },
     edit: { "*": "allow", "*.env": "deny", "*.env.*": "deny", "*.env.example": "allow" },
     bash: {
       "*": "ask", "make help*": "allow", "make verify*": "allow", "make test*": "allow", "make lint*": "allow",
-      "git status*": "allow", "git diff*": "allow", "bash .agents/skills/*": "allow",
+      "git status*": "allow", "git diff*": "allow", [ROOT_SKILLS]: "allow",
+      ...Object.fromEntries(sideSkills(parts).map((g) => [g, "allow"])),
       "make clean*": "deny", "git push*": "deny", "rm -rf*": "deny", "curl *": "deny", "wget *": "deny", "sudo *": "deny",
     },
   },
@@ -152,25 +182,71 @@ function claudeMd(project: Project): void {
   else project.generated("CLAUDE.md", `@AGENTS.md\n\n${cur}`);
 }
 
-/** Generated subagents are rewritten when they differ; config files are created only if missing. */
-export function writeAdapters(project: Project, stack: Stack, agents: string[]): void {
-  const roles = readRoles(project, stack);
+const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+
+/** The value of `key`, `fallback` when it is absent (an explicit null is kept: it is not a list). */
+const member = (o: Record<string, unknown>, key: string, fallback: unknown) => (Object.hasOwn(o, key) ? o[key] : fallback);
+
+/**
+ * settings.json is the user's once it exists (for example, from before the project was combined). In a combined
+ * project init appends to its permissions.deny only the side secret entries it lacks (S20) and keeps every other key,
+ * value and entry in order; a file it cannot read as JSON with a deny list is kept, with a warning.
+ */
+function claudeSettingsFile(project: Project, parts: Part[]): void {
+  const rel = ".claude/settings.json";
+  const sides = parts.filter((p) => p.side).map((p) => inPart(p, ""));
+  const cur = sides.length > 0 && project.isFile(rel) ? project.read(rel) : undefined;
+  if (cur === undefined) {
+    project.create(rel, claudeSettings(parts));
+    return;
+  }
+  const required = secretDeny(parts).filter((e) => sides.some((s) => e.includes(`./${s}`)));
+  let settings: unknown;
+  let reason = "no tiene permissions.deny como lista";
+  try {
+    settings = JSON.parse(cur);
+  } catch {
+    reason = "no es JSON válido";
+  }
+  const permissions = isObject(settings) ? member(settings, "permissions", {}) : undefined;
+  const deny = isObject(permissions) ? member(permissions, "deny", []) : undefined;
+  if (!isObject(settings) || !isObject(permissions) || !Array.isArray(deny)) {
+    const missing = required.filter((e) => !cur.includes(JSON.stringify(e)));
+    if (missing.length === 0) project.report("=", rel);
+    else project.report("!", rel, `${reason}: se conserva y no niega los secretos de ${sides.join(" ni de ")} (${missing[0]}…); agrégalos a mano`);
+    return;
+  }
+  const missing = required.filter((e) => !deny.includes(e));
+  if (missing.length === 0) {
+    project.report("=", rel);
+    return;
+  }
+  const next = { ...settings, permissions: { ...permissions, deny: [...deny, ...missing] } };
+  project.update(rel, json(next), `se agregaron ${missing.length} bloqueos de secretos de ${sides.join(" y ")}`);
+}
+
+/**
+ * Generated subagents are rewritten when they differ; config files are created only if missing, except the side secret
+ * entries a combined project adds to Claude's settings (S20).
+ */
+export function writeAdapters(project: Project, parts: Part[], agents: string[]): void {
+  const roles = readRoles(project, parts);
   if (agents.includes("claude-code")) {
     claudeMd(project);
     for (const r of roles) project.generated(`.claude/agents/${r.name}.md`, claudeAgent(r));
-    project.create(".claude/settings.json", claudeSettings(stack));
+    claudeSettingsFile(project, parts);
   }
   if (agents.includes("opencode")) {
-    for (const r of roles) project.generated(`.opencode/agents/${r.name}.md`, opencodeAgent(r, readZones(project, stack, r.name)));
-    project.create("opencode.json", OPENCODE_JSON);
+    for (const r of roles) project.generated(`.opencode/agents/${r.name}.md`, opencodeAgent(r, readZones(project, parts, r.name), parts));
+    project.create("opencode.json", opencodeJson(parts));
   }
   if (agents.includes("gemini-cli")) project.create(".gemini/settings.json", GEMINI_JSON);
   // Hermes reads AGENTS.md from the cwd: it gets no instruction file of its own (never .hermes.md).
 }
 
 /** Links every skill in `.agents/skills/` into the folders of the tools that do not read it natively. */
-export function linkSkills(project: Project, stack: Stack, agents: string[]): void {
-  const kit = [join(TEMPLATES, "skills"), join(stackDir(stack), "skills")].flatMap((dir) =>
+export function linkSkills(project: Project, parts: Part[], agents: string[]): void {
+  const kit = [join(TEMPLATES, "skills"), ...parts.map((p) => join(stackDir(p.stack), "skills"))].flatMap((dir) =>
     walk(dir).map((f) => f.split("/")[0]!),
   );
   const skills = [...new Set([...project.dirs(".agents/skills"), ...kit])].sort();

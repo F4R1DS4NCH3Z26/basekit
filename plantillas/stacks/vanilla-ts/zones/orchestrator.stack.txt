@@ -1,0 +1,17 @@
+package.json
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+tsconfig.json
+tsconfig.*.json
+vite.config.*
+vitest.config.*
+eslint.config.*
+index.html
+nginx.conf
+src/main.ts
+src/routes.ts
+src/style.css
+src/vite-env.d.ts
+src/lib/**
+src/types/**

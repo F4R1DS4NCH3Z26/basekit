@@ -1,8 +1,11 @@
 name: ci
 
 on:
+  # Same triggers as basekit-go: a branch with an open PR runs once (pull_request), not twice.
   push:
+    branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -127,17 +130,47 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # Backend and fullstack stacks (the list is plantillas/stacks/*/stack.json, by kind).
+          - stack: django
+          - stack: django-htmx
+          - stack: express
           - stack: fastapi
+          - stack: flask
+          - stack: gin
+          - stack: go-native
           - stack: laravel
+          - stack: nestjs
           - stack: nextjs
+          - stack: node-native
+          - stack: php-native
+          - stack: python-native
           # Spring's new-app adds data-jpa (SPRING_DB=postgresql by default): it needs a database to start.
           - stack: spring
             db: postgres
+          - stack: symfony
+          # Frontend stacks have no database: no db axis (init rejects --db and --redis for them).
+          - stack: react
+          - stack: vanilla-ts
+          - stack: vue
           # Production images: non-root users, cap_drop and the SQLite volume must work together.
+          - { stack: django, db: sqlite, env: prod }
+          - { stack: django-htmx, db: sqlite, env: prod }
+          - { stack: express, db: sqlite, env: prod }
           - { stack: fastapi, db: sqlite, env: prod }
+          - { stack: flask, db: sqlite, env: prod }
+          - { stack: gin, db: sqlite, env: prod }
+          - { stack: go-native, db: sqlite, env: prod }
           - { stack: laravel, db: sqlite, env: prod }
+          - { stack: nestjs, db: sqlite, env: prod }
           - { stack: nextjs, db: sqlite, env: prod }
+          - { stack: node-native, db: sqlite, env: prod }
+          - { stack: php-native, db: sqlite, env: prod }
+          - { stack: python-native, db: sqlite, env: prod }
           - { stack: spring, db: postgres, env: prod }
+          - { stack: symfony, db: sqlite, env: prod }
+          - { stack: react, env: prod }
+          - { stack: vanilla-ts, env: prod }
+          - { stack: vue, env: prod }
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
@@ -145,8 +178,13 @@ jobs:
           node-version: 24
       - run: npm ci && npm run compile
       # Acceptance 12: make new-app + make dev, answering on the stack healthcheck.
-      - run: bash scripts/e2e.sh ${{ matrix.stack }} ${{ matrix.db }} ${{ matrix.env == 'prod' && '--prod' || '' }}
+      # Arguments go through env and are added only when set: a frontend job (no db) passes no db argument at all,
+      # never an empty one (scripts/e2e.sh rejects any argument that is not a db or --prod).
+      - run: bash scripts/e2e.sh "$STACK" ${DB:+"$DB"} ${PROD:+--prod}
         env:
-          # Laravel's make new-app downloads ~110 package zips from api.github.com; anonymous requests from
-          # shared runners get 504s. Only the Laravel jobs receive the (read-only) workflow token.
-          COMPOSER_AUTH: ${{ matrix.stack == 'laravel' && format('{{"github-oauth":{{"github.com":"{0}"}}}}', secrets.GITHUB_TOKEN) || '' }}
+          STACK: ${{ matrix.stack }}
+          DB: ${{ matrix.db }}
+          PROD: ${{ matrix.env == 'prod' && '1' || '' }}
+          # Composer's make new-app downloads package zips from api.github.com; anonymous requests from shared
+          # runners get 504s. Only the PHP jobs (Laravel, Symfony, PHP nativo) receive the (read-only) workflow token.
+          COMPOSER_AUTH: ${{ contains(fromJSON('["laravel","symfony","php-native"]'), matrix.stack) && format('{{"github-oauth":{{"github.com":"{0}"}}}}', secrets.GITHUB_TOKEN) || '' }}

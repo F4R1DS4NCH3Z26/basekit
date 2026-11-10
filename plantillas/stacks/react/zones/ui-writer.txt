@@ -1,0 +1,6 @@
+src/features/*/components/**
+src/features/*/pages/**
+src/features/*/index.ts
+src/components/**
+src/assets/**
+public/**

@@ -2,9 +2,10 @@
   "id": "fastapi",
   "name": "Python · FastAPI + SQLAlchemy 2 + Pydantic v2",
   "language": "Python",
+  "kind": "backend",
   "port": 8000,
   "health": "/health",
-  "detect": { "files": [], "manifest": "pyproject.toml", "contains": "fastapi" },
+  "detect": { "files": [], "manifest": "pyproject.toml", "contains": "fastapi", "priority": 10 },
   "appMarker": "pyproject.toml",
   "roles": ["data-writer", "logic-writer", "web-writer", "qa-writer"],
   "skills": [

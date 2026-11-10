@@ -25,7 +25,8 @@ _new-app:
 	  -v "$$PWD":/work -w /tmp node:22-alpine sh -c '\
 	  export npm_config_before="$$(node -p "new Date(Date.now() - 14 * 864e5).toISOString()")" && \
 	  apk add --no-cache coreutils >/dev/null && \
-	  npx --yes create-next-app@$(CREATE_NEXT_VERSION) app --ts --eslint --app --src-dir --tailwind \
+	  npm install --prefix /tmp/cli --no-audit --no-fund create-next-app@$(CREATE_NEXT_VERSION) && \
+	  /tmp/cli/node_modules/.bin/create-next-app app --ts --eslint --app --src-dir --tailwind \
 	    --import-alias "@/*" --use-npm --yes --skip-install && \
 	  cp -R --update=none /tmp/app/. /work/ && test -f /work/package.json && cd /work && npm install --no-audit --no-fund && \
 	  npm install --no-audit --no-fund zod server-only && \

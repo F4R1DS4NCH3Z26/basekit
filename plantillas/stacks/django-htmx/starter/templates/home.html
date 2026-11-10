@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}Inicio{% endblock %}
+{% block content %}
+  <h1>Inicio</h1>
+  {% if user.is_authenticated %}
+    <p>Hola, {{ user.get_username }}.</p>
+  {% else %}
+    <p><a href="{% url 'login' %}">Entra</a> para usar la aplicación.</p>
+  {% endif %}
+{% endblock %}

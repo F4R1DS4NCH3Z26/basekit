@@ -2,7 +2,8 @@ import { after, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { basekit, cleanup, hasDocker, scratch, sh } from "../helpers.js";
+import { hasDatabase, loadStacks } from "../../src/kit/stacks.js";
+import { basekit, cleanup, hasDocker, REPO, scratch, sh } from "../helpers.js";
 
 after(cleanup);
 
@@ -19,12 +20,21 @@ function fakeBin(names: Record<string, string>): { path: string; calls: () => st
 }
 
 describe("make new-app when the app already exists", () => {
-  const markers: Record<string, string[]> = {
-    nextjs: ["package.json"],
-    fastapi: ["uv.lock"], // pyproject.toml comes from the starter
-    laravel: ["composer.json"],
-    spring: ["pom.xml"],
-  };
+  // The file whose presence makes each stack's new-app a no-op, read from its own guard in stack.mk.
+  const markers: Record<string, string[]> = Object.fromEntries(
+    loadStacks().map((s) => {
+      const mk = readFileSync(join(REPO, "plantillas/stacks", s.id, "files/.make/stack.mk"), "utf8");
+      const marker = /Ya existe (\S+); nada que hacer/.exec(mk)?.[1];
+      assert.ok(marker, `${s.id}: stack.mk has no "Ya existe <file>; nada que hacer" guard`);
+      return [s.id, [marker]];
+    }),
+  );
+  it("covers every stack, with the markers the stacks were written with", () => {
+    assert.deepEqual(Object.keys(markers), loadStacks().map((s) => s.id));
+    assert.deepEqual(markers.fastapi, ["uv.lock"]); // pyproject.toml comes from the starter
+    assert.deepEqual(markers.gin, ["go.sum"]);
+    assert.deepEqual(markers["php-native"], ["composer.lock"]);
+  });
   for (const [stack, files] of Object.entries(markers)) {
     it(`${stack}: does nothing and never calls docker`, () => {
       const d = scratch();
@@ -39,6 +49,41 @@ describe("make new-app when the app already exists", () => {
       assert.equal(sh("git", ["status", "--porcelain"], d).stdout, before, "new-app changed files");
     });
   }
+});
+
+describe("make migration NAME=… (S17)", () => {
+  const frontends = loadStacks().filter((s) => !hasDatabase(s)).map((s) => s.id);
+  it("has at least one stack without a database to check", () => assert.ok(frontends.length > 0));
+  for (const stack of frontends) {
+    it(`${stack}: prints the no-database message and exits 0 whatever NAME is, without calling docker`, () => {
+      const d = scratch();
+      assert.equal(init(d, "--stack", stack).code, 0);
+      assert.equal(sh("make", ["env"], d).code, 0);
+      const fake = fakeBin({ docker: "exit 0" });
+      for (const args of [["NAME=x"], [], ["NAME=create_orders"], ["NAME=Bad Name"]]) {
+        const r = sh("make", ["migration", ...args], d, { PATH: `${fake.path}:${process.env.PATH}` });
+        assert.equal(r.code, 0, `${args.join(" ")}: ${r.stdout}${r.stderr}`);
+        assert.match(r.stdout, /no usa base de datos/, args.join(" "));
+        assert.doesNotMatch(r.stdout, /Uso: make migration/, args.join(" "));
+      }
+      assert.equal(fake.calls(), "", "docker was called");
+    });
+  }
+  it("a stack with a database still rejects a bad NAME before calling docker", () => {
+    const d = scratch();
+    assert.equal(init(d, "--stack", "fastapi").code, 0);
+    assert.equal(sh("make", ["env"], d).code, 0);
+    const fake = fakeBin({ docker: "exit 0" });
+    for (const args of [["NAME=x"], [], ["NAME=Bad-Name"]]) {
+      const r = sh("make", ["migration", ...args], d, { PATH: `${fake.path}:${process.env.PATH}` });
+      assert.equal(r.code, 2, `${args.join(" ")}: ${r.stdout}`);
+      assert.match(r.stdout, /Uso: make migration NAME=snake_case/);
+    }
+    assert.equal(fake.calls(), "", "docker was called");
+    const ok = sh("make", ["migration", "NAME=create_orders"], d, { PATH: `${fake.path}:${process.env.PATH}` });
+    assert.equal(ok.code, 0, ok.stdout + ok.stderr);
+    assert.match(fake.calls(), /^docker compose .* run --rm -e NAME app /m);
+  });
 });
 
 describe("make env merges new variables", () => {

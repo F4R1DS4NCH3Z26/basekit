@@ -45,13 +45,15 @@ Skills: `nextjs-scaffold`, `nextjs-verify` (la usa `make verify`), `nextjs-patte
 En dev, `node_modules` y `.next` van en **volúmenes con nombre**, para que el bind mount no los oculte; `make install` vuelve a ejecutar `npm ci` en el volumen. Se activa `WATCHPACK_POLLING` para que el hot reload funcione en Docker Desktop y WSL.
 
 `make new-app` (si no hay `package.json`):
-1. Corre `create-next-app@16.4.3` (TypeScript, ESLint, App Router, `src/`, Tailwind, alias `@/*`) dentro de `node:22-alpine` como root y al final devuelve los archivos a tu uid (`create-next-app` falla con un uid sin usuario en la imagen).
+1. Instala `create-next-app@16.4.3` con versión fija (`npm install --prefix /tmp/cli`, igual que `@nestjs/cli` en NestJS; sin `npx --yes`) y lo ejecuta (TypeScript, ESLint, App Router, `src/`, Tailwind, alias `@/*`) dentro de `node:22-alpine` como root y al final devuelve los archivos a tu uid (`create-next-app` falla con un uid sin usuario en la imagen).
    Todas las dependencias se resuelven con `npm_config_before` = hace 14 días: ninguna versión publicada en las últimas dos semanas (rota o comprometida) entra en un proyecto nuevo.
    La regla también vale para versiones exactas: si subes `CREATE_NEXT_VERSION` (o la pasas con `make new-app CREATE_NEXT_VERSION=…`) a una versión publicada hace menos de 14 días, `make new-app` falla con `ETARGET` hasta que cumpla los 14 días.
 2. Copia el resultado sin pisar archivos del kit.
 3. Instala `zod`, `server-only` y Vitest + Testing Library.
 4. Añade `output: "standalone"` a `next.config`.
 5. Crea `/api/health`.
+
+**ESLint sigue en 9** aunque ESLint 9 llegó a fin de vida el 2026-08-06 (https://eslint.org/version-support/): `create-next-app@16.4.3` escribe `eslint: "^9"` y `eslint-config-next` depende de `eslint-plugin-react` 7.37.5, `eslint-plugin-import` 2.32.0 y `eslint-plugin-jsx-a11y` 6.10.2, que solo aceptan ESLint hasta 9 (`peerDependencies`). Pasar a ESLint 10 espera a que Next.js publique una configuración compatible. Los demás stacks TypeScript ya usan ESLint 10 (express y node-native fijado; react, vue y vanilla-ts lo resuelven al crear la app); nestjs usa oxlint.
 
 ## Auth: Better Auth (detalle en `nextjs-patterns/references/auth.md`)
 

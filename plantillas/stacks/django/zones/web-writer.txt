@@ -1,0 +1,3 @@
+src/modules/*/views.py
+src/modules/*/urls.py
+src/modules/*/permissions.py

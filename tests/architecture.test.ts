@@ -2,6 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
+import { loadStacks } from "../src/kit/stacks.js";
 import { SRC_DIR } from "./helpers.js";
 
 /** Every .ts file under src/, as paths relative to src/. */
@@ -60,7 +61,7 @@ describe("architecture", () => {
   it("has no stack id hardcoded in src/ (stacks are data in plantillas/)", () => {
     for (const f of sources()) {
       const text = readFileSync(join(SRC_DIR, f), "utf8");
-      for (const id of ["nextjs", "fastapi", "laravel", "spring"]) assert.ok(!text.includes(id), `${f} mentions "${id}"`);
+      for (const { id } of loadStacks()) assert.ok(!new RegExp(`\\b${id}\\b`).test(text), `${f} mentions "${id}"`);
     }
   });
 });

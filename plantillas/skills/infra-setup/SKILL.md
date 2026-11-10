@@ -11,6 +11,8 @@ bash .agents/skills/infra-setup/scripts/infra.sh --db postgres            # o my
 bash .agents/skills/infra-setup/scripts/infra.sh --db postgres --redis    # + Redis
 ```
 
+El script trabaja en el proyecto que lo contiene (la carpeta de su `.agents/`), desde cualquier directorio. En un proyecto combinado la base de datos es del backend: usa su copia, `bash backend/.agents/skills/infra-setup/scripts/infra.sh --db postgres`.
+
 Qué hace:
 - Copia el overlay a `compose.db.yaml` y, con `--redis`, a `compose.redis.yaml`. El `Makefile` incluye los overlays automáticamente si existen.
 - Agrega a `.env.example` un bloque marcado (`# >>> db`) con secretos `__GENERATE__`, que `make env` reemplaza por valores aleatorios.

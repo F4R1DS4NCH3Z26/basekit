@@ -1,0 +1,9 @@
+src/modules/*/views.py
+src/modules/*/urls.py
+src/modules/*/forms.py
+src/modules/*/templates/**
+src/modules/*/static/**
+templates/**
+static/css/**
+static/img/**
+static/js/**

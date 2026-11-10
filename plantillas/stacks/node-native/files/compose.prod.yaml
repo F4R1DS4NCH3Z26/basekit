@@ -1,0 +1,24 @@
+services:
+  app:
+    build:
+      target: prod
+    env_file: [.env.prod]
+    environment:
+      NODE_ENV: production
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    restart: unless-stopped
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+  migrate:
+    # The build stage has the prisma CLI (dev dependency), prisma.config.ts and prisma/; prod only has dist/.
+    build:
+      target: build
+    # Same uid as the app, so the SQLite file it creates stays writable by the app.
+    user: "1001:1001"
+    env_file: [.env.prod]
+    environment:
+      # npx writes its cache under HOME; uid 1001 has no home directory in the build stage.
+      HOME: /tmp
+    cap_drop: [ALL]

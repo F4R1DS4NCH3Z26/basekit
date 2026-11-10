@@ -1,6 +1,25 @@
 import { createInterface, emitKeypressEvents } from "node:readline";
 import { AGENTS } from "../kit/agents.js";
 import { CancelledError, UsageError } from "../kit/errors.js";
+import { SIDES } from "../kit/layout.js";
+import { KINDS } from "../kit/stacks.js";
+/** How the kinds of app (S1b) read in the first step of the stack question. */
+const KIND_LABELS = {
+    backend: { label: "Backend", hint: "API o servicio, con base de datos" },
+    frontend: { label: "Frontend", hint: "SPA que corre en el navegador, sin base de datos" },
+    fullstack: { label: "Fullstack", hint: "Una app integrada, o un backend y un frontend combinados" },
+};
+/** The extra option of the fullstack step (S16): a backend stack in backend/ plus a frontend stack in frontend/. */
+const COMBINE = { label: "Combinar backend + frontend", hint: "monorepo backend/ + frontend/; make dev levanta los dos", keys: ["combinar", "combo"] };
+/** The option an answer names in numbered mode: its number (from 1), its label or one of its keys, ignoring case; -1 if none. */
+function optionIndex(options, answer) {
+    if (/^\d+$/.test(answer)) {
+        const i = Number(answer) - 1;
+        return i < options.length ? i : -1;
+    }
+    const lower = answer.toLowerCase();
+    return options.findIndex((o) => o.label.toLowerCase() === lower || o.keys.some((k) => k.toLowerCase() === lower));
+}
 /** `text` cut to `max` characters, with "…" when it had to be shortened. */
 const cut = (text, max) => ([...text].length <= max ? text : `${[...text].slice(0, Math.max(0, max - 1)).join("")}…`);
 const ESC = "\x1b[";
@@ -125,23 +144,78 @@ export class Prompter {
             input.once("close", onEnd);
         });
     }
+    /**
+     * Which stack: Tipo → Lenguaje → Framework (S1b), each step filtered by the previous answers.
+     * Fullstack also offers «Combinar backend + frontend» (S16): then it asks Lenguaje → Framework for the
+     * backend and again for the frontend, and returns `<backend>+<frontend>`.
+     * A step with a single option is chosen by itself and announced. Without a terminal it is numbered:
+     * a number or a name is accepted (a stack id too, at any step), an invalid answer asks again and
+     * the end of the input fails pointing at --stack.
+     */
     async stack(stacks) {
-        if (this.arrows) {
-            const [i] = await this.select("¿Qué stack usa el proyecto?", stacks.map((s) => ({ label: s.id, hint: s.name })), false);
-            return stacks[i].id;
+        const combinable = SIDES.every((side) => stacks.some((s) => s.kind === side));
+        const kinds = KINDS.filter((k) => stacks.some((s) => s.kind === k) || (k === "fullstack" && combinable));
+        const kind = await this.step("Tipo", "¿Qué tipo de app es?", kinds.map((k) => ({ label: KIND_LABELS[k].label, hint: KIND_LABELS[k].hint, keys: [k] })), stacks);
+        if (typeof kind === "string")
+            return kind;
+        const ofKind = stacks.filter((s) => s.kind === kinds[kind]);
+        const picked = await this.languageThenFramework(ofKind, stacks, undefined, kinds[kind] === "fullstack" && combinable);
+        if (typeof picked === "string")
+            return picked;
+        // «Combinar backend + frontend» (S16): the backend first, then the frontend.
+        return `${await this.side("backend", stacks)}+${await this.side("frontend", stacks)}`;
+    }
+    /** Lenguaje → Framework among the stacks of one side of a combined project; a stack id typed is taken only from that side. */
+    async side(side, stacks) {
+        const ofSide = stacks.filter((s) => s.kind === side);
+        // Without «Combinar» among the options, the answer is always a stack id.
+        return (await this.languageThenFramework(ofSide, ofSide, side, false));
+    }
+    /**
+     * The Lenguaje and Framework steps among `pool`; `typed` are the stack ids accepted when typed directly.
+     * `side` names the half of a combined project in the questions. With `combine`, the language step also offers
+     * «Combinar backend + frontend», and choosing it returns COMBINE instead of a stack id.
+     */
+    async languageThenFramework(pool, typed, side, combine) {
+        const languages = [...new Set(pool.map((s) => s.language))].sort();
+        const options = [
+            ...languages.map((l) => ({ label: l, hint: pool.filter((s) => s.language === l).map((s) => s.id).join(", "), keys: [l] })),
+            ...(combine ? [COMBINE] : []),
+        ];
+        const language = await this.step(side ? `Lenguaje del ${side}` : "Lenguaje", side ? `¿En qué lenguaje es el ${side}?` : "¿En qué lenguaje?", options, typed);
+        if (typeof language === "string")
+            return language;
+        if (options[language] === COMBINE)
+            return COMBINE;
+        const candidates = pool.filter((s) => s.language === languages[language]);
+        const framework = await this.step(side ? `Framework del ${side}` : "Framework", side ? `¿Con qué framework de ${side}?` : "¿Con qué framework?", candidates.map((s) => ({ label: s.name, hint: s.id, keys: [s.id] })), typed);
+        return typeof framework === "string" ? framework : candidates[framework].id;
+    }
+    /**
+     * One step of the stack question. Returns the chosen option's index, or the id of a stack typed
+     * directly (numbered mode only). With a single option it asks nothing and says which one it took.
+     */
+    async step(title, question, options, stacks) {
+        if (options.length === 1) {
+            this.say(`${title}: ${options[0].label} (única opción)`);
+            return 0;
         }
-        const width = Math.max(...stacks.map((s) => s.id.length));
-        this.say("¿Qué stack usa el proyecto?");
-        stacks.forEach((s, i) => this.say(`  ${i + 1}) ${s.id.padEnd(width)}  ${s.name}`));
+        if (this.arrows)
+            return (await this.select(question, options, false))[0];
+        const width = Math.max(...options.map((o) => o.label.length));
+        this.say(question);
+        options.forEach((o, i) => this.say(`  ${i + 1}) ${o.hint ? `${o.label.padEnd(width)}  ${o.hint}` : o.label}`));
         for (;;) {
-            const answer = await this.line("Número o id: ");
+            const answer = await this.line("Número o nombre: ");
             if (answer === undefined)
                 throw new UsageError("No se eligió un stack. Usa --stack <id>");
-            const byNumber = /^\d+$/.test(answer) ? stacks[Number(answer) - 1] : undefined;
-            const chosen = byNumber ?? stacks.find((s) => s.id === answer);
-            if (chosen)
-                return chosen.id;
-            this.say(answer ? `  «${answer}» no es una opción válida.` : "  Hace falta elegir un stack.");
+            const index = optionIndex(options, answer);
+            if (index >= 0)
+                return index;
+            const typed = stacks.find((s) => s.id.toLowerCase() === answer.toLowerCase());
+            if (typed)
+                return typed.id;
+            this.say(answer ? `  «${answer}» no es una opción válida.` : "  Hace falta elegir una opción.");
         }
     }
     async agents(defaults) {

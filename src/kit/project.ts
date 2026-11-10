@@ -141,6 +141,18 @@ export class Project {
     return mark;
   }
 
+  /** Rewrites a file the user owns with `content`, reporting `~` and why; unchanged content is not rewritten. */
+  update(rel: string, content: string, note: string): Mark {
+    if (this.refuse(rel)) return "!";
+    if (this.read(rel) === content) {
+      this.report("=", rel);
+      return "=";
+    }
+    this.write(rel, content);
+    this.report("~", rel, note);
+    return "~";
+  }
+
   /**
    * A kit file the user may edit. It is updated only if it still matches what basekit wrote
    * last time (`prev` hash), or with --force. `next` receives the hash to remember.

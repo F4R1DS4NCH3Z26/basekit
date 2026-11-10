@@ -1,0 +1,3 @@
+src/modules/*/models.py
+src/modules/*/serializers.py
+src/modules/*/admin.py

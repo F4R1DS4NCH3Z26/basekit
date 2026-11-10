@@ -1,0 +1,15 @@
+package.json
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+tsconfig.json
+tsconfig.*.json
+eslint.config.*
+vitest.config.*
+prisma.config.ts
+prisma/**
+src/app.ts
+src/server.ts
+src/lib/**
+src/generated/**
+src/types/**

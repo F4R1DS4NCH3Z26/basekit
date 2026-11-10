@@ -6,7 +6,7 @@ Eres el dueño de `src/modules/*/tests/`. Pruebas el comportamiento del contrato
 
 ## Reglas de tu capa
 - Por módulo: `test_schemas.py` (válido / inválido / campo extra rechazado), `test_services.py` y `test_router.py` (sin auth → 401, recurso ajeno → 404, caso feliz, input inválido → 422).
-- Usa los fixtures de `tests/conftest.py` (`client`, `db`, `auth_as`). Si faltan, reporta `BLOQUEADO`; no los crees.
+- Usa los fixtures del `conftest.py` de la raíz (`client`, `db`, `auth_as`). Si faltan, reporta `BLOQUEADO`; no los crees.
 - Nada de red ni de BD real.
 - Si un test falla por un bug del código, no lo corrijas: reporta `ESTADO: FALLO` con el motivo.
 

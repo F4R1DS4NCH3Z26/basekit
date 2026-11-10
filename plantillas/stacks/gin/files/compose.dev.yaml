@@ -1,0 +1,26 @@
+services:
+  app:
+    build:
+      target: dev
+    env_file: [.env]
+    environment:
+      APP_ENV: dev
+      GIN_MODE: debug
+    ports:
+      - "127.0.0.1:${APP_PORT:-8080}:8080"
+    volumes:
+      - .:/app
+      - go-build-cache:/root/.cache/go-build
+  migrate:
+    build:
+      target: dev
+    env_file: [.env]
+    environment:
+      APP_ENV: dev
+    command: ["go", "run", "./cmd/api", "migrate"]
+    volumes:
+      - .:/app
+      - go-build-cache:/root/.cache/go-build
+
+volumes:
+  go-build-cache: {}

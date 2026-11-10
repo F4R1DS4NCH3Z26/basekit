@@ -46,7 +46,7 @@ model: sonnet
 <cuerpo del rol>
 ```
 
-**`.claude/settings.json`** (solo si no existe):
+**`.claude/settings.json`** (solo si no existe; en un proyecto combinado, ver abajo):
 
 ```json
 {
@@ -66,6 +66,8 @@ model: sonnet
   }
 }
 ```
+
+En un proyecto combinado, el scaffold y `infra.sh` permitidos son las copias del lado, que trabajan en su carpeta: `Bash(bash backend/.agents/skills/<stack>-scaffold/scripts/scaffold.sh:*)` (y `frontend/…`) y `Bash(bash backend/.agents/skills/infra-setup/scripts/infra.sh:*)`, la misma invocación que documenta `AGENTS.md`. El `deny` cubre igual los secretos de cada lado: las mismas entradas `Read(./…)` y `Edit(./…)` de la raíz, con `backend/` y `frontend/` delante (`Read(./backend/.env)`, `Edit(./frontend/.env.prod)`…). Si `settings.json` ya existía sin ellas (por ejemplo, de antes de combinar), `init` (y `sync`) agrega al final de `permissions.deny` solo las que faltan, en el mismo orden, y lo reporta con `~` (`~ .claude/settings.json  (se agregaron 18 bloqueos de secretos de backend/ y frontend/)`). Las demás claves, valores y entradas se conservan en su orden; el archivo se reescribe con sangría de 2 espacios, así que otro formato se normaliza. Si no es JSON válido o `permissions.deny` no es una lista, no se toca y se avisa con `!`. Si ya las tiene, no cambia nada. En `opencode.json` no hace falta: `*` también coincide con `/`, así que `*.env` y `*.env.*` ya cubren `backend/.env`.
 
 > Ojo: **no uses `Read(./.env.*)`**. En Claude Code, `deny` gana sobre `allow`, y esa regla bloquearía `.env.example`, que los agentes deben leer y editar. Enumera los archivos secretos explícitamente.
 

@@ -1,0 +1,14 @@
+# Recarga en caliente de `make dev` (air). Compila fuera del bind mount, en /tmp del contenedor.
+root = "."
+tmp_dir = "/tmp/air"
+
+[build]
+  cmd = "go build -buildvcs=false -o /tmp/air/api ./cmd/api"
+  entrypoint = ["/tmp/air/api", "serve"]
+  include_ext = ["go", "sql"]
+  exclude_dir = [".agents", ".claude", ".git", "data", "docs", "tmp"]
+  delay = 500
+  stop_on_error = true
+
+[misc]
+  clean_on_exit = true

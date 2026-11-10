@@ -1,0 +1,13 @@
+# Base común. Se combina con compose.dev.yaml o compose.prod.yaml (+ compose.db.yaml / compose.redis.yaml). Usa `make`.
+services:
+  app:
+    build:
+      context: .
+    security_opt: ["no-new-privileges:true"]
+  migrate:
+    build:
+      context: .
+    profiles: ["tools"]
+    # Sin prisma/schema.prisma (proyecto sin BD) no hay nada que migrar.
+    command: ["sh", "-c", "if [ -f prisma/schema.prisma ]; then exec npx --no-install prisma migrate deploy; else echo 'Sin prisma/schema.prisma: nada que migrar'; fi"]
+    security_opt: ["no-new-privileges:true"]

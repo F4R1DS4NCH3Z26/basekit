@@ -5,24 +5,43 @@ import { DEFAULT_AGENTS, detectAgents, parseAgents } from "../../kit/agents.js";
 import { templateVars, writeAgentsMd } from "../../kit/agents-md.js";
 import { UsageError } from "../../kit/errors.js";
 import { installExternalSkills } from "../../kit/external-skills.js";
+import {
+  displayName, INFRA, INFRA_SKILL, inPart, isCombined, nameCompose, newAppCommand, partsOf, resolveParts, roleFiles, specOf, wireEnv, zoneFiles,
+  type Part,
+} from "../../kit/layout.js";
 import { readManifest, writeManifest } from "../../kit/manifest.js";
 import { Project, resolveRoot } from "../../kit/project.js";
-import { detectStack, findStack, loadStacks, stackDir, type Stack } from "../../kit/stacks.js";
+import { detectStack, hasDatabase, loadStacks, stackDir } from "../../kit/stacks.js";
 import { modeOf, render, template, TEMPLATES, walk } from "../../kit/templates.js";
 import type { Context } from "../context.js";
-import { checkDb, validateFlags, type InitOptions } from "./options.js";
+import { checkDb, checkStackDb, validateFlags, type InitOptions } from "./options.js";
 
-const INFRA = ".agents/skills/infra-setup/scripts/infra.sh";
-
-function nextStep(ctx: Context, project: Project, stack: Stack, context: string): void {
+function nextStep(ctx: Context, project: Project, parts: Part[], context: string): void {
   ctx.log("");
-  ctx.log(project.changed ? `Listo: base de ${stack.name} preparada en ${project.root}` : "Todo al día: no había nada que cambiar.");
+  ctx.log(project.changed ? `Listo: base de ${displayName(parts)} preparada en ${project.root}` : "Todo al día: no había nada que cambiar.");
   ctx.log("Próximo paso, dile a tu agente:");
   ctx.log(`  «Lee AGENTS.md y ejecuta el bootstrap. El proyecto trata de: ${context || "<una o dos frases>"}»`);
-  const marker = stack.appMarker;
-  const fromStarter = marker !== undefined && walk(join(stackDir(stack), "starter")).includes(marker);
-  if (marker !== undefined && !project.exists(marker) && !fromStarter) {
-    ctx.log("Falta la app del framework: ejecuta `make new-app` (corre dentro de Docker).");
+  for (const part of parts) {
+    const marker = part.stack.appMarker;
+    const fromStarter = marker !== undefined && walk(join(stackDir(part.stack), "starter")).includes(marker);
+    if (marker !== undefined && !project.exists(inPart(part, marker)) && !fromStarter) {
+      const where = part.side ? ` en ${part.side}/` : "";
+      ctx.log(`Falta la app del framework${where}: ejecuta \`${newAppCommand(part)}\` (corre dentro de Docker).`);
+    }
+  }
+}
+
+/**
+ * The project's Makefile in `dir` ("" for the root). A user's own Makefile is kept: basekit's goes to
+ * Makefile.basekit next to it.
+ */
+function writeMakefile(project: Project, dir: string, text: string, prev: Record<string, string>, files: Record<string, string>, force: boolean): void {
+  const at = (f: string) => (dir ? `${dir}/${f}` : f);
+  const own = project.read(at("Makefile"));
+  const name = own !== undefined && !own.includes("generado por basekit") ? at("Makefile.basekit") : at("Makefile");
+  const mark = project.tracked(name, text, 0o644, prev, files, force);
+  if (name.endsWith(".basekit") && (mark === "+" || mark === "~")) {
+    project.report("!", at("Makefile"), "ya existe uno propio: el de basekit queda en Makefile.basekit; intégralos a mano");
   }
 }
 
@@ -34,13 +53,35 @@ export async function init(o: InitOptions, ctx: Context): Promise<number> {
   const root = project.root;
   const prev = project.existsRoot() ? readManifest(project) : undefined;
 
-  // 2 · Stack: flag → manifest → detection → question.
+  // 2 · Stack: flag → manifest → detection → question. `<backend>+<frontend>` is a combined project (S16).
   let stackId = o.stack ?? prev?.stack ?? (project.existsRoot() ? detectStack(stacks, project)?.id : undefined);
   if (!stackId && ctx.prompt) stackId = await ctx.prompt.stack(stacks);
   if (!stackId) {
     throw new UsageError(`No se pudo detectar el stack. Usa --stack <id> (disponibles: ${stacks.map((s) => s.id).join(", ")})`);
   }
-  const stack = findStack(stacks, stackId.trim());
+  const parts = resolveParts(stacks, stackId.trim());
+  // The database belongs to the first part (the backend of a combined project). A frontend stack has none:
+  // checked before any other question or write. Flags win over the manifest; the manifest's database and
+  // Redis carry over only to a stack that has a database (an existing project switched to a frontend drops them).
+  const dbStack = parts[0]!.stack;
+  const saved = hasDatabase(dbStack) ? prev?.options : undefined;
+  const db = checkStackDb(dbStack, checkDb(o.db ?? saved?.db ?? "auto"), o.redis);
+  const redis = o.redis ?? saved?.redis ?? false;
+  // Overlays left by an earlier backend stay (they are the user's files): say they no longer apply.
+  if (!hasDatabase(dbStack) && parts.length === 1) {
+    for (const f of ["compose.db.yaml", "compose.redis.yaml"]) {
+      if (project.exists(f)) project.report("!", f, `queda del stack anterior: un stack frontend no usa base de datos; bórralo si ya no lo necesitas`);
+    }
+  }
+  // A single-stack project switched to combined with the database carried from the manifest (S19): the new backend
+  // side has no overlays yet, so infra.sh runs for it as with an explicit --db. The root ones stay (the user's files).
+  const before = partsOf(stacks, prev?.stack);
+  const carried = isCombined(parts) && before !== undefined && !isCombined(before) && o.db === undefined && (!["none", "auto"].includes(db) || redis);
+  if (isCombined(parts)) {
+    for (const f of ["compose.db.yaml", "compose.redis.yaml", ".make/db.mk"]) {
+      if (project.exists(f)) project.report("!", f, `queda del stack anterior: la base de datos ahora vive en ${inPart(parts[0]!, "")}; bórralo si ya no lo necesitas`);
+    }
+  }
 
   // 3 · Agents: flag → manifest → detection → question.
   let agents = flags.agents ?? (prev?.agents ? parseAgents(prev.agents.join(",")) : undefined);
@@ -51,8 +92,6 @@ export async function init(o: InitOptions, ctx: Context): Promise<number> {
 
   // 4 · Context (asked only on the first run) and database.
   const context = (o.context ?? (!prev && ctx.prompt ? await ctx.prompt.context() : "")).trim();
-  const db = checkDb(o.db ?? prev?.options?.db ?? "auto");
-  const redis = o.redis ?? prev?.options?.redis ?? false;
 
   if (o.dryRun) ctx.log(`(dry-run: no se escribe nada en ${root})`);
   project.createRoot();
@@ -64,49 +103,61 @@ export async function init(o: InitOptions, ctx: Context): Promise<number> {
     if (!o.dryRun) ctx.runner.run(ctx.log, "git", ["init", "-q"], root);
   }
 
-  const sdir = stackDir(stack);
   const prevFiles = prev?.files ?? {};
   const files: Record<string, string> = {};
   const copy = (src: string) => readFileSync(src, "utf8");
-
-  // 6 · .agents/ core.
-  project.create(".agents/README.md", template("core/agents-README.md"));
-  for (const f of walk(join(sdir, "roles"))) project.create(`.agents/roles/${f}`, copy(join(sdir, "roles", f)));
-  for (const f of walk(join(sdir, "zones"))) {
-    if (f !== "orchestrator.stack.txt") project.create(`.agents/zones/${f}`, copy(join(sdir, "zones", f)));
-  }
-  const common = template("core/zones.orchestrator.common.txt");
-  const stackZones = walk(join(sdir, "zones")).includes("orchestrator.stack.txt") ? copy(join(sdir, "zones/orchestrator.stack.txt")) : "";
-  project.create(".agents/zones/orchestrator.txt", common.endsWith("\n") || !common ? common + stackZones : `${common}\n${stackZones}`);
-  for (const skillsRoot of [join(TEMPLATES, "skills"), join(sdir, "skills")]) {
-    for (const f of walk(skillsRoot)) {
-      const src = join(skillsRoot, f);
-      project.tracked(`.agents/skills/${f}`, copy(src), modeOf(src), prevFiles, files, o.force);
+  const stackSkills = (part: Part) => join(stackDir(part.stack), "skills");
+  /** Copies every file under `srcRoot` to `dest` (a folder of the project), tracked in the manifest. */
+  const copyTracked = (srcRoot: string, dest: string) => {
+    for (const f of walk(srcRoot)) {
+      const src = join(srcRoot, f);
+      project.tracked(`${dest}/${f}`, copy(src), modeOf(src), prevFiles, files, o.force);
     }
+  };
+
+  // 6 · .agents/ core (once, at the root, with the roles and skills of every part).
+  project.create(".agents/README.md", template("core/agents-README.md"));
+  for (const f of roleFiles(parts)) project.create(`.agents/roles/${f.rel}`, f.text);
+  for (const f of zoneFiles(parts)) project.create(`.agents/zones/${f.rel}`, f.text);
+  for (const skillsRoot of [join(TEMPLATES, "skills"), ...parts.map(stackSkills)]) copyTracked(skillsRoot, ".agents/skills");
+  // A side runs its Makefile inside Docker with only its own folder mounted: it gets a copy of its stack's
+  // skills, which `make verify` and `make new-app` read from `.agents/skills/`. The skill scripts work on the
+  // project that holds them, so the side with the database also gets infra-setup (S17).
+  for (const part of parts.filter((p) => p.side)) {
+    copyTracked(stackSkills(part), inPart(part, ".agents/skills"));
+    if (hasDatabase(part.stack)) copyTracked(join(TEMPLATES, "skills", INFRA_SKILL), inPart(part, `.agents/skills/${INFRA_SKILL}`));
   }
 
   // 7 · AGENTS.md managed block.
-  writeAgentsMd(project, stack, context);
+  writeAgentsMd(project, parts, context);
   for (const f of [".hermes.md", "HERMES.md"]) {
     if (project.exists(f)) project.report("!", f, "Hermes lo carga en lugar de AGENTS.md; bórralo o fusiónalo");
   }
 
-  // 8 · Docker and Make.
-  const appMissing = stack.appMarker !== undefined && !project.exists(stack.appMarker);
-  const ownMakefile = project.read("Makefile");
-  const makefile = ownMakefile !== undefined && !ownMakefile.includes("generado por basekit") ? "Makefile.basekit" : "Makefile";
-  const mark = project.tracked(makefile, template("core/Makefile"), 0o644, prevFiles, files, o.force);
-  if (makefile === "Makefile.basekit" && (mark === "+" || mark === "~")) {
-    project.report("!", "Makefile", "ya existe uno propio: el de basekit queda en Makefile.basekit; intégralos a mano");
-  }
-  for (const f of walk(join(sdir, "files"))) {
-    const src = join(sdir, "files", f);
-    project.create(f, copy(src), modeOf(src));
-  }
-  if (appMissing) {
-    for (const f of walk(join(sdir, "starter"))) {
-      const src = join(sdir, "starter", f);
-      project.create(f, copy(src), modeOf(src));
+  // 8 · Docker and Make: each part is a complete project of its stack (S16: in its side folder,
+  // with a root Makefile that delegates to both).
+  if (isCombined(parts)) writeMakefile(project, "", template("core/combo/Makefile"), prevFiles, files, o.force);
+  for (const part of parts) {
+    const sdir = stackDir(part.stack);
+    const marker = part.stack.appMarker;
+    const appMissing = marker !== undefined && !project.exists(inPart(part, marker));
+    writeMakefile(project, part.side ?? "", template("core/Makefile"), prevFiles, files, o.force);
+    for (const f of walk(join(sdir, "files"))) {
+      const src = join(sdir, "files", f);
+      let text = copy(src);
+      if (part.side && f === ".env.example" && !project.exists(inPart(part, f))) {
+        const wired = wireEnv(parts, part, text);
+        text = wired.text;
+        if (wired.warning) project.report("!", inPart(part, f), wired.warning);
+      }
+      if (f === "compose.yaml") text = nameCompose(root, part, text);
+      project.create(inPart(part, f), text, modeOf(src));
+    }
+    if (appMissing) {
+      for (const f of walk(join(sdir, "starter"))) {
+        const src = join(sdir, "starter", f);
+        project.create(inPart(part, f), copy(src), modeOf(src));
+      }
     }
   }
   project.block(".gitignore", template("core/gitignore.block"), (l) => l.trim() === "# >>> basekit", "# <<< basekit");
@@ -119,7 +170,7 @@ export async function init(o: InitOptions, ctx: Context): Promise<number> {
   }
 
   // 9 · Documentation (GLOSSARY.md and docs/adr/ are created later by domain-modeling).
-  const vars = templateVars(stack, root, context);
+  const vars = templateVars(parts, root, context);
   project.create("README.md", render(template("core/README.tpl.md"), vars));
   for (const f of walk(join(TEMPLATES, "core/docs"))) {
     const text = template(`core/docs/${f}`);
@@ -127,21 +178,24 @@ export async function init(o: InitOptions, ctx: Context): Promise<number> {
   }
 
   // 10 · Adapters. 12 · External skills. 11 · Skill links last, so they also cover the external skills.
-  writeAdapters(project, stack, agents);
+  writeAdapters(project, parts, agents);
   if (o.externalSkills) installExternalSkills(project, agents, ctx.log, ctx.runner, false);
-  linkSkills(project, stack, agents);
+  linkSkills(project, parts, agents);
 
-  // 13 · Infrastructure, through the same script the agent uses. Only when --db is passed:
-  // a rerun that takes the db from the manifest must not touch the infrastructure again.
-  if (o.db !== undefined && db !== "auto") {
-    const args = [INFRA, "--db", db, ...(redis ? ["--redis"] : [])];
-    if (o.dryRun) ctx.log(`· ejecutaría: bash ${args.join(" ")}`);
-    else if (!ctx.runner.run(ctx.log, "bash", args, root)) project.report("!", INFRA, `falló; reinténtalo con: bash ${args.join(" ")}`);
+  // 13 · Infrastructure, through the same script the agent uses: the copy of the part with the database, which
+  // works on the folder that holds it. Only when --db is passed or the database moves to a new backend side: a rerun
+  // that takes the db from the manifest must not touch the infrastructure again.
+  if ((o.db !== undefined && o.db !== "auto") || carried) {
+    const script = inPart(parts[0]!, INFRA);
+    const args = [script, "--db", db, ...(redis ? ["--redis"] : [])];
+    const shown = `bash ${args.join(" ")}`;
+    if (o.dryRun) ctx.log(`· ejecutaría: ${shown}`);
+    else if (!ctx.runner.run(ctx.log, "bash", args, root)) project.report("!", script, `falló; reinténtalo con: ${shown}`);
   }
 
-  writeManifest(project, prev, { stack: stack.id, agents, db, redis, files });
+  writeManifest(project, prev, { stack: specOf(parts), agents, db, redis, files });
 
   // 14 · Summary and next step.
-  nextStep(ctx, project, stack, context);
+  nextStep(ctx, project, parts, context);
   return 0;
 }

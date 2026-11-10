@@ -1,0 +1,17 @@
+{
+  "id": "django",
+  "name": "Python · Django + Django REST Framework (API REST + admin)",
+  "language": "Python",
+  "kind": "backend",
+  "port": 8000,
+  "health": "/health",
+  "detect": { "files": ["manage.py"], "priority": 20 },
+  "appMarker": "uv.lock",
+  "roles": ["data-writer", "logic-writer", "web-writer", "qa-writer"],
+  "skills": [
+    ["django-scaffold", "App nueva: estructura + contrato"],
+    ["django-patterns", "Antes de escribir cualquier capa; auth en references/auth.md"],
+    ["django-verify", "Lo usa `make verify`"]
+  ],
+  "defaultAuth": "simplejwt"
+}

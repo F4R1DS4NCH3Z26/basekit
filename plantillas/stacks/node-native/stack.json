@@ -1,0 +1,17 @@
+{
+  "id": "node-native",
+  "name": "TypeScript · Nativo (node:http, sin framework) + Prisma",
+  "language": "TypeScript",
+  "kind": "backend",
+  "port": 3000,
+  "health": "/health",
+  "detect": {},
+  "appMarker": "package.json",
+  "roles": ["data-writer", "logic-writer", "web-writer", "qa-writer"],
+  "skills": [
+    ["nodenative-scaffold", "Módulo nuevo: estructura + contrato"],
+    ["nodenative-patterns", "Antes de escribir cualquier capa; auth en references/auth.md"],
+    ["nodenative-verify", "Lo usa `make verify`"]
+  ],
+  "defaultAuth": "jwt"
+}

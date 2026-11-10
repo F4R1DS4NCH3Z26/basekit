@@ -1,0 +1,2 @@
+src/modules/*/services.ts
+src/modules/*/errors.ts

@@ -1,0 +1,17 @@
+{
+  "id": "vanilla-ts",
+  "name": "TypeScript · Nativo: DOM + Vite (SPA frontend, sin framework)",
+  "language": "TypeScript",
+  "kind": "frontend",
+  "port": 5173,
+  "health": "/health",
+  "detect": {},
+  "appMarker": "package.json",
+  "roles": ["logic-writer", "ui-writer", "qa-writer"],
+  "skills": [
+    ["vanilla-scaffold", "Feature nueva: estructura + contrato"],
+    ["vanilla-patterns", "Antes de escribir cualquier capa; auth en references/auth.md"],
+    ["vanilla-verify", "Lo usa `make verify`"]
+  ],
+  "defaultAuth": "backend-session"
+}

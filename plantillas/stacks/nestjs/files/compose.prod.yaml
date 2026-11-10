@@ -1,0 +1,21 @@
+services:
+  app:
+    build:
+      target: prod
+    env_file: [.env.prod]
+    environment:
+      NODE_ENV: production
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    restart: unless-stopped
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+  migrate:
+    build:
+      target: build
+    # Same uid as the app, so the SQLite file it creates stays writable by the app.
+    user: "1001:1001"
+    env_file: [.env.prod]
+    environment:
+      HOME: /tmp

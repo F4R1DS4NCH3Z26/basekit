@@ -43,7 +43,7 @@ Si tenías contenedores de dev creados antes de este cambio, quedaron bajo el no
 | `test` / `lint` | `$(TEST_CMD)` / `$(LINT_CMD)` en un contenedor efímero |
 | `verify` | `$(VERIFY_CMD)` con `--no-deps`; `SCOPE` validado con regex. Es la verificación de bajo consumo de tokens para agentes |
 | `migrate` | `docker compose --profile tools run --rm migrate` (dev o prod) |
-| `migration NAME=x` | `$(MAKE_MIGRATION_CMD)`; `NAME` validado (`^[a-z0-9_]{3,60}$`) y pasado con `-e NAME` |
+| `migration NAME=x` | `$(MAKE_MIGRATION_CMD)`; `NAME` validado (`^[a-z0-9_]{3,60}$`) y pasado con `-e NAME`. Un stack sin base de datos define `NO_DB_MSG` en su `stack.mk`: entonces no se valida `NAME` y el objetivo solo imprime el mensaje (exit 0) |
 | `db-shell` | `exec db $(DB_SHELL_CMD)` |
 | `prod-build` / `prod-up` / `prod-down` / `prod-logs` / `prod-migrate` | Alias con `ENV=prod` |
 | `clean` | `down -v` del proyecto de dev (`<nombre>-dev`); exige `CONFIRM=1`, está prohibido con `ENV=prod` y nunca alcanza los volúmenes de prod |
@@ -83,7 +83,7 @@ services:
   migrate: { depends_on: { db: { condition: service_healthy } }, environment: *db-env }
 ```
 
-**Por qué**: en producción, la imagen mínima de Next.js (*standalone*) no incluye el CLI de Prisma. Un servicio `migrate` con el target adecuado resuelve los cuatro stacks igual:
+**Por qué**: en producción, la imagen mínima de Next.js (*standalone*) no incluye el CLI de Prisma. Un servicio `migrate` con el target adecuado resuelve todos los stacks con base de datos igual:
 
 | Stack | `migrate` |
 |---|---|
@@ -91,6 +91,13 @@ services:
 | FastAPI | Target `dev` o `prod`, con `alembic upgrade head` (Alembic es dependencia de runtime) |
 | Laravel | Target `dev` o `prod`, con `php artisan migrate --force` |
 | Spring | Imagen `flyway/flyway:11` sobre `src/main/resources/db/migration`, usando `SPRING_DATASOURCE_*`. La app también migra al arrancar |
+| Django, Django + HTMX | Target `dev` o `prod`, con `python manage.py migrate --noinput` |
+| Flask, Python nativo | Target `dev` o `prod`, con `alembic upgrade head` |
+| NestJS, Express, Node nativo | Target `dev` o `prod`, con `prisma migrate deploy` (solo si existe `prisma/schema.prisma`) |
+| Symfony | Target `dev` o `prod`, con `php bin/console doctrine:migrations:migrate --no-interaction --allow-no-migration` |
+| PHP nativo | Target `dev` o `prod`, con su propio migrador: `php bin/migrate.php up` |
+| Gin, Go nativo | Dev: `go run ./cmd/api migrate`. Prod: el binario estático de la imagen `scratch` con `api migrate` (goose embebido) |
+| React, Vue, TypeScript + Vite (frontend) | Sin servicio `migrate`: un stack frontend no tiene base de datos (`init` rechaza `--db` y `--redis`). `make migrate`, `migration` y `db-shell` solo avisan |
 
 **Requisito**: `environment` siempre como **mapa** (no lista) en todos los archivos compose; si no, Compose no los fusiona.
 
@@ -98,10 +105,10 @@ services:
 
 | Formato | Lo usa |
 |---|---|
-| `DATABASE_URL=postgresql://…` / `mysql://…` / `file:/app/data/app.db` | Prisma, Drizzle. FastAPI la convierte a `postgresql+psycopg://`, `mysql+pymysql://` o `sqlite:///` en `core/config.py` |
-| `DB_CONNECTION`, `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD` | Laravel, de forma nativa |
+| `DATABASE_URL=postgresql://…` / `mysql://…` / `file:/app/data/app.db` | Prisma (Next.js, NestJS, Express, Node nativo), Drizzle, Django, Gin y Go nativo. Los stacks Python con SQLAlchemy (FastAPI, Flask, Python nativo) la convierten a `postgresql+psycopg://`, `mysql+pymysql://` o `sqlite:///` |
+| `DB_CONNECTION`, `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD` | Laravel, de forma nativa. Symfony y PHP nativo leen `DATABASE_URL` |
 | `SPRING_DATASOURCE_URL`, `_USERNAME`, `_PASSWORD` | Spring, de forma nativa |
-| `REDIS_URL`, `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD` | Todos |
+| `REDIS_URL`, `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD` | Todos menos los frontend |
 
 Los secretos de la BD están en `.env.example` como bloques marcados (`# >>> db`). `infra.sh` los reemplaza de forma idempotente.
 
@@ -111,11 +118,11 @@ Los secretos de la BD están en `.env.example` como bloques marcados (`# >>> db`
 |---|---|---|
 | Puerto de la app | `127.0.0.1:${APP_PORT}` (no se expone a la LAN) | `${APP_PORT}` (detrás de tu proxy o TLS) |
 | BD y Redis | Sin `ports` (acceso con `make db-shell`) | Igual |
-| Usuario | root (por los bind mounts) | **No root** (uid 1001) |
+| Usuario | root (por los bind mounts) | **No root** (uid 1001; los frontend usan `nginx-unprivileged`) |
 | `no-new-privileges` | sí | sí |
 | `cap_drop: [ALL]` | — | sí |
-| `read_only` + `tmpfs: /tmp` | — | FastAPI y Spring (Next.js y Laravel escriben caché) |
-| Healthcheck | — | `/api/health`, `/health`, `/up` o `/actuator/health` |
+| `read_only` + `tmpfs: /tmp` | — | Todos menos Next.js y Laravel, que escriben caché |
+| Healthcheck | — | `stack.json → health`: `/api/health` (Next.js), `/up` (Laravel), `/actuator/health` (Spring) y `/health` en el resto |
 | Debug | activo | `APP_DEBUG=false`, sin `/docs` (FastAPI), sin stacktrace (Spring), cookie `Secure` (Laravel) |
 | Redis | `--requirepass` | Igual |
 
@@ -125,13 +132,17 @@ Lo que cambia entre entornos (debug, perfil) lo fija **compose**, no `.env`: as�
 
 | Imagen | Tag en las plantillas | Comentario |
 |---|---|---|
-| Node | `node:22-alpine` | LTS |
-| Python | `python:3.12-slim` + `ghcr.io/astral-sh/uv:0.13.4` | uv del 20 de octubre de 2026 |
-| PHP | `dunglas/frankenphp:1-php8.3-alpine` + `composer:2` | Se usa `frankenphp php-server` para no depender de la ruta del Caddyfile |
+| Node | `node:22-alpine` | LTS. Next.js, NestJS, Express, Node nativo y el build de los frontend |
+| Frontend (prod) | `nginxinc/nginx-unprivileged:1.30-alpine` | Sirve la SPA compilada (React, Vue, TypeScript + Vite) sin root |
+| Python | `python:3.12-slim` + `ghcr.io/astral-sh/uv:0.13.4` | uv del 20 de octubre de 2026. FastAPI, Django, Django + HTMX, Flask y Python nativo |
+| PHP | `dunglas/frankenphp:1-php8.3-alpine` + `composer:2` | Laravel y Symfony. Se usa `frankenphp php-server` para no depender de la ruta del Caddyfile |
+| PHP nativo | `dunglas/frankenphp:1.13.2-php8.5-alpine` + `composer:2.10.2` | Un solo proceso, no root, `read_only` |
 | Java | `eclipse-temurin:21-jdk` / `-jre` | LTS |
+| Go | `golang:1.27.3-trixie` (dev y build) + `scratch` (prod) | Gin y Go nativo. Binario estático sin CGO; recarga en dev con `air` v1.67.4; migra con `api migrate` |
 | BD | `postgres:17-alpine`, `mysql:8.4` (LTS), `redis:7.4-alpine` | Postgres 18 cambia la ruta del volumen: si subes, ajusta el montaje |
 | Migraciones Spring | `flyway/flyway:11` | Fija el minor exacto al adoptar |
-| Generadores | `create-next-app@16.4.3`, `laravel/laravel:^12.0`, Spring Initializr | Actualiza a versiones con ≥ 14 días |
+| Generadores | `create-next-app@16.4.3`, `laravel/laravel:^12.0`, `symfony/skeleton:7.4.*`, `@nestjs/cli@12.0.10`, `create-vite@9.3.1`, Spring Initializr | Actualiza a versiones con ≥ 14 días |
+| ORM de Node | `prisma@7.10.1` (NestJS, Express y Node nativo) con un driver adapter por `DB_DRIVER` | Versión exacta |
 
 Para producción seria, fija **por digest** (`image@sha256:…`) y deja que Renovate o Dependabot lo actualicen.
 
@@ -148,3 +159,21 @@ Para producción seria, fija **por digest** (`image@sha256:…`) y deja que Reno
 3. `roles/`, `zones/` (incluido `orchestrator.stack.txt`) y `skills/<x>-scaffold|verify|patterns` (con `references/auth.md`).
 4. `AGENTS.section.md` en menos de 25 líneas.
 5. Pruebas de aceptación 1, 6, 8, 9 y 12 de la guía 02.
+
+## 10. Proyecto combinado: `backend/` + `frontend/` (guía 02, sección 14)
+
+Con `--stack <backend>+<frontend>` cada carpeta es un proyecto completo de su stack, con todas las piezas de la sección 1: `backend/Makefile` y `frontend/Makefile` son el `Makefile` core sin cambios, y cada uno incluye su `.make/stack.mk`. Cada lado funciona solo (`make -C backend dev`, `make -C frontend new-app`) y es su propio proyecto de Compose (`backend-dev-<cksum>`, `frontend-dev-<cksum>`): no comparten red ni volúmenes, así que sus servicios `app` no chocan. En prod, el nombre por defecto de Compose sería el de la carpeta (`backend`, `frontend`) y dos proyectos combinados en un mismo servidor se pisarían contenedores y volúmenes; por eso `init` agrega a cada `<lado>/compose.yaml` un `name: <proyecto>-<lado>` (normalizado como Compose). En dev manda el `-p` del Makefile. Los overlays de base de datos y Redis (`infra.sh`) solo van a `backend/`.
+
+La raíz tiene un `Makefile` propio (`plantillas/core/combo/Makefile`) que no incluye nada: solo delega con `$(MAKE) -C`.
+
+| Objetivo de la raíz | Qué hace |
+|---|---|
+| `help` | Lista los objetivos de la raíz (`make -C <lado> help` muestra los de cada lado) |
+| `dev` / `up` / `build` / `logs` / `prod-build` / `prod-logs` | Los dos lados **en paralelo** (`$(MAKE) -j2 _backend-<obj> _frontend-<obj>`): `logs` sigue los dos a la vez. `logs` y `prod-logs` con `SIDE=backend\|frontend` siguen un solo lado; `S=<servicio>` exige `SIDE` (un servicio como `db` existe en un solo lado, y el otro fallaría): sin `SIDE`, error de make (exit 2) antes de lanzar nada. La excepción es `S=app`, el único servicio de los dos lados, que sigue a ambos |
+| `env` / `doctor` / `down` / `restart` / `ps` / `install` / `test` / `lint` / `verify` / `new-app` / `prod-up` / `prod-down` / `clean` / `fix-perms` | Backend y luego frontend; el primer fallo corta |
+| `migrate` / `migration NAME=x` / `db-shell` / `prod-migrate` | Solo el backend (el frontend no tiene base de datos) |
+
+Las variables de la línea de comandos (`ENV=prod`, `SCOPE=…`, `NAME=…`, `S=…`, `SIDE=…`, `CONFIRM=1`) llegan a los dos Makefiles por `MAKEFLAGS`. Las recetas que delegan con `$(call …)` empiezan con `+`: make no ve `$(MAKE)` dentro de `$(call)`, y `make -n` debe seguir bajando a cada lado. `sh` no está en la raíz porque es ambiguo: usa `make -C <lado> sh`.
+
+**API entre los dos**: el navegador llama al backend por el host. `frontend/.env.example` trae `VITE_API_URL=http://127.0.0.1:<puerto del backend>` (en prod, el `VITE_API_URL` de `frontend/.env.prod` se incrusta al construir), y `backend/.env.example` permite `http://127.0.0.1:<puerto del frontend>` y `http://localhost:<puerto del frontend>` en `CORS_ORIGINS`.
+

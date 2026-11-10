@@ -1,0 +1,17 @@
+{
+  "id": "python-native",
+  "name": "Python · Nativo (WSGI de la stdlib, sin framework)",
+  "language": "Python",
+  "kind": "backend",
+  "port": 8000,
+  "health": "/health",
+  "detect": {},
+  "appMarker": "uv.lock",
+  "roles": ["data-writer", "logic-writer", "web-writer", "qa-writer"],
+  "skills": [
+    ["pynative-scaffold", "Módulo nuevo: estructura + contrato"],
+    ["pynative-patterns", "Antes de escribir cualquier capa; auth en references/auth.md"],
+    ["pynative-verify", "Lo usa `make verify`"]
+  ],
+  "defaultAuth": "jwt"
+}

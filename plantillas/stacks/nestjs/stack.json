@@ -1,0 +1,17 @@
+{
+  "id": "nestjs",
+  "name": "TypeScript · NestJS (API REST modular) + Prisma",
+  "language": "TypeScript",
+  "kind": "backend",
+  "port": 3000,
+  "health": "/health",
+  "detect": { "files": ["nest-cli.json"], "priority": 20 },
+  "appMarker": "package.json",
+  "roles": ["data-writer", "logic-writer", "web-writer", "qa-writer"],
+  "skills": [
+    ["nest-scaffold", "Módulo nuevo: estructura + contrato"],
+    ["nest-patterns", "Antes de escribir cualquier capa; auth en references/auth.md"],
+    ["nest-verify", "Lo usa `make verify`"]
+  ],
+  "defaultAuth": "jwt"
+}

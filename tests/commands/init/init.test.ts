@@ -2,11 +2,13 @@ import { after, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { loadStacks } from "../../../src/kit/stacks.js";
 import { basekit, cleanup, fakeNpx, gitCommitAll, REPO, scratch, sh } from "../../helpers.js";
 
 after(cleanup);
 
-const STACKS = ["fastapi", "laravel", "nextjs", "spring"];
+const STACKS = loadStacks().map((s) => s.id);
+const FRONTEND = loadStacks().filter((s) => s.kind === "frontend").map((s) => s.id);
 const read = (dir: string, f: string) => readFileSync(join(dir, f), "utf8");
 const init = (dir: string, ...extra: string[]) =>
   basekit(["init", dir, "--yes", "--no-external-skills", ...extra]);
@@ -44,7 +46,7 @@ describe("acceptance 1: init in an empty folder, per stack", () => {
     const agents = read(d, "AGENTS.md");
     assert.match(agents, /^<!-- basekit:start v0\.1\.0 /);
     assert.match(agents, /<!-- basekit:end -->\n$/);
-    assert.match(agents, /\*\*Next\.js \(App Router\) \+ TypeScript\*\*/);
+    assert.ok(agents.includes(`**${loadStacks().find((s) => s.id === "nextjs")!.name}**`), "the stack name in AGENTS.md");
     assert.match(agents, /\| `nextjs-scaffold` \| Feature nueva: estructura \+ contrato \|/);
     assert.doesNotMatch(agents, /\{\{[A-Z_]+\}\}/);
     assert.match(read(d, "docs/PROJECT.md"), /Reservas de canchas de pádel/);
@@ -183,6 +185,81 @@ describe("acceptance 5: invalid values", () => {
     const r = basekit(["init", scratch(), "--nope"]);
     assert.notEqual(r.code, 0);
     assert.match(r.stderr, /--nope/);
+  });
+});
+
+describe("frontend stacks have no database (S1b)", () => {
+  it("has at least one frontend stack to check", () => assert.ok(FRONTEND.length > 0));
+
+  for (const stack of FRONTEND) {
+    it(`${stack}: --db postgres|mysql|sqlite and --redis fail before writing anything`, () => {
+      for (const extra of [["--db", "postgres"], ["--db", "mysql"], ["--db", "sqlite"], ["--redis"], ["--db", "none", "--redis"]]) {
+        const d = scratch();
+        const r = init(d, "--stack", stack, ...extra);
+        assert.equal(r.code, 2, `${extra.join(" ")}: ${r.stdout}`);
+        assert.match(r.stderr, new RegExp(`${extra.includes("--redis") ? "--redis" : `--db '${extra[1]}'`} no aplica a ${stack}: un stack frontend no tiene base de datos`));
+        assert.match(r.stderr, extra.includes("--redis") ? /quita --redis/ : /usa --db none/);
+        assert.deepEqual(readdirSync(d), [], extra.join(" "));
+      }
+    });
+
+    it(`${stack}: --db none and --db auto succeed and record no database`, () => {
+      for (const db of ["none", "auto"]) {
+        const d = scratch();
+        const r = init(d, "--stack", stack, "--db", db);
+        assert.equal(r.code, 0, `${db}: ${r.stderr}`);
+        const m = JSON.parse(read(d, ".agents/manifest.json"));
+        assert.equal(m.stack, stack);
+        assert.deepEqual([m.options.db, m.options.redis], ["none", false], db);
+        assert.ok(!existsSync(join(d, "compose.db.yaml")) && !existsSync(join(d, "compose.redis.yaml")));
+      }
+    });
+  }
+
+  it("also rejects --redis on a rerun whose stack comes from the manifest", () => {
+    const d = scratch();
+    assert.equal(init(d, "--stack", FRONTEND[0]!).code, 0);
+    gitCommitAll(d);
+    const r = init(d, "--redis");
+    assert.equal(r.code, 2);
+    assert.match(r.stderr, /--redis no aplica/);
+    assert.equal(sh("git", ["status", "--porcelain"], d).stdout, "");
+  });
+
+  it("switching an existing project to a frontend stack drops the database and Redis the manifest had (S17)", () => {
+    const d = scratch();
+    const first = init(d, "--stack", "fastapi", "--db", "postgres", "--redis");
+    assert.equal(first.code, 0, first.stderr);
+    gitCommitAll(d);
+    const r = init(d, "--stack", FRONTEND[0]!);
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    assert.doesNotMatch(r.stdout + r.stderr, /no aplica|infra OK|ejecutaría/);
+    const m = JSON.parse(read(d, ".agents/manifest.json"));
+    assert.equal(m.stack, FRONTEND[0]);
+    assert.deepEqual([m.options.db, m.options.redis], ["none", false]);
+    // The old overlays stay (they are the user's files), but init says they no longer apply.
+    for (const f of ["compose.db.yaml", "compose.redis.yaml"]) {
+      assert.ok(existsSync(join(d, f)), `${f} is not deleted`);
+      assert.match(r.stdout, new RegExp(`^\\s*! ${f.replace(".", "\\.")} .*frontend no usa base de datos`, "m"));
+    }
+  });
+
+  it("switching to another backend stack still keeps the manifest's database and Redis", () => {
+    const d = scratch();
+    assert.equal(init(d, "--stack", "fastapi", "--db", "postgres", "--redis").code, 0);
+    gitCommitAll(d);
+    const r = init(d, "--stack", "django");
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    assert.doesNotMatch(r.stdout, /infra OK|ejecutaría/);
+    const m = JSON.parse(read(d, ".agents/manifest.json"));
+    assert.deepEqual([m.stack, m.options.db, m.options.redis], ["django", "postgres", true]);
+  });
+
+  it("a backend stack still takes --db and --redis as before", () => {
+    const d = scratch();
+    const r = init(d, "--stack", "fastapi", "--db", "postgres", "--redis", "--dry-run");
+    assert.equal(r.code, 0, r.stderr);
+    assert.match(r.stdout, /ejecutaría: bash \.agents\/skills\/infra-setup\/scripts\/infra\.sh --db postgres --redis/);
   });
 });
 

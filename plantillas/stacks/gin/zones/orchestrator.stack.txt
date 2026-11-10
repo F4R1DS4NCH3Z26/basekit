@@ -1,0 +1,8 @@
+go.mod
+go.sum
+go.work
+go.work.sum
+.air.toml
+cmd/**
+internal/platform/**
+migrations/**

@@ -1,0 +1,20 @@
+# Kit basekit. Todo src/ se registra con autowiring; las clases de datos (entidades, DTOs, Requests, Resources) no son servicios.
+parameters:
+    # Sin overlay de BD (infra-setup --db none): SQLite local en var/.
+    env(DATABASE_URL): 'sqlite:///%kernel.project_dir%/var/data.db'
+    # Sin CORS_ORIGINS (o vacía): ningún origen externo (src/Core/Http/CorsSubscriber.php).
+    env(CORS_ORIGINS): ''
+
+services:
+    _defaults:
+        autowire: true
+        autoconfigure: true
+
+    App\:
+        resource: '../src/'
+        exclude:
+            - '../src/Kernel.php'
+            - '../src/Modules/*/Domain/Entity/'
+            - '../src/Modules/*/Application/DTO/'
+            - '../src/Modules/*/Http/Request/'
+            - '../src/Modules/*/Http/Resource/'

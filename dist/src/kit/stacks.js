@@ -2,10 +2,11 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { UsageError } from "./errors.js";
 import { TEMPLATES } from "./templates.js";
+/** The kinds of app a stack builds (S1b). A frontend stack has no database. */
+export const KINDS = ["backend", "frontend", "fullstack"];
 const ID = /^[a-z0-9][a-z0-9-]*$/;
 /** Every stack, sorted by id (that is also the detection order). */
-export function loadStacks() {
-    const dir = join(TEMPLATES, "stacks");
+export function loadStacks(dir = join(TEMPLATES, "stacks")) {
     return readdirSync(dir, { withFileTypes: true })
         .filter((e) => e.isDirectory())
         .map((e) => e.name)
@@ -15,8 +16,14 @@ export function loadStacks() {
         const valid = s.id === name &&
             ID.test(s.id) &&
             typeof s.name === "string" &&
+            typeof s.language === "string" &&
+            s.language.trim() !== "" &&
+            KINDS.includes(s.kind) &&
+            typeof s.health === "string" &&
+            s.health.startsWith("/") &&
             Number.isInteger(s.port) &&
             typeof s.detect === "object" &&
+            (s.detect.priority === undefined || Number.isInteger(s.detect.priority)) &&
             Array.isArray(s.roles) &&
             Array.isArray(s.skills) &&
             s.skills.every((r) => Array.isArray(r) && r.length === 2);
@@ -24,6 +31,10 @@ export function loadStacks() {
             throw new Error(`stack.json inválido: stacks/${name}/stack.json`);
         return s;
     });
+}
+/** S1b: a frontend stack has no database, so neither a database engine nor Redis applies to it. */
+export function hasDatabase(stack) {
+    return stack.kind !== "frontend";
 }
 export function stackDir(stack) {
     return join(TEMPLATES, "stacks", stack.id);
@@ -35,9 +46,16 @@ export function findStack(stacks, id) {
         throw new UsageError(`--stack '${id}' no existe. Disponibles: ${stacks.map((x) => x.id).join(", ")}`);
     return s;
 }
-/** Spec 02 §6: any of detect.files exists, or detect.manifest exists and contains detect.contains. First match wins. */
+const DEFAULT_PRIORITY = 50;
+/**
+ * Spec 02 §6: any of detect.files exists, or detect.manifest exists and contains detect.contains. Stacks are tried by
+ * detect.priority, then by id, and the first match wins: a project that carries the markers of two stacks (Spring Boot
+ * with a Vite React package.json) goes to the one with the stronger signal, whatever their ids.
+ */
 export function detectStack(stacks, project) {
-    return stacks.find((s) => {
+    const rank = (s) => s.detect.priority ?? DEFAULT_PRIORITY;
+    const ordered = [...stacks].sort((a, b) => rank(a) - rank(b) || a.id.localeCompare(b.id));
+    return ordered.find((s) => {
         if ((s.detect.files ?? []).some((f) => project.exists(f)))
             return true;
         const { manifest, contains } = s.detect;

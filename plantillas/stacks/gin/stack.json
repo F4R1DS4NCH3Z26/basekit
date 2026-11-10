@@ -1,0 +1,17 @@
+{
+  "id": "gin",
+  "name": "Go · Gin (API REST) + GORM",
+  "language": "Go",
+  "kind": "backend",
+  "port": 8080,
+  "health": "/health",
+  "detect": { "files": [], "manifest": "go.mod", "contains": "github.com/gin-gonic/gin", "priority": 20 },
+  "appMarker": "go.sum",
+  "roles": ["data-writer", "logic-writer", "web-writer", "qa-writer"],
+  "skills": [
+    ["gin-scaffold", "Módulo nuevo: estructura + contrato"],
+    ["gin-patterns", "Antes de escribir cualquier capa; auth en references/auth.md"],
+    ["gin-verify", "Lo usa `make verify`"]
+  ],
+  "defaultAuth": "jwt"
+}

@@ -72,7 +72,38 @@ basekit init mi-proyecto --stack nextjs --context "Reservas de canchas de pádel
 basekit stacks        # stacks y agentes soportados
 ```
 
-Opciones de `init`: `--stack`, `--agents a,b`, `--context`, `--db auto|postgres|mysql|sqlite|none`, `--redis`, `--no-external-skills`, `--force`, `--dry-run`, `-y/--yes`. Detalle en `basekit help`.
+Opciones de `init`: `--stack <id>` (o `<backend>+<frontend>`), `--agents a,b`, `--context`, `--db auto|postgres|mysql|sqlite|none`, `--redis`, `--no-external-skills`, `--force`, `--dry-run`, `-y/--yes`. Detalle en `basekit help`.
+
+### Stacks
+
+| Tipo | Lenguaje | `--stack` |
+|---|---|---|
+| Backend | Go | `gin`, `go-native` |
+| Backend | Java | `spring` |
+| Backend | PHP | `symfony`, `php-native` |
+| Backend | Python | `fastapi`, `django`, `flask`, `python-native` |
+| Backend | TypeScript | `nestjs`, `express`, `node-native` |
+| Frontend | TypeScript | `react`, `vue`, `vanilla-ts` |
+| Fullstack | PHP | `laravel` |
+| Fullstack | Python | `django-htmx` |
+| Fullstack | TypeScript | `nextjs` |
+
+Los `*-native` (y `vanilla-ts`) no usan framework web. Cada stack se describe en `plantillas/stacks/<id>/stack.json` (`kind`, `language`, `name`…) y en su guía `docs/stacks/<id>.md`. Un stack frontend no tiene base de datos: `init` rechaza `--db` (salvo `auto` o `none`) y `--redis`. `express`, `django-htmx` y los nativos nunca se detectan solos: se eligen con `--stack` o en la pregunta.
+
+### Fullstack combinado: backend + frontend
+
+Además de los fullstack integrados, puedes combinar un backend con un frontend en un monorepo: `--stack <backend>+<frontend>` (en la pregunta: Fullstack → «Combinar backend + frontend»).
+
+```bash
+basekit init mi-app --stack fastapi+react --db postgres --redis
+cd mi-app && make env && make new-app && make dev   # levanta los dos
+```
+
+- `backend/` y `frontend/` son cada uno un proyecto completo de su stack (su `Makefile`, `Dockerfile`, `compose*.yaml` y `.env.example`) y funcionan solos: `make -C backend dev`, `make -C frontend new-app`.
+- La raíz tiene lo común una sola vez (`AGENTS.md` con las dos secciones, `.agents/`, adaptadores y `docs/`) y un `Makefile` que delega en los dos: `make dev` (en paralelo), `make test`, `make verify`, `make logs`, `make down`… `make help` los lista.
+- El frontend llama a la API por el host (`VITE_API_URL=http://127.0.0.1:<puerto del backend>`) y el backend permite ese origen en `CORS_ORIGINS`. `express`, `node-native`, `php-native` y `symfony` no traen CORS: `init` lo avisa.
+- `--db` y `--redis` van al backend. Los roles llevan el prefijo de su lado (`backend-data-writer`, `frontend-ui-writer`) y sus zonas están bajo `backend/` y `frontend/`.
+- Solo vale un stack backend seguido de uno frontend: `react+fastapi`, `fastapi+django` o `nextjs+react` son errores de uso.
 
 Cada acción se reporta con `+` (creado), `~` (actualizado), `=` (existía, se conserva) o `!` (aviso). Ejecutarlo dos veces no cambia nada la segunda vez.
 
@@ -84,11 +115,11 @@ Cada acción se reporta con `+` (creado), `~` (actualizado), `=` (existía, se c
 | Adaptadores (Claude Code, OpenCode, Gemini CLI, Hermes) y enlaces de skills | Hecho |
 | Skills externas fijadas (`grill-me`, `grill-with-docs`, `grilling`, `domain-modeling`) | Hecho |
 | Prueba 9 (`docker compose config` con overlays) | Pasa en `npm test` si hay Docker |
-| Prueba 12 (`make new-app` + `make dev` reales) | `scripts/e2e.sh <stack> [db]`; pasa en los 4 stacks (Spring con `postgres`) |
+| Prueba 12 (`make new-app` + `make dev` reales) | `scripts/e2e.sh <stack> [db]`; el CI la corre en todos los stacks (Spring con `postgres`; los frontend sin base de datos). Pasa en `fastapi`, `laravel`, `nextjs` y `spring`; en los demás falta su primera corrida con Docker |
 
 ## Comandos
 
-- `init [dir]`: crea la base. Sin flags reutiliza lo guardado en `.agents/manifest.json`; `infra.sh` solo corre si pasas `--db`. En una terminal (sin `-y`) pregunta solo lo que no resolvió con flags, manifest o detección: el stack (menú con flechas), los agentes (casillas: espacio marca, Enter confirma; arrancan marcados `claude-code` y `opencode`) y, en la primera corrida, de qué trata el proyecto.
+- `init [dir]`: crea la base. Sin flags reutiliza lo guardado en `.agents/manifest.json`; `infra.sh` solo corre si pasas `--db`. En una terminal (sin `-y`) pregunta solo lo que no resolvió con flags, manifest o detección: el stack en tres pasos (tipo de app → lenguaje → framework; un paso con una sola opción se elige solo y se anuncia; en Fullstack, «Combinar backend + frontend» pregunta lenguaje y framework de cada lado), los agentes (casillas: espacio marca, Enter confirma; arrancan marcados `claude-code` y `opencode`) y, en la primera corrida, de qué trata el proyecto.
 - `sync [dir] [--agents a,b] [--no-external-skills] [--dry-run]`: regenera el bloque de `AGENTS.md`, los subagentes de `.claude/agents/` y `.opencode/agents/` desde `.agents/roles/` y `.agents/zones/`, y los enlaces de skills. Con `--agents`, los agentes nuevos reciben adaptadores, enlaces y skills externas.
 - `doctor [dir]`: imprime `OK` o `FALTA` con la sugerencia; sale con código 1 si falta algo. Nunca lee `.env`.
 

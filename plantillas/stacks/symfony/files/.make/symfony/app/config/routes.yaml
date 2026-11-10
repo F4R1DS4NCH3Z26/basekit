@@ -1,0 +1,8 @@
+# Kit basekit: rutas por atributos. /health (src/Core) y los controladores de cada módulo (src/Modules/*/Http).
+core:
+    resource: ../src/Core/Http/
+    type: attribute
+
+modules:
+    resource: ../src/Modules/
+    type: attribute

@@ -1,6 +1,6 @@
 import { after, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { lstatSync, readdirSync, readFileSync, renameSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { basekit, cleanup, gitCommitAll, scratch, sh } from "../helpers.js";
 
@@ -137,6 +137,30 @@ describe(".gitignore block", () => {
     for (const f of [".env.example", ".env.sample", ".env.template"]) {
       assert.equal(sh("git", ["check-ignore", "-q", f], d).code, 1, `${f} must stay tracked`);
     }
+  });
+
+  it("ignores Python's __pycache__/ folders anywhere (S17)", () => {
+    const d = scratch();
+    assert.equal(init(d).code, 0);
+    for (const f of ["__pycache__/x.pyc", "src/modules/a/__pycache__/m.cpython-312.pyc"]) {
+      assert.equal(sh("git", ["check-ignore", "-q", f], d).code, 0, `${f} must be ignored`);
+    }
+    assert.equal(sh("git", ["check-ignore", "-q", "src/pycache.py"], d).code, 1);
+  });
+});
+
+describe("infra.sh resolves its project from its own location (S17)", () => {
+  it("writes into the project it belongs to, whatever the working directory or git top level", () => {
+    const outer = scratch();
+    assert.equal(sh("git", ["init", "-q"], outer).code, 0);
+    const d = join(outer, "app");
+    assert.equal(init(d).code, 0);
+    // A project inside another repository's tree: with its .git removed, git's top level is `outer`.
+    rmSync(join(d, ".git"), { recursive: true, force: true });
+    const r = sh("bash", [join(d, INFRA), "--db", "mysql"], scratch());
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    assert.ok(existsSync(join(d, "compose.db.yaml")), "the overlay goes into the project");
+    assert.ok(!existsSync(join(outer, "compose.db.yaml")) && !existsSync(join(outer, ".make")), "nothing in the outer repository");
   });
 });
 

@@ -1,0 +1,53 @@
+[project]
+name = "app"
+version = "0.1.0"
+requires-python = ">=3.12"
+# Server-rendered Django + HTMX: no DRF, no Node. HTMX itself is a pinned static file (static/vendor/).
+dependencies = [
+    "django==5.2.18",
+    "django-htmx==1.29.0",
+    "django-stubs-ext==5.2.9",
+    "whitenoise==6.12.0",
+    "gunicorn==26.2.0",
+    "psycopg[binary]==3.3.6",
+    "pymysql==1.2.3",
+    "redis==8.1.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest==9.1.1",
+    "pytest-django==4.14.0",
+    "ruff==0.17.2",
+    # django-stubs 5.2.x types Django 5.2 and requires mypy < 1.20.
+    "mypy==1.19.1",
+    "django-stubs[compatible-mypy]==5.2.9",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = [".agents", "**/migrations"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S", "SIM", "DJ"]   # S = seguridad (bandit, incluye mark_safe), DJ = reglas de Django
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["S101", "S105", "S106"]   # asserts y contraseñas de prueba
+"conftest.py" = ["S105", "S106"]
+
+[tool.mypy]
+strict = true
+plugins = ["mypy_django_plugin.main"]
+exclude = ["/migrations/"]
+
+[[tool.mypy.overrides]]
+module = ["pymysql", "pymysql.*"]
+ignore_missing_imports = true
+
+[tool.django-stubs]
+django_settings_module = "src.config.settings_test"
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "src.config.settings_test"
+testpaths = ["src", "tests"]

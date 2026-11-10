@@ -1,6 +1,7 @@
 import { after, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { join } from "node:path";
+import { hasDatabase, loadStacks } from "../../src/kit/stacks.js";
 import { basekit, cleanup, hasDocker, scratch, sh } from "../helpers.js";
 
 after(cleanup);
@@ -74,7 +75,8 @@ describe("dev and prod never share a Compose project", { skip: docker ? false : 
 });
 
 describe("acceptance 9: compose config with the DB overlay", { skip: docker ? false : "Docker no disponible" }, () => {
-  for (const stack of ["fastapi", "laravel", "nextjs", "spring"]) {
+  // Frontend stacks have no database (S1b): init rejects --db for them.
+  for (const stack of loadStacks().filter(hasDatabase).map((s) => s.id)) {
     for (const db of ["postgres", "mysql", "sqlite"]) {
       if (stack === "spring" && db === "sqlite") continue; // 05 §3: SQLite is not offered for Spring
       it(`${stack} + ${db}: valid, and migrate receives DATABASE_URL`, () => {

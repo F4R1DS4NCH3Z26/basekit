@@ -1,0 +1,2 @@
+internal/*/service.go
+internal/*/errors.go

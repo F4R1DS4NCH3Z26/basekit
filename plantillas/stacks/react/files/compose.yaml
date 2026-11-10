@@ -1,0 +1,7 @@
+# Base común. Se combina con compose.dev.yaml o compose.prod.yaml. Usa `make`.
+# Sin servicio migrate: este stack es un frontend sin base de datos (`make migrate` solo avisa).
+services:
+  app:
+    build:
+      context: .
+    security_opt: ["no-new-privileges:true"]

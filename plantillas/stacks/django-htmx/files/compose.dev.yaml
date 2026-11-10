@@ -1,0 +1,19 @@
+services:
+  app:
+    build:
+      target: dev
+    env_file: [.env]
+    environment:
+      APP_ENV: dev
+    ports:
+      - "127.0.0.1:${APP_PORT:-8000}:8000"
+    volumes:
+      - .:/app
+  migrate:
+    build:
+      target: dev
+    env_file: [.env]
+    environment:
+      APP_ENV: dev
+    volumes:
+      - .:/app

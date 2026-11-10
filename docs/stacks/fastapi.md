@@ -8,30 +8,34 @@ Plantillas: `plantillas/stacks/fastapi/`. Auth por defecto: **JWT propio** (acce
 pyproject.toml  uv.lock            # orquestador; dependencias con uv dentro de Docker
 alembic/  alembic.ini              # orquestador
 src/
-├── main.py                        # app, CORS, /health, registro de routers (orquestador)
-├── core/  config.py  db.py  security.py
+├── main.py                        # create_app(): CORS, /health, registro de routers (orquestador)
+├── core/  config.py  db.py  security.py   # db.py: Base, get_db, load_models
 └── modules/<m>/
     ├── models.py  schemas.py      # data-writer
     ├── exceptions.py  services.py # logic-writer (sin HTTP)
     ├── router.py                  # web-writer
     └── tests/                     # qa-writer
-tests/conftest.py                  # fixtures client, db, auth_as (orquestador)
+conftest.py                        # fixtures app, client, db (y user, auth_as con auth) en la raíz (orquestador)
+tests/test_*.py                    # qa-writer
 ```
 
 **Esqueleto**: si falta `pyproject.toml`, el CLI copia `starter/`:
-- `pyproject.toml` con ruff (incluidas las reglas de seguridad `S`), mypy strict y pytest.
-- `src/main.py` con `/health` y CORS a partir de `CORS_ORIGINS`.
+- `pyproject.toml` con versiones exactas (al menos 14 días): FastAPI, pydantic-settings, SQLAlchemy 2, Alembic y los drivers (`psycopg[binary]`, `pymysql[rsa]`) como runtime; pytest, ruff (incluidas las reglas de seguridad `S`), mypy strict y httpx como desarrollo.
+- `src/main.py` con `create_app()`: `/health` y CORS a partir de `CORS_ORIGINS`.
 - `src/core/config.py`, que normaliza `DATABASE_URL` → `postgresql+psycopg://`, `mysql+pymysql://` o `sqlite:///`.
+- `src/core/db.py`: `Base`, `get_db()` (engine perezoso: la app arranca sin BD) y `load_models()`, que importa todos los `src/modules/*/models.py`. Una FK entre módulos (`products.owner_id → users.id`) solo resuelve si las dos tablas están en `Base.metadata`, así que `create_app()`, el `conftest.py` y `alembic/env.py` la llaman antes de usar el ORM.
+- `alembic.ini` y `alembic/` (URL desde `DATABASE_URL`, autogenerate con todos los modelos, `render_as_batch` en SQLite).
+- `conftest.py` en la raíz, para que lo vean `tests/` y `src/modules/*/tests/` (un `tests/conftest.py` no lo ven los tests de los módulos): `app`, `client` (TestClient con `app.dependency_overrides[get_db]` sobre SQLite en memoria) y `db`. `tests/test_health.py` prueba `/health` y CORS.
 
 ## Roles y zonas
 
 | Rol | Zona |
 |---|---|
-| Orquestador | común + `pyproject.toml`, `uv.lock`, `src/core/**`, `src/main.py`, `src/__init__.py`, `alembic/**`, `conftest.py`, `__init__.py` de módulos |
+| Orquestador | común + `pyproject.toml`, `uv.lock`, `src/core/**`, `src/main.py`, `src/__init__.py`, `alembic/**`, `conftest.py` (raíz y `tests/`), `__init__.py` de módulos |
 | data-writer | `models.py`, `schemas.py` |
 | logic-writer | `services.py`, `exceptions.py` |
 | web-writer | `router.py`, `dependencies.py` |
-| qa-writer | `src/modules/*/tests/test_*.py`, `tests/**/test_*.py` |
+| qa-writer | `src/modules/*/tests/test_*.py`, `tests/test_*.py`, `tests/**/test_*.py` |
 
 Skills: `py-scaffold`, `py-verify` (la usa `make verify`), `py-patterns` (+ `references/auth.md`). Si usas Django, la tabla de equivalencias está en `py-patterns`.
 
@@ -49,8 +53,8 @@ Skills: `py-scaffold`, `py-verify` (la usa `make verify`), `py-patterns` (+ `ref
 
 ## Auth: JWT (detalle en `py-patterns/references/auth.md`)
 
-1. Dependencias: `make deps-add PKGS="sqlalchemy>=2 psycopg[binary] alembic pyjwt>=2.9 pwdlib[argon2]"`.
-2. `core/db.py`: `Base`, `engine` con `pool_pre_ping`, `get_db()`.
+1. Dependencias (SQLAlchemy, Alembic y los drivers ya vienen): `make deps-add PKGS="pyjwt==<x.y.z> pwdlib[argon2]==<x.y.z>"`, versiones exactas con al menos 14 días.
+2. `core/db.py` ya existe (`Base`, `get_db()`, `load_models()`); los fixtures `user` y `auth_as` van en el `conftest.py` de la raíz.
 3. `core/security.py`:
    - argon2id con `pwdlib`.
    - `ALGORITHM = "HS256"` fijo.
@@ -91,3 +95,5 @@ make deps-add PKGS="…"
 - Dos agentes editando `main.py`.
 - Alembic como dependencia de desarrollo: `make prod-migrate` falla.
 - Instalar paquetes con `pip` en el host.
+- Fixtures en `tests/conftest.py`: los tests de `src/modules/*/tests/` no los ven (van en el `conftest.py` de la raíz).
+- Importar un modelo sin pasar por `load_models()`: una FK a la tabla de otro módulo falla con `NoReferencedTableError`.

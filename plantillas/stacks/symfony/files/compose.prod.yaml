@@ -1,0 +1,21 @@
+services:
+  app:
+    build:
+      target: prod
+    env_file: [.env.prod]
+    environment:
+      APP_ENV: prod
+      APP_DEBUG: "0"
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    restart: unless-stopped
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+  migrate:
+    build:
+      target: prod
+    env_file: [.env.prod]
+    environment:
+      APP_ENV: prod
+      APP_DEBUG: "0"

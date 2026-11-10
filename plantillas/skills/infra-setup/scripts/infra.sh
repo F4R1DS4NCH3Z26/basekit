@@ -13,7 +13,11 @@ while [ $# -gt 0 ]; do
   esac
 done
 case "$db" in postgres|mysql|sqlite|none) ;; *) echo "ERROR: --db debe ser postgres, mysql, sqlite o none"; exit 2 ;; esac
-root=$(git rev-parse --show-toplevel 2>/dev/null || pwd); cd "$root"
+# The project is the folder that holds .agents/ (<project>/.agents/skills/infra-setup/scripts/infra.sh), never git's top
+# level: in a combined project backend/ is a project of its own inside the repository.
+here=$(cd "$(dirname "$0")" && pwd)
+assets="$(dirname "$here")/assets"
+root=$(cd "$here/../../../.." && pwd); cd "$root"
 [ -f compose.yaml ] && [ -f .env.example ] || { echo "ERROR: falta compose.yaml o .env.example (¿proyecto creado con basekit?)"; exit 2; }
 # A symlinked .env.example is updated through the link only when its target lives inside the project:
 # checked before any change, so a refusal leaves everything as it was.
@@ -26,7 +30,6 @@ if [ -L .env.example ]; then
        echo "       Copia ese archivo dentro del proyecto o agrega a mano los bloques de infra-setup."; exit 1 ;;
   esac
 fi
-assets="$(cd "$(dirname "$0")/.." && pwd)/assets"
 mkdir -p .make
 
 place() { # origen destino: + creado, ~ reemplazado (con --force), = sin cambios

@@ -24,6 +24,7 @@ tpl="$repo/plantillas/stacks/$stack"
 [ -f "$repo/dist/src/cli.js" ] || { echo "Falta dist/: ejecuta npm run compile" >&2; exit 2; }
 
 port_of_stack() { node -p 'require(process.argv[1]).port' "$tpl/stack.json"; }
+health_of_stack() { node -p 'require(process.argv[1]).health || "/"' "$tpl/stack.json"; }
 
 work="$(mktemp -d)"
 app="$work/e2e-$stack-$env"   # unique compose project name, so runs can go in parallel
@@ -59,16 +60,42 @@ else
   make dev
 fi
 
-# The healthcheck path comes from the stack's own Dockerfile HEALTHCHECK, so this script stays stack-agnostic.
-path="$(grep -oE 'http://127\.0\.0\.1:[0-9]+/[A-Za-z0-9/_.-]*' "$tpl/files/Dockerfile" | head -1 | sed -E 's#^http://127\.0\.0\.1:[0-9]+##')"
+# The healthcheck path comes from the stack's own Dockerfile HEALTHCHECK, so this script stays stack-agnostic. A
+# HEALTHCHECK without a URL (a `scratch` binary checking itself) falls back to stack.json's health; `|| true` because
+# under pipefail a grep that matches nothing would end the script without a message.
+path="$(grep -oE 'http://127\.0\.0\.1:[0-9]+/[A-Za-z0-9/_.-]*' "$tpl/files/Dockerfile" | head -1 | sed -E 's#^http://127\.0\.0\.1:[0-9]+##' || true)"
 port="$(sed -n 's/^APP_PORT=//p' .env.example | head -1)"
-url="http://127.0.0.1:${port:-$(port_of_stack)}${path:-/}"
+url="http://127.0.0.1:${port:-$(port_of_stack)}${path:-$(health_of_stack)}"
+
+# With the SQLite overlay the app (non-root in prod) must be able to write its database directory. The check runs as
+# the real app process (compose exec), with its uid, gid and groups. Only an image without a shell (`scratch`, whose
+# USER is numeric uid:gid) is checked from a throwaway container with the app's user and volumes; a failed pull of that
+# helper image is reported as such, never as a permission error. Prints the failure reason; returns non-zero on failure.
+WRITE_TEST='touch /app/data/.write-test && rm /app/data/.write-test'
+can_write_data() {
+  local cid user
+  if compose exec -T app sh -c 'exit 0' </dev/null >/dev/null 2>&1; then
+    compose exec -T app sh -c "$WRITE_TEST" </dev/null || { echo "no puede escribir en /app/data"; return 1; }
+    return 0
+  fi
+  cid="$(compose ps -q app)"
+  [ -n "$cid" ] || { echo "el servicio app no está corriendo"; return 1; }
+  user="$(docker inspect -f '{{.Config.User}}' "$cid")"
+  # Without a shell in the app container, a named user (USER app) cannot be resolved to uid:gid for the helper.
+  case "$user" in
+    "" | [0-9]* ) ;;
+    *) echo "no se pudo ejecutar sh en app para revisar /app/data (usuario '$user' sin uid numérico); revisa 'compose ps'"; return 1 ;;
+  esac
+  docker image inspect alpine:3.22 >/dev/null 2>&1 || docker pull -q alpine:3.22 >/dev/null 2>&1 ||
+    { echo "no se pudo descargar alpine:3.22 para revisar /app/data (red o registro), no es un error del stack"; return 1; }
+  docker run --rm ${user:+--user "$user"} --volumes-from "$cid" alpine:3.22 sh -c "$WRITE_TEST" </dev/null ||
+    { echo "no puede escribir en /app/data"; return 1; }
+}
 
 for _ in $(seq 1 90); do
   if curl -fsS -o /dev/null "$url"; then
-    # With the SQLite overlay the app (non-root in prod) must be able to write its database directory.
-    if [ "$db" = sqlite ] && ! compose exec -T app sh -c 'touch /app/data/.write-test && rm /app/data/.write-test'; then
-      echo "FALLO: $stack ($env) no puede escribir en /app/data" >&2
+    if [ "$db" = sqlite ] && ! reason="$(can_write_data)"; then
+      echo "FALLO: $stack ($env) ${reason:-no puede escribir en /app/data}" >&2
       exit 1
     fi
     echo "OK $stack${db:+ + $db} ($env) responde en $url"

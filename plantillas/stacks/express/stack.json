@@ -1,0 +1,17 @@
+{
+  "id": "express",
+  "name": "TypeScript · Express (API REST minimalista) + Prisma",
+  "language": "TypeScript",
+  "kind": "backend",
+  "port": 3000,
+  "health": "/health",
+  "detect": {},
+  "appMarker": "package.json",
+  "roles": ["data-writer", "logic-writer", "web-writer", "qa-writer"],
+  "skills": [
+    ["express-scaffold", "Módulo nuevo: estructura + contrato"],
+    ["express-patterns", "Antes de escribir cualquier capa; auth en references/auth.md"],
+    ["express-verify", "Lo usa `make verify`"]
+  ],
+  "defaultAuth": "jwt"
+}

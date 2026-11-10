@@ -1,12 +1,12 @@
 # Auth en FastAPI: JWT de acceso + refresh rotado
 
-Dependencias (con aprobación del usuario):
+Dependencias (con aprobación del usuario). SQLAlchemy, Alembic y los drivers ya vienen en el esqueleto:
 
 ```bash
-make deps-add PKGS="sqlalchemy>=2 psycopg[binary] alembic pyjwt>=2.9 pwdlib[argon2]"
+make deps-add PKGS="pyjwt==<x.y.z> pwdlib[argon2]==<x.y.z>"   # versiones exactas con al menos 14 días
 ```
 
-Para MySQL, cambia `psycopg[binary]` por `pymysql`. Después, inicializa Alembic una vez: `make sh` y, dentro, `alembic init alembic`. Configura `alembic/env.py` para usar `get_settings().database_url` y `Base.metadata`.
+`src/core/db.py` (`Base`, `load_models()`, `get_db()`), `alembic/` y `conftest.py` también vienen en el esqueleto.
 
 ## `src/core/config.py`: agrega a `Settings` (orquestador)
 
@@ -18,33 +18,6 @@ Añade `Field` al import de `pydantic` (`from pydantic import Field, field_valid
     jwt_audience: str = "app-clients"
     access_token_minutes: int = 15
     refresh_token_days: int = 14
-```
-
-## `src/core/db.py` (orquestador)
-
-```python
-from collections.abc import Iterator
-
-from sqlalchemy import create_engine
-from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
-
-from src.core.config import get_settings
-
-
-class Base(DeclarativeBase):
-    pass
-
-
-_url = get_settings().database_url
-if not _url:
-    raise RuntimeError("DATABASE_URL no está configurada (skill infra-setup)")
-engine = create_engine(_url, pool_pre_ping=True)
-SessionLocal = sessionmaker(engine, expire_on_commit=False)
-
-
-def get_db() -> Iterator[Session]:
-    with SessionLocal() as session:
-        yield session
 ```
 
 ## `src/core/security.py` (orquestador)
@@ -253,6 +226,24 @@ def logout(db: Session, raw: str) -> None:
 Si el cliente es un navegador, entrega el refresh en una cookie `httponly=True, secure=(app_env=="prod"), samesite="lax", path="/auth"`, no en el JSON.
 
 **Rate limit** en `/auth/login` y `/auth/refresh`: con `slowapi` (requiere aprobación), o en el proxy inverso. Documenta cuál usaste en `docs/AUTH.md`. Con `slowapi`, usa `Limiter(key_func=get_remote_address)` (la IP de la conexión, que uvicorn ya resolvió con los proxies de confianza), nunca `get_ipaddr`, que lee `X-Forwarded-For` tal cual llega. Además del límite por IP, limita por cuenta: cuenta los intentos fallidos por email normalizado (`strip().lower()`) y bloquea ese email unos minutos; así no lo frena una sola IP ni lo esquivan muchas IPs contra la misma cuenta. **Contrapartidas del límite por cuenta.** Frenar los intentos por email también permite que alguien bloquee a propósito el login de otra persona (le basta con fallar varias veces con su email). Es el precio de cortar los ataques distribuidos contra una cuenta. Si te afecta: usa un límite por cuenta más alto que el de IP, o pide un captcha o un segundo factor tras N fallos en vez de bloquear. Si el límite va por IP detrás de un proxy, la IP del cliente sale de `X-Forwarded-For` solo si el proxy es de confianza: arranca uvicorn con `--forwarded-allow-ips` = las IPs explícitas del proxy, nunca `"*"`, o cualquiera falsifica la cabecera y esquiva el límite.
+
+## Fixtures de auth en `conftest.py` (orquestador)
+
+```python
+@pytest.fixture
+def user(db: Session) -> User:
+    u = User(email="ana@example.com", password_hash=hash_password("correct horse battery"), roles=[])
+    db.add(u)
+    db.commit()
+    return u
+
+
+@pytest.fixture
+def auth_as(app: FastAPI) -> Callable[[User], None]:
+    def _auth(u: User) -> None:
+        app.dependency_overrides[get_current_user] = lambda: CurrentUser(id=u.id, roles=tuple(u.roles))
+    return _auth
+```
 
 ## Tests obligatorios (qa-writer)
 
