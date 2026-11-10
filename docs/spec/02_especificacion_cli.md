@@ -17,7 +17,7 @@ El CLI **prepara**; el agente **decide**.
 | Comando | Qué hace |
 |---|---|
 | `init [dir]` | Crea la base completa en un proyecto nuevo o existente |
-| `sync [dir] [--agents a,b]` | Regenera el bloque de `AGENTS.md`, los adaptadores y los enlaces desde `.agents/`; con `--agents`, también añade herramientas |
+| `sync [dir] [--agents a,b] [--external-skills a,b]` | Regenera el bloque de `AGENTS.md`, los adaptadores y los enlaces desde `.agents/`; con `--agents`, también añade herramientas; con `--external-skills`, cambia las skills externas elegidas |
 | `doctor [dir]` | Diagnóstico del entorno y del proyecto (sección 11) |
 | `stacks` | Lista los stacks (leídos de `plantillas/stacks/*/stack.json`) y los agentes soportados |
 
@@ -31,6 +31,7 @@ Flags de `init`:
 | `--db` | `auto`, `postgres`, `mysql`, `sqlite`, `none`. Un stack frontend solo admite `auto` o `none`; en un combinado se aplica al backend | `auto` (lo decide el bootstrap; en un stack frontend, `none`) |
 | `--redis` | booleano. Error en un stack frontend; en un combinado, va al backend | no |
 | `--no-git` | omite `git init` (zone-check lo necesita) | no; si falta `.git`, se pregunta |
+| `--external-skills` | lista separada por comas de `grill-me`, `grill-with-docs`, `grilling`, `domain-modeling` (sección 9), o `none` para ninguna. Reemplaza `options.externalSkills` (guardada en el orden fijado), no pregunta e instala las elegidas que falten; las ya instaladas que se quiten se quedan. Errores de uso (exit 2, antes de escribir nada): `--external-skills '<x>' no es una skill externa. Disponibles: grill-me, grill-with-docs, grilling, domain-modeling`, `--external-skills none no se combina con otras skills` y `--external-skills y --no-external-skills no se combinan`. Vale igual en `sync` | manifest; si no, se pregunta |
 | `--no-external-skills` | omite `npx skills add` en esta corrida (CI o sin red); no cambia la elección guardada | no; si faltan y no hay elección guardada, se pregunta cuáles |
 | `--force` | reemplaza las skills del kit modificadas localmente | no |
 | `--dry-run` | muestra lo que haría sin escribir | no |
@@ -47,7 +48,7 @@ Flags de `init`:
    En **Fullstack**, el paso Lenguaje ofrece los lenguajes de los stacks integrados y, al final, **«Combinar backend + frontend»** (si hay stacks de los dos tipos). Elegirla pregunta Lenguaje → Framework del backend (`¿En qué lenguaje es el backend?`, `¿Con qué framework de backend?`) y luego del frontend, y el resultado es `<backend>+<frontend>` (sección 14). En esos pasos solo se acepta un id de stack de ese lado.
 
    Un paso con una sola opción no se pregunta: se elige solo y se anuncia (`Lenguaje: TypeScript (única opción)`). En una terminal cada paso es un menú con flechas; sin TTY con modo raw, una lista numerada que acepta el número o el nombre (y, en cualquier paso, un id de stack), vuelve a preguntar ante una respuesta inválida y, si la entrada termina, falla con un error de uso que sugiere `--stack <id>`.
-3. **Skills externas y agentes**: si no se pasó `--no-external-skills`, el manifest no guarda una elección (`options.externalSkills`) y falta alguna de las externas, se muestran las skills incluidas (`Skills incluidas: …`) y se pregunta cuáles instalar: `¿Qué skills externas instalo? (usan npx y red)`, con `grill-me`, `grill-with-docs`, `grilling` y `domain-modeling` en ese orden y todas marcadas. En una terminal son casillas (espacio marca, Enter confirma; ninguna marcada es ninguna); sin TTY, una lista numerada que acepta números o nombres separados por comas, Enter conserva todas y `ninguna`/`ninguno` (sin importar mayúsculas) no elige ninguna. La elección se guarda en el manifest (sección 8) y no se vuelve a preguntar.
+3. **Skills externas y agentes**: si no se pasó `--no-external-skills` ni `--external-skills`, el manifest no guarda una elección (`options.externalSkills`) y falta alguna de las externas, se muestran las skills incluidas (`Skills incluidas: …`) y se pregunta cuáles instalar: `¿Qué skills externas instalo? (usan npx y red)`, con `grill-me`, `grill-with-docs`, `grilling` y `domain-modeling` en ese orden y todas marcadas. En una terminal son casillas (espacio marca, Enter confirma; ninguna marcada es ninguna); sin TTY, una lista numerada que acepta números o nombres separados por comas, Enter conserva todas y `ninguna`/`ninguno` (sin importar mayúsculas) no elige ninguna; una respuesta solo de comas o espacios no es «ninguna»: se rechaza con `  No reconozco: <respuesta>. Usa los números o los nombres de la lista.` y se vuelve a preguntar. La elección se guarda en el manifest (sección 8) y no se vuelve a preguntar; `--external-skills` la reemplaza sin preguntar.
 
    Agentes: flag → manifest → detección (guía 03, sección 1) → pregunta `¿Con qué herramientas vas a trabajar?`. La pregunta acepta no elegir ninguna (en el menú, Enter sin casillas marcadas; sin TTY, `ninguno`/`ninguna`; Enter vacío conserva las marcadas). Valida contra la lista blanca. Sin agentes (`--agents none` o ninguna elegida) se escriben igual `AGENTS.md`, `.agents/`, la documentación y Docker/Make, pero ningún adaptador ni enlace de skills, y el manifest guarda `"agents": []`, que en una nueva corrida cuenta como respuesta (sin detección ni pregunta).
 4. **Contexto** (texto) y **BD** (`auto` por defecto). Un stack frontend no tiene base de datos: `--db` distinto de `auto`/`none` o `--redis` es un error de uso (exit 2) antes de escribir nada, y `auto` se guarda como `none`.
@@ -160,7 +161,7 @@ Prioridades: **10** para los stacks originales (`fastapi`, `laravel`, `nextjs`, 
 
 Al reescribirlo, conserva `createdAt` y cualquier campo desconocido; así un `upgrade` futuro podrá migrar.
 
-`options.externalSkills` es la elección de la pregunta de skills externas (puede ser `[]`); `init` y `sync` solo comprueban e instalan esas. Sin la clave (un `init -y` o un manifest anterior) valen las cuatro. `externalSkills` en la raíz es el pin, no la elección.
+`options.externalSkills` es la elección de la pregunta de skills externas o de `--external-skills` (puede ser `[]`); `init` y `sync` solo comprueban e instalan esas. Sin la clave (un `init -y` o un manifest anterior) valen las cuatro. `externalSkills` en la raíz es el pin, no la elección.
 
 Un proyecto combinado guarda los dos ids en el mismo campo y con la misma gramática que `--stack`: `"stack": "fastapi+react"`. El resto del formato no cambia; las claves de `files` de cada lado llevan su carpeta (`backend/.agents/skills/…`). Un manifest de un solo stack sigue igual, y una versión anterior de basekit rechaza un combinado con «stack no existe» en vez de tratarlo como un solo stack.
 
@@ -194,7 +195,7 @@ DISABLE_TELEMETRY=1 DO_NOT_TRACK=1 npx -y skills@1.7.4 add \
 2. Re-renderiza el bloque de `AGENTS.md`.
 3. Regenera los archivos **generados**: `.claude/agents/*.md` y `.opencode/agents/*.md`, desde `.agents/roles/` y `.agents/zones/`.
 4. Crea solo si faltan: `CLAUDE.md`, `.claude/settings.json`, `opencode.json` y `.gemini/settings.json`. Son del usuario una vez creados; la única excepción es que, en un proyecto combinado, a `.claude/settings.json` se le agregan los bloqueos de secretos de `backend/` y `frontend/` que le falten (guía 03, sección 3).
-5. Rehace los enlaces de skills que falten. Si se añadieron agentes, reinstala las skills externas elegidas (`options.externalSkills`) para ellos: así se instalan las de un proyecto creado sin agentes.
+5. Rehace los enlaces de skills que falten. Si se añadieron agentes, reinstala las skills externas elegidas (`options.externalSkills`) para ellos: así se instalan las de un proyecto creado sin agentes. Con `--external-skills`, reemplaza `options.externalSkills` e instala las elegidas que falten (las ya instaladas que se quiten se quedan); sin agentes no las instala y lo avisa con `!`.
 
 ## 11. `doctor`
 

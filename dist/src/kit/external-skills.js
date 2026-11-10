@@ -1,6 +1,31 @@
 import { AGENTS } from "./agents.js";
+import { UsageError } from "./errors.js";
 import { EXTERNAL_SKILLS } from "./manifest.js";
 const TELEMETRY_OFF = { DISABLE_TELEMETRY: "1", DO_NOT_TRACK: "1" };
+/** The value of `--external-skills` that chooses no external skill. */
+export const NO_EXTERNAL = "none";
+/**
+ * Validates `--external-skills` (S4) before anything touches the disk: undefined when it was not given;
+ * otherwise the pinned names it lists (comma-separated, case-sensitive), in pinned order without duplicates,
+ * or [] for `none` alone. `skip` is `--no-external-skills`, which it cannot be combined with.
+ */
+export function parseExternalSkills(raw, skip) {
+    if (raw === undefined)
+        return undefined;
+    if (skip)
+        throw new UsageError("--external-skills y --no-external-skills no se combinan");
+    const names = raw.split(",").map((s) => s.trim()).filter(Boolean);
+    if (names.includes(NO_EXTERNAL)) {
+        if (names.every((n) => n === NO_EXTERNAL))
+            return [];
+        throw new UsageError(`--external-skills ${NO_EXTERNAL} no se combina con otras skills`);
+    }
+    const bad = names.filter((n) => !EXTERNAL_SKILLS.skills.includes(n));
+    if (names.length === 0 || bad.length > 0) {
+        throw new UsageError(`--external-skills '${bad.join(",") || raw}' no es una skill externa. Disponibles: ${EXTERNAL_SKILLS.skills.join(", ")}`);
+    }
+    return EXTERNAL_SKILLS.skills.filter((s) => names.includes(s));
+}
 export function externalArgs(agents, skills = EXTERNAL_SKILLS.skills) {
     const { cli, source, ref } = EXTERNAL_SKILLS;
     return ["-y", cli, "add", `${source}/tree/${ref}`, "-s", ...skills, "-a", ...agents, "-y"];

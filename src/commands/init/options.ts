@@ -1,5 +1,6 @@
 import { parseAgents } from "../../kit/agents.js";
 import { UsageError } from "../../kit/errors.js";
+import { parseExternalSkills } from "../../kit/external-skills.js";
 import { resolveParts } from "../../kit/layout.js";
 import { hasDatabase, type Stack } from "../../kit/stacks.js";
 
@@ -13,6 +14,8 @@ export interface InitOptions {
   db?: string;
   redis?: boolean;
   externalSkills: boolean;
+  /** The raw value of `--external-skills` (S4): replaces the persisted choice and skips the question. */
+  externalChoice?: string;
   /** Skips `git init` (zone-check needs a repository). */
   noGit?: boolean;
   force: boolean;
@@ -24,12 +27,13 @@ export function checkDb(db: string): string {
   return db;
 }
 
-/** Validates every flag against its whitelist before anything touches the disk; returns the parsed agents. */
-export function validateFlags(o: InitOptions, stacks: Stack[]): { agents?: string[] } {
+/** Validates every flag against its whitelist before anything touches the disk; returns the parsed agents and external skills. */
+export function validateFlags(o: InitOptions, stacks: Stack[]): { agents?: string[]; externalSkills?: string[] } {
   if (o.stack !== undefined) resolveParts(stacks, o.stack.trim());
   const agents = o.agents !== undefined ? parseAgents(o.agents) : undefined;
   if (o.db !== undefined) checkDb(o.db);
-  return { agents };
+  const externalSkills = parseExternalSkills(o.externalChoice, !o.externalSkills);
+  return { agents, externalSkills };
 }
 
 /**

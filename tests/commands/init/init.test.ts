@@ -237,6 +237,94 @@ describe("--agents none (S2)", () => {
   });
 });
 
+describe("--external-skills (S4)", () => {
+  const AVAILABLE = "Disponibles: grill-me, grill-with-docs, grilling, domain-modeling";
+  const args = (npx: { log: () => string[] }) => npx.log().filter((l) => l.startsWith("ARGS"));
+  const options = (d: string) => JSON.parse(read(d, ".agents/manifest.json")).options;
+
+  it("installs only the chosen skills in pinned order and persists them", () => {
+    const d = scratch();
+    const npx = fakeNpx();
+    const r = basekit(["init", d, "-y", "--stack", "nextjs", "--agents", "codex", "--external-skills", "domain-modeling, grilling"], undefined, npx.env);
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    assert.equal(args(npx).length, 1);
+    assert.match(args(npx)[0]!, / -s grilling domain-modeling -a codex -y$/);
+    assert.match(r.stdout, /^\+ skills externas {2}\(grilling, domain-modeling\)$/m);
+    assert.deepEqual(options(d).externalSkills, ["grilling", "domain-modeling"]);
+    assert.ok(!existsSync(join(d, ".agents/skills/grill-me")));
+  });
+
+  it("none stores [] and installs nothing; a later --external-skills replaces it", () => {
+    const d = scratch();
+    const npx = fakeNpx();
+    const r = basekit(["init", d, "-y", "--stack", "nextjs", "--agents", "codex", "--external-skills", "none"], undefined, npx.env);
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /^= skills externas {2}\(ninguna elegida\)$/m);
+    assert.deepEqual(options(d).externalSkills, []);
+    assert.deepEqual(npx.log(), []);
+
+    const again = basekit(["init", d, "-y", "--external-skills", "grill-me"], undefined, npx.env);
+    assert.equal(again.code, 0, again.stdout + again.stderr);
+    assert.equal(args(npx).length, 1);
+    assert.match(args(npx)[0]!, / -s grill-me -a codex -y$/);
+    assert.deepEqual(options(d).externalSkills, ["grill-me"]);
+  });
+
+  it("without agents warns, installs nothing and still persists the choice", () => {
+    const d = scratch();
+    const npx = fakeNpx();
+    const r = basekit(["init", d, "-y", "--stack", "nextjs", "--agents", "none", "--external-skills", "grilling"], undefined, npx.env);
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /^! skills externas {2}\(sin agentes: se instalan cuando agregues uno con basekit sync --agents <a,b>\)$/m);
+    assert.deepEqual(npx.log(), []);
+    assert.deepEqual(options(d).externalSkills, ["grilling"]);
+  });
+
+  it("--dry-run shows the npx line for the chosen skills and writes nothing", () => {
+    const d = join(scratch(), "app");
+    const npx = fakeNpx();
+    const r = basekit(["init", d, "-y", "--stack", "nextjs", "--agents", "codex", "--external-skills", "grilling", "--dry-run"], undefined, npx.env);
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /^· ejecutaría: npx -y skills@1\.7\.4 add \S+ -s grilling -a codex -y$/m);
+    assert.deepEqual(npx.log(), []);
+    assert.ok(!existsSync(d));
+  });
+
+  for (const [extra, message] of [
+    [["--external-skills", "grill-me, foo,bar"], `--external-skills 'foo,bar' no es una skill externa. ${AVAILABLE}`],
+    [["--external-skills", ""], `--external-skills '' no es una skill externa. ${AVAILABLE}`],
+    [["--external-skills", ",,"], `--external-skills ',,' no es una skill externa. ${AVAILABLE}`],
+    [["--external-skills", "Grilling"], `--external-skills 'Grilling' no es una skill externa. ${AVAILABLE}`],
+    [["--external-skills", "none,grilling"], "--external-skills none no se combina con otras skills"],
+    [["--external-skills", "grilling", "--no-external-skills"], "--external-skills y --no-external-skills no se combinan"],
+  ] as const) {
+    it(`${extra.join(" ")} is a usage error (exit 2) that writes nothing`, () => {
+      const d = join(scratch(), "app");
+      const npx = fakeNpx();
+      const r = basekit(["init", d, "-y", "--stack", "nextjs", ...extra], undefined, npx.env);
+      assert.equal(r.code, 2, r.stdout + r.stderr);
+      assert.equal(r.stderr, `ERROR: ${message}\n`);
+      assert.equal(r.stdout, "");
+      assert.ok(!existsSync(d));
+      assert.deepEqual(npx.log(), []);
+    });
+  }
+
+  it("is documented in the help for init and sync", () => {
+    const help = basekit(["--help"]).stdout;
+    assert.equal(help.split("--external-skills <a,b>").length - 1, 2);
+    assert.match(help, /no se vuelve a preguntar; cámbiala con\s+--external-skills\./);
+    assert.match(
+      help,
+      /--external-skills <a,b> Skills externas a instalar: grill-me, grill-with-docs, grilling, domain-modeling\.\n {26}Reemplaza la elección guardada y no pregunta; --external-skills none: ninguna\n/,
+    );
+    assert.match(
+      help,
+      /--external-skills <a,b> Reemplaza la elección de skills externas e instala las elegidas que falten\n {26}\(las ya instaladas que quites se quedan\); --external-skills none: ninguna\n/,
+    );
+  });
+});
+
 describe("frontend stacks have no database (S1b)", () => {
   it("has at least one frontend stack to check", () => assert.ok(FRONTEND.length > 0));
 
