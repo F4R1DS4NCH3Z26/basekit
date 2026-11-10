@@ -6,7 +6,7 @@ import { PassThrough } from "node:stream";
 import { AGENTS, DEFAULT_AGENTS } from "../../src/kit/agents.js";
 import { init, type InitOptions } from "../../src/commands/init/index.js";
 import { nodeFileSystem } from "../../src/infra/file-system.js";
-import { processRunner } from "../../src/infra/runner.js";
+import { processRunner, type Runner } from "../../src/infra/runner.js";
 import { Prompter } from "../../src/ui/prompt.js";
 import { loadStacks } from "../../src/kit/stacks.js";
 import { cleanup, scratch } from "../helpers.js";
@@ -220,7 +220,7 @@ const quietInit = (o: Partial<InitOptions> & { dir: string }, prompt?: Prompter)
 describe("init with interactive answers", () => {
   it("uses the stack, agents and context answered, re-asking after an invalid stack", async () => {
     const d = join(scratch(), "app");
-    const { p, output } = prompter("nope", "1", "Python", "flask", "1,2", "Tienda de bicis");
+    const { p, output } = prompter("nope", "1", "Python", "flask", "1,2", "", "Tienda de bicis");
     assert.equal(await quietInit({ dir: d }, p), 0);
     p.close();
     assert.match(output(), /«nope» no es una opción válida/);
@@ -232,7 +232,7 @@ describe("init with interactive answers", () => {
 
   it("a combined answer becomes a backend/ + frontend/ project (S16)", async () => {
     const d = join(scratch(), "app");
-    const { p } = prompter("3", "combinar", "Python", "fastapi", "react", "", "");
+    const { p } = prompter("3", "combinar", "Python", "fastapi", "react", "", "", "");
     assert.equal(await quietInit({ dir: d }, p), 0);
     p.close();
     assert.equal(JSON.parse(readFileSync(join(d, ".agents/manifest.json"), "utf8")).stack, "fastapi+react");
@@ -242,7 +242,7 @@ describe("init with interactive answers", () => {
 
   it("asks only what flags, the manifest or detection did not answer", async () => {
     const d = join(scratch(), "app");
-    const first = prompter("Reservas");
+    const first = prompter("", "Reservas");
     assert.equal(await quietInit({ dir: d, stack: "fastapi", agents: "codex" }, first.p), 0);
     first.p.close();
     assert.doesNotMatch(first.output(), /tipo de app|lenguaje|framework|herramientas/);
@@ -253,5 +253,28 @@ describe("init with interactive answers", () => {
     rerun.p.close();
     assert.equal(rerun.output(), "", "a rerun with a manifest asks nothing");
     assert.ok(existsSync(join(d, ".agents/manifest.json")));
+  });
+
+  it("asks before git init and leaves the project without git when the answer is no", async () => {
+    const d = join(scratch(), "app");
+    const { p, output } = prompter("n", "");
+    assert.equal(await quietInit({ dir: d, stack: "flask", agents: "codex" }, p), 0);
+    p.close();
+    assert.match(output(), /¿Inicializar git \(git init\)\? zone-check lo necesita \[S\/n\]/);
+    assert.ok(!existsSync(join(d, ".git")), "no repository");
+    assert.ok(!existsSync(join(d, ".gitattributes")), ".gitattributes only comes with a repository basekit creates");
+    assert.ok(existsSync(join(d, ".agents/manifest.json")));
+  });
+
+  it("asks before installing the external skills and skips npx when the answer is no", async () => {
+    const d = join(scratch(), "app");
+    const calls: string[] = [];
+    const runner: Runner = { ...processRunner, run: (log, cmd, args, cwd, env) => (calls.push(cmd), cmd === "npx" ? true : processRunner.run(log, cmd, args, cwd, env)) };
+    const { p, output } = prompter("n", "", "");
+    const code = await init({ dir: d, stack: "flask", agents: "codex", externalSkills: true, force: false, dryRun: false }, { log: () => {}, prompt: p, fs: nodeFileSystem, runner });
+    p.close();
+    assert.equal(code, 0);
+    assert.match(output(), /¿Instalar también las skills externas \(grill-me, grill-with-docs, grilling, domain-modeling\)\? Usan npx y red \[S\/n\]/);
+    assert.ok(!calls.includes("npx"), `npx ran: ${calls.join(" ")}`);
   });
 });

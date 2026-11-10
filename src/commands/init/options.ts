@@ -13,6 +13,8 @@ export interface InitOptions {
   db?: string;
   redis?: boolean;
   externalSkills: boolean;
+  /** Skips `git init` (zone-check needs a repository). */
+  noGit?: boolean;
   force: boolean;
   dryRun: boolean;
 }
