@@ -129,13 +129,33 @@ describe("arrow-key menus in a terminal", { timeout: 5000 }, () => {
     b.p.close();
   });
 
-  it("agents: Enter with nothing checked does not finish", async () => {
+  it("agents: Enter with nothing checked chooses no agent (S2)", async () => {
     const t = terminal();
     t.type(SPACE, DOWN, SPACE, ENTER);
-    setTimeout(() => t.input.write(SPACE + ENTER), 20);
-    assert.deepEqual(await t.p.agents(DEFAULT_AGENTS), ["opencode"]);
-    assert.match(t.output(), /Marca al menos una/);
+    assert.deepEqual(await t.p.agents(DEFAULT_AGENTS), []);
+    assert.match(t.output(), /¿Con qué herramientas vas a trabajar\?/);
+    assert.doesNotMatch(t.output(), /Marca al menos una/);
     t.p.close();
+  });
+
+  it("external skills: all four start checked; Enter keeps them, space unchecks, none checked is none (S1)", async () => {
+    const skills = ["grill-me", "grill-with-docs", "grilling", "domain-modeling"];
+    const a = terminal();
+    a.type(ENTER);
+    assert.deepEqual(await a.p.externalSkills(skills), skills);
+    assert.match(a.output(), /¿Qué skills externas instalo\? \(usan npx y red\)/);
+    assert.doesNotMatch(a.output(), /◯/);
+    a.p.close();
+
+    const b = terminal();
+    b.type(SPACE, DOWN, DOWN, SPACE, ENTER);
+    assert.deepEqual(await b.p.externalSkills(skills), ["grill-with-docs", "domain-modeling"]);
+    b.p.close();
+
+    const c = terminal();
+    c.type(SPACE, DOWN, SPACE, DOWN, SPACE, DOWN, SPACE, ENTER);
+    assert.deepEqual(await c.p.externalSkills(skills), []);
+    c.p.close();
   });
 
   it("Ctrl+C cancels and gives the terminal back", async () => {

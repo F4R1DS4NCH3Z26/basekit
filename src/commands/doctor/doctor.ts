@@ -3,7 +3,7 @@ import { AGENTS } from "../../kit/agents.js";
 import { AGENTS_MD_WARN } from "../../kit/agents-md.js";
 import { missingExternal } from "../../kit/external-skills.js";
 import { inPart, isCombined, newAppCommand, partsOf } from "../../kit/layout.js";
-import { EXTERNAL_SKILLS, MANIFEST, readManifest } from "../../kit/manifest.js";
+import { chosenExternal, MANIFEST, readManifest } from "../../kit/manifest.js";
 import { Project, resolveRoot } from "../../kit/project.js";
 import { loadStacks, stackDir } from "../../kit/stacks.js";
 import { TEMPLATES, walk } from "../../kit/templates.js";
@@ -62,8 +62,10 @@ export function doctor(dir: string | undefined, ctx: Context): number {
       check(project.exists(f), f, "ejecuta `basekit init` (make verify la lee dentro de Docker)");
     }
   }
-  const absent = new Set(missingExternal(project));
-  for (const s of EXTERNAL_SKILLS.skills) {
+  // Only the chosen external skills (S1), and none without agents: the skills CLI cannot install them (S2).
+  const external = manifest.agents?.length === 0 ? [] : chosenExternal(manifest);
+  const absent = new Set(missingExternal(project, external));
+  for (const s of external) {
     check(!absent.has(s), `.agents/skills/${s}/SKILL.md (externa)`, "ejecuta `basekit sync`");
   }
 

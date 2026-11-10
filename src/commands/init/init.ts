@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { linkSkills, writeAdapters } from "../../kit/adapters.js";
-import { DEFAULT_AGENTS, detectAgents, parseAgents } from "../../kit/agents.js";
+import { DEFAULT_AGENTS, detectAgents, savedAgents } from "../../kit/agents.js";
 import { templateVars, writeAgentsMd } from "../../kit/agents-md.js";
 import { UsageError } from "../../kit/errors.js";
 import { installExternalSkills, missingExternal } from "../../kit/external-skills.js";
@@ -9,7 +9,7 @@ import {
   displayName, INFRA, INFRA_SKILL, inPart, isCombined, nameCompose, newAppCommand, partsOf, resolveParts, roleFiles, specOf, wireEnv, zoneFiles,
   type Part,
 } from "../../kit/layout.js";
-import { EXTERNAL_SKILLS, readManifest, writeManifest } from "../../kit/manifest.js";
+import { chosenExternal, EXTERNAL_SKILLS, readManifest, writeManifest } from "../../kit/manifest.js";
 import { Project, resolveRoot } from "../../kit/project.js";
 import { detectStack, hasDatabase, loadStacks, stackDir } from "../../kit/stacks.js";
 import { modeOf, render, template, TEMPLATES, walk } from "../../kit/templates.js";
@@ -93,15 +93,17 @@ export async function init(o: InitOptions, ctx: Context): Promise<number> {
   }
 
   // Skills: the kit and stack skills are always installed because the roles and `make verify` depend on them;
-  // only the external pack is optional.
-  let externalSkills = o.externalSkills;
-  if (externalSkills && ctx.prompt && missingExternal(project).length > 0) {
+  // only the external pack is optional (S1): the choice is asked once and persisted in the manifest.
+  let chosen = chosenExternal(prev);
+  let choice: string[] | undefined;
+  const decided = Array.isArray(prev?.options?.externalSkills);
+  if (o.externalSkills && ctx.prompt && !decided && missingExternal(project, chosen).length > 0) {
     ctx.log(`Skills incluidas: ${skillsOf(parts).join(", ")}`);
-    externalSkills = await ctx.prompt.confirm(`¿Instalar también las skills externas (${EXTERNAL_SKILLS.skills.join(", ")})? Usan npx y red`, true);
+    chosen = choice = await ctx.prompt.externalSkills(EXTERNAL_SKILLS.skills);
   }
 
-  // 3 · Agents: flag → manifest → detection → question.
-  let agents = flags.agents ?? (prev?.agents ? parseAgents(prev.agents.join(",")) : undefined);
+  // 3 · Agents: flag → manifest → detection → question. `none` (or `agents: []` in the manifest) means no tool (S2).
+  let agents = flags.agents ?? savedAgents(prev?.agents);
   if (!agents) {
     const detected = project.existsRoot() ? detectAgents(project) : [];
     agents = detected.length > 0 ? detected : ctx.prompt ? await ctx.prompt.agents(DEFAULT_AGENTS) : DEFAULT_AGENTS;
@@ -202,7 +204,7 @@ export async function init(o: InitOptions, ctx: Context): Promise<number> {
 
   // 10 · Adapters. 12 · External skills. 11 · Skill links last, so they also cover the external skills.
   writeAdapters(project, parts, agents);
-  if (externalSkills) installExternalSkills(project, agents, ctx.log, ctx.runner, false);
+  if (o.externalSkills) installExternalSkills(project, agents, ctx.log, ctx.runner, false, chosen);
   linkSkills(project, parts, agents);
 
   // 13 · Infrastructure, through the same script the agent uses: the copy of the part with the database, which
@@ -216,7 +218,7 @@ export async function init(o: InitOptions, ctx: Context): Promise<number> {
     else if (!ctx.runner.run(ctx.log, "bash", args, root)) project.report("!", script, `falló; reinténtalo con: ${shown}`);
   }
 
-  writeManifest(project, prev, { stack: specOf(parts), agents, db, redis, files });
+  writeManifest(project, prev, { stack: specOf(parts), agents, db, redis, externalSkills: choice, files });
 
   // 14 · Summary and next step.
   nextStep(ctx, project, parts, context);

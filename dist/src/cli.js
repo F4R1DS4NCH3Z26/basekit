@@ -28,12 +28,18 @@ Uso:
   basekit doctor [dir]            Diagnóstico del entorno y del proyecto (OK / FALTA)
   basekit stacks                  Lista los stacks y los agentes soportados
 
+En una terminal, init pregunta cuáles skills externas instalar (todas marcadas) y con qué
+herramientas vas a trabajar. Las dos son listas opcionales: desmarca todo, o responde ninguna o
+ninguno en texto plano, para no elegir ninguno. La elección de skills externas queda en el
+manifest y no se vuelve a preguntar.
+
 Opciones de init:
   --stack <id>            Stack (ver \`basekit stacks\`; por defecto: detectado; si no, se pregunta
                           tipo de app → lenguaje → framework)
   --stack <back>+<front>  Fullstack combinado: un stack backend en backend/ y uno frontend en
                           frontend/, con un Makefile raíz que delega en los dos
-  --agents <a,b>          Agentes (por defecto: detectados; si no, claude-code,opencode)
+  --agents <a,b>          Agentes (por defecto: detectados; si no, claude-code,opencode).
+                          none: ninguno (solo AGENTS.md y .agents/, sin adaptadores)
   --context <texto>       De qué trata el proyecto
   --db <motor>            auto | postgres | mysql | sqlite | none (por defecto: auto;
                           un stack frontend solo admite auto o none; en un combinado, va al backend)
@@ -50,7 +56,8 @@ Opciones de install (instala desde el repositorio de GitHub de basekit, nunca de
   --from <paquete>        Instala otro origen: un fork, una etiqueta (github:usuario/basekit#v0.2.0) o un .tgz
 
 Opciones de sync:
-  --agents <a,b>          Reemplaza la lista de agentes (los nuevos reciben adaptadores, enlaces y skills externas)
+  --agents <a,b>          Reemplaza la lista de agentes (los nuevos reciben adaptadores, enlaces y skills externas);
+                          none: ninguno
   --no-external-skills    No reinstala las skills externas
   --dry-run               Muestra lo que haría sin escribir nada
 `;

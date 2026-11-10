@@ -64,8 +64,8 @@ export class Prompter {
         return next.done ? undefined : next.value.trim();
     }
     /**
-     * Arrow-key menu: ↑/↓ (or k/j) move, 1–9 jump to that option, Enter chooses; with `multi`, space toggles.
-     * Returns the chosen indexes. Ctrl+C, Ctrl+D, Esc or the end of the input restore the terminal and throw CancelledError.
+     * Arrow-key menu: ↑/↓ (or k/j) move, 1–9 jump to that option, Enter chooses; with `multi`, space toggles
+     * and Enter with nothing checked chooses none. Returns the chosen indexes. Ctrl+C, Ctrl+D, Esc or the end of the input restore the terminal and throw CancelledError.
      */
     select(question, items, multi, checked = []) {
         // The line reader would also consume the keys: it is recreated by the next text question.
@@ -75,7 +75,6 @@ export class Prompter {
         const width = Math.max(...items.map((i) => i.label.length));
         const picked = new Set(checked);
         let cursor = 0;
-        let warning = "";
         const help = multi ? "↑/↓ mover · espacio marcar · Enter confirmar" : "↑/↓ mover · Enter elegir";
         // Every row must fit on one line: the redraw moves the cursor up one line per row.
         const columns = Math.max(20, (this.out.columns ?? 80) - 1);
@@ -88,7 +87,7 @@ export class Prompter {
             const text = hint ? `${label}  ${dim(hint)}` : label;
             return `${here ? accent("❯") : " "} ${box}${here ? accent(text) : text}`;
         };
-        const footer = () => `  ${warning ? cut(warning, columns - 2) : dim(cut(help, columns - 2))}`;
+        const footer = () => `  ${dim(cut(help, columns - 2))}`;
         const draw = (again) => {
             if (again)
                 this.out.write(`${ESC}${n + 1}A`);
@@ -119,7 +118,6 @@ export class Prompter {
             // A closed terminal or an ended stdin must not leave the menu waiting forever.
             const onEnd = () => finish(new CancelledError());
             const onKey = (str, key) => {
-                warning = "";
                 if ((key?.ctrl && (key.name === "c" || key.name === "d")) || key?.name === "escape")
                     return finish(new CancelledError());
                 if (key?.name === "up" || key?.name === "k")
@@ -130,13 +128,8 @@ export class Prompter {
                     picked.has(cursor) ? picked.delete(cursor) : picked.add(cursor);
                 else if (str && /^[1-9]$/.test(str) && Number(str) <= n)
                     cursor = Number(str) - 1;
-                else if (key?.name === "return" || key?.name === "enter") {
-                    if (!multi)
-                        return finish([cursor]);
-                    if (picked.size > 0)
-                        return finish([...picked].sort((a, b) => a - b));
-                    warning = "Marca al menos una (espacio).";
-                }
+                else if (key?.name === "return" || key?.name === "enter")
+                    return finish(multi ? [...picked].sort((a, b) => a - b) : [cursor]);
                 draw(true);
             };
             input.on("keypress", onKey);
@@ -218,25 +211,40 @@ export class Prompter {
             this.say(answer ? `  «${answer}» no es una opción válida.` : "  Hace falta elegir una opción.");
         }
     }
+    /** Which tools (S2): the defaults start checked; none is a valid answer (`ninguno`/`ninguna` without a terminal). */
     async agents(defaults) {
-        const ids = AGENTS.map((a) => a.id);
+        return this.many("¿Con qué herramientas vas a trabajar?", "¿Con qué herramientas vas a trabajar? (puedes elegir varias, separadas por comas)", AGENTS.map((a) => a.id), defaults, { hint: "(por defecto)", names: "ids" });
+    }
+    /** Which of the pinned external skills to install (S1): all start checked; none is a valid answer. */
+    async externalSkills(skills) {
+        const question = "¿Qué skills externas instalo? (usan npx y red)";
+        return this.many(question, question, skills, skills, { hint: "", names: "nombres" });
+    }
+    /**
+     * Multiple choice among `ids`, in their order, with `defaults` checked. In a terminal it is a menu
+     * with checkboxes; otherwise numbered: numbers or names separated by commas, Enter (or the end of the
+     * input) keeps the defaults, `ninguno`/`ninguna` chooses none and an unknown answer asks again.
+     */
+    async many(question, lineQuestion, ids, defaults, o) {
         if (this.arrows) {
-            const chosen = await this.select("¿Con qué herramientas vas a trabajar?", ids.map((id) => ({ label: id, hint: defaults.includes(id) ? "(por defecto)" : "" })), true, ids.flatMap((id, i) => (defaults.includes(id) ? [i] : [])));
+            const chosen = await this.select(question, ids.map((id) => ({ label: id, hint: defaults.includes(id) ? o.hint : "" })), true, ids.flatMap((id, i) => (defaults.includes(id) ? [i] : [])));
             return chosen.map((i) => ids[i]);
         }
         const width = Math.max(...ids.map((id) => id.length));
-        this.say("¿Con qué herramientas vas a trabajar? (puedes elegir varias, separadas por comas)");
-        ids.forEach((id, i) => this.say(`  ${i + 1}) ${id.padEnd(width)}${defaults.includes(id) ? "  (por defecto)" : ""}`));
+        this.say(lineQuestion);
+        ids.forEach((id, i) => this.say(`  ${i + 1}) ${o.hint ? `${id.padEnd(width)}${defaults.includes(id) ? `  ${o.hint}` : ""}` : id}`));
         for (;;) {
-            const answer = await this.line(`Números o ids [${defaults.join(",")}]: `);
+            const answer = await this.line(`Números o ${o.names} [${defaults.join(",")}]: `);
             if (!answer)
                 return defaults;
+            if (/^ningun[oa]$/i.test(answer))
+                return [];
             const tokens = answer.split(",").map((t) => t.trim()).filter(Boolean);
             const picked = tokens.map((t) => (/^\d+$/.test(t) ? ids[Number(t) - 1] : ids.find((id) => id === t)));
             const unknown = tokens.filter((_, i) => picked[i] === undefined);
             if (unknown.length === 0)
                 return ids.filter((id) => picked.includes(id));
-            this.say(`  No reconozco: ${unknown.join(", ")}. Usa los números o los ids de la lista.`);
+            this.say(`  No reconozco: ${unknown.join(", ")}. Usa los números o los ${o.names} de la lista.`);
         }
     }
     async context() {
