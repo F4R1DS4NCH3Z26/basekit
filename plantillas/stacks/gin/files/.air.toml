@@ -3,7 +3,7 @@ root = "."
 tmp_dir = "/tmp/air"
 
 [build]
-  cmd = "go build -o /tmp/air/api ./cmd/api"
+  cmd = "go build -buildvcs=false -o /tmp/air/api ./cmd/api"
   entrypoint = ["/tmp/air/api", "serve"]
   include_ext = ["go", "sql"]
   exclude_dir = [".agents", ".claude", ".git", "data", "docs", "tmp"]
