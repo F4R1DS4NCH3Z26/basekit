@@ -30,6 +30,7 @@ export async function sync(o: SyncOptions, ctx: Context): Promise<number> {
     agents,
     db: prev.options?.db ?? "auto",
     redis: prev.options?.redis ?? false,
+    docker: prev.options?.docker !== false,
     externalSkills: choice,
     files: prev.files ?? {},
   });

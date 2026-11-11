@@ -25,7 +25,7 @@ function skillsOf(parts: Part[]): string[] {
   return skills;
 }
 
-function nextStep(ctx: Context, project: Project, parts: Part[], context: string): void {
+function nextStep(ctx: Context, project: Project, parts: Part[], context: string, docker: boolean): void {
   ctx.log("");
   ctx.log(project.changed ? `Listo: base de ${displayName(parts)} preparada en ${project.root}` : "Todo al día: no había nada que cambiar.");
   ctx.log("Próximo paso, dile a tu agente:");
@@ -35,7 +35,9 @@ function nextStep(ctx: Context, project: Project, parts: Part[], context: string
     const fromStarter = marker !== undefined && walk(join(stackDir(part.stack), "starter")).includes(marker);
     if (marker !== undefined && !project.exists(inPart(part, marker)) && !fromStarter) {
       const where = part.side ? ` en ${part.side}/` : "";
-      ctx.log(`Falta la app del framework${where}: ejecuta \`${newAppCommand(part)}\` (corre dentro de Docker).`);
+      ctx.log(docker
+        ? `Falta la app del framework${where}: ejecuta \`${newAppCommand(part)}\` (corre dentro de Docker).`
+        : `Falta la app del framework${where}: créala con las herramientas del stack (${marker}).`);
     }
   }
 }
@@ -76,6 +78,9 @@ export async function init(o: InitOptions, ctx: Context): Promise<number> {
   const saved = hasDatabase(dbStack) ? prev?.options : undefined;
   const db = checkStackDb(dbStack, checkDb(o.db ?? saved?.db ?? "auto"), o.redis);
   const redis = o.redis ?? saved?.redis ?? false;
+  if (isCombined(parts) && o.noDocker) {
+    throw new UsageError("un proyecto combinado (<backend>+<frontend>) necesita Docker: cada lado corre con su Makefile y compose; quita --no-docker");
+  }
   // Overlays left by an earlier backend stay (they are the user's files): say they no longer apply.
   if (!hasDatabase(dbStack) && parts.length === 1) {
     for (const f of ["compose.db.yaml", "compose.redis.yaml"]) {
@@ -108,6 +113,18 @@ export async function init(o: InitOptions, ctx: Context): Promise<number> {
   if (!agents) {
     const detected = project.existsRoot() ? detectAgents(project) : [];
     agents = detected.length > 0 ? detected : ctx.prompt ? await ctx.prompt.agents(DEFAULT_AGENTS) : DEFAULT_AGENTS;
+  }
+
+  // Docker + Makefile: flag → manifest → question → yes. A combined project always uses them: each side is a
+  // Docker project of its stack, and the root Makefile delegates to both.
+  const savedDocker = prev?.options?.docker;
+  let docker: boolean;
+  if (isCombined(parts)) docker = true;
+  else if (o.noDocker) docker = false;
+  else if (typeof savedDocker === "boolean") docker = savedDocker;
+  else docker = ctx.prompt ? await ctx.prompt.confirm("¿Usar Docker + Makefile? Todo corre en contenedores y el Makefile es la interfaz", true) : true;
+  if (!docker && ((o.db !== undefined && o.db !== "auto" && o.db !== "none") || o.redis)) {
+    throw new UsageError("--db y --redis necesitan Docker: no se pueden usar con --no-docker ni sin Docker en el manifest");
   }
 
   // Git: only asked when .git is missing (zone-check needs it).
@@ -162,22 +179,27 @@ export async function init(o: InitOptions, ctx: Context): Promise<number> {
 
   // 8 · Docker and Make: each part is a complete project of its stack (S16: in its side folder,
   // with a root Makefile that delegates to both).
-  if (isCombined(parts)) writeMakefile(project, "", template("core/combo/Makefile"), prevFiles, files, o.force);
+  if (docker && isCombined(parts)) writeMakefile(project, "", template("core/combo/Makefile"), prevFiles, files, o.force);
+  if (!docker) {
+    project.report("!", "Makefile", "sin Docker: no se crean Makefile, Dockerfile ni compose; las reglas de AGENTS.md asumen Docker y make, adáptalas");
+  }
   for (const part of parts) {
     const sdir = stackDir(part.stack);
     const marker = part.stack.appMarker;
     const appMissing = marker !== undefined && !project.exists(inPart(part, marker));
-    writeMakefile(project, part.side ?? "", template("core/Makefile"), prevFiles, files, o.force);
-    for (const f of walk(join(sdir, "files"))) {
-      const src = join(sdir, "files", f);
-      let text = copy(src);
-      if (part.side && f === ".env.example" && !project.exists(inPart(part, f))) {
-        const wired = wireEnv(parts, part, text);
-        text = wired.text;
-        if (wired.warning) project.report("!", inPart(part, f), wired.warning);
+    if (docker) {
+      writeMakefile(project, part.side ?? "", template("core/Makefile"), prevFiles, files, o.force);
+      for (const f of walk(join(sdir, "files"))) {
+        const src = join(sdir, "files", f);
+        let text = copy(src);
+        if (part.side && f === ".env.example" && !project.exists(inPart(part, f))) {
+          const wired = wireEnv(parts, part, text);
+          text = wired.text;
+          if (wired.warning) project.report("!", inPart(part, f), wired.warning);
+        }
+        if (f === "compose.yaml") text = nameCompose(root, part, text);
+        project.create(inPart(part, f), text, modeOf(src));
       }
-      if (f === "compose.yaml") text = nameCompose(root, part, text);
-      project.create(inPart(part, f), text, modeOf(src));
     }
     if (appMissing) {
       for (const f of walk(join(sdir, "starter"))) {
@@ -211,7 +233,7 @@ export async function init(o: InitOptions, ctx: Context): Promise<number> {
   // 13 · Infrastructure, through the same script the agent uses: the copy of the part with the database, which
   // works on the folder that holds it. Only when --db is passed or the database moves to a new backend side: a rerun
   // that takes the db from the manifest must not touch the infrastructure again.
-  if ((o.db !== undefined && o.db !== "auto") || carried) {
+  if (docker && ((o.db !== undefined && o.db !== "auto") || carried)) {
     const script = inPart(parts[0]!, INFRA);
     const args = [script, "--db", db, ...(redis ? ["--redis"] : [])];
     const shown = `bash ${args.join(" ")}`;
@@ -219,9 +241,9 @@ export async function init(o: InitOptions, ctx: Context): Promise<number> {
     else if (!ctx.runner.run(ctx.log, "bash", args, root)) project.report("!", script, `falló; reinténtalo con: ${shown}`);
   }
 
-  writeManifest(project, prev, { stack: specOf(parts), agents, db, redis, externalSkills: choice, files });
+  writeManifest(project, prev, { stack: specOf(parts), agents, db, redis, docker, externalSkills: choice, files });
 
   // 14 · Summary and next step.
-  nextStep(ctx, project, parts, context);
+  nextStep(ctx, project, parts, context, docker);
   return 0;
 }

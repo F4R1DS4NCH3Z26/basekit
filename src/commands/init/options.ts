@@ -16,6 +16,8 @@ export interface InitOptions {
   externalSkills: boolean;
   /** The raw value of `--external-skills` (S4): replaces the persisted choice and skips the question. */
   externalChoice?: string;
+  /** No Makefile nor stack files (Dockerfile, compose, .env.example): not with --db, --redis or a combined project. */
+  noDocker?: boolean;
   /** Skips `git init` (zone-check needs a repository). */
   noGit?: boolean;
   force: boolean;
