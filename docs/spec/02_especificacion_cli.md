@@ -30,6 +30,7 @@ Flags de `init`:
 | `--context` | texto libre: "de qué trata el proyecto" | se pregunta (puede ir vacío) |
 | `--db` | `auto`, `postgres`, `mysql`, `sqlite`, `none`. Un stack frontend solo admite `auto` o `none`; en un combinado se aplica al backend | `auto` (lo decide el bootstrap; en un stack frontend, `none`) |
 | `--redis` | booleano. Error en un stack frontend; en un combinado, va al backend | no |
+| `--no-docker` | sin Docker ni Makefile: no escribe el `Makefile` ni `files/` del stack (`.make/stack.mk`, `Dockerfile`, `compose*.yaml`, `.env.example`, `.dockerignore`) ni ejecuta infra-setup. Error de uso (exit 2, antes de escribir nada) con `--db` distinto de `auto`/`none`, con `--redis` o en un combinado | manifest (`options.docker`); si no, se pregunta |
 | `--no-git` | omite `git init` (zone-check lo necesita) | no; si falta `.git`, se pregunta |
 | `--external-skills` | lista separada por comas de `grill-me`, `grill-with-docs`, `grilling`, `domain-modeling` (sección 9), o `none` para ninguna. Reemplaza `options.externalSkills` (guardada en el orden fijado), no pregunta e instala las elegidas que falten; las ya instaladas que se quiten se quedan. Errores de uso (exit 2, antes de escribir nada): `--external-skills '<x>' no es una skill externa. Disponibles: grill-me, grill-with-docs, grilling, domain-modeling`, `--external-skills none no se combina con otras skills` y `--external-skills y --no-external-skills no se combinan`. Vale igual en `sync` | manifest; si no, se pregunta |
 | `--no-external-skills` | omite `npx skills add` en esta corrida (CI o sin red); no cambia la elección guardada | no; si faltan y no hay elección guardada, se pregunta cuáles |
@@ -51,11 +52,14 @@ Flags de `init`:
 3. **Skills externas y agentes**: si no se pasó `--no-external-skills` ni `--external-skills`, el manifest no guarda una elección (`options.externalSkills`) y falta alguna de las externas, se muestran las skills incluidas (`Skills incluidas: …`) y se pregunta cuáles instalar: `¿Qué skills externas instalo? (usan npx y red)`, con `grill-me`, `grill-with-docs`, `grilling` y `domain-modeling` en ese orden y todas marcadas. En una terminal son casillas (espacio marca, Enter confirma; ninguna marcada es ninguna); sin TTY, una lista numerada que acepta números o nombres separados por comas, Enter conserva todas y `ninguna`/`ninguno` (sin importar mayúsculas) no elige ninguna; una respuesta solo de comas o espacios no es «ninguna»: se rechaza con `  No reconozco: <respuesta>. Usa los números o los nombres de la lista.` y se vuelve a preguntar. La elección se guarda en el manifest (sección 8) y no se vuelve a preguntar; `--external-skills` la reemplaza sin preguntar.
 
    Agentes: flag → manifest → detección (guía 03, sección 1) → pregunta `¿Con qué herramientas vas a trabajar?`. La pregunta acepta no elegir ninguna (en el menú, Enter sin casillas marcadas; sin TTY, `ninguno`/`ninguna`; Enter vacío conserva las marcadas). Valida contra la lista blanca. Sin agentes (`--agents none` o ninguna elegida) se escriben igual `AGENTS.md`, `.agents/`, la documentación y Docker/Make, pero ningún adaptador ni enlace de skills, y el manifest guarda `"agents": []`, que en una nueva corrida cuenta como respuesta (sin detección ni pregunta).
+
+   Docker + Makefile: `--no-docker` → manifest (`options.docker`) → pregunta `¿Usar Docker + Makefile? Todo corre en contenedores y el Makefile es la interfaz` (sí por defecto; después de los agentes y antes de git) → sí (con `-y` o sin TTY). Un combinado siempre usa Docker y no se pregunta (sección 14). Sin Docker, `--db` distinto de `auto`/`none` o `--redis` es un error de uso (exit 2) antes de escribir nada: `--db y --redis necesitan Docker: no se pueden usar con --no-docker ni sin Docker en el manifest`.
 4. **Contexto** (texto) y **BD** (`auto` por defecto). Un stack frontend no tiene base de datos: `--db` distinto de `auto`/`none` o `--redis` es un error de uso (exit 2) antes de escribir nada, y `auto` se guarda como `none`.
 5. **Git**: si no hay `.git` y no se pasó `--no-git`, se pregunta `¿Inicializar git (git init)? zone-check lo necesita` (sí por defecto; se pregunta antes del contexto) y se ejecuta `git init`. Sin git se avisa `!` (zone-check no funciona) y no se crea `.gitattributes`.
 6. **Núcleo `.agents/`**, siguiendo la tabla de la sección 4: README, roles, zonas, skills del kit (scripts con permisos 755) y `manifest.json`.
 7. **`AGENTS.md`**: bloque gestionado (sección 7) con los placeholders resueltos (sección 5). Si supera 18.000 caracteres, avisar: Hermes trunca a partir de 20.000.
 8. **Docker y Make**:
+   - Sin Docker (`options.docker: false`) no se escriben el `Makefile` ni `files/` y se avisa `! Makefile  (sin Docker: no se crean Makefile, Dockerfile ni compose; las reglas de AGENTS.md asumen Docker y make, adáptalas)`. El `starter/` y el bloque de `.gitignore` se escriben igual, y el próximo paso dice `Falta la app del framework: créala con las herramientas del stack (<appMarker>).` en lugar del comando de `make new-app`.
    - `Makefile`: si existe sin la marca `generado por basekit`, escribir `Makefile.basekit` y avisar.
    - Copiar `files/` del stack sin sobrescribir.
    - Copiar el `starter/` si falta el `appMarker`.
@@ -64,7 +68,7 @@ Flags de `init`:
 10. **Adaptadores** para cada agente elegido (guía 03, sección 3). En un proyecto combinado, un `.claude/settings.json` que ya existe recibe al final de `permissions.deny` solo los bloqueos de secretos de `backend/` y `frontend/` que le falten (`~`); si no es JSON válido o `deny` no es una lista, se conserva con un aviso `!`.
 11. **Enlaces de skills** para los agentes que no leen `.agents/skills/`: enlace relativo y, si falla (Windows sin permisos), copia.
 12. **Skills externas** (sección 9): solo las elegidas, salvo con `--no-external-skills`. Sin ninguna elegida se informa `= skills externas  (ninguna elegida)`; sin agentes no se instalan (el CLI `skills` necesita `-a`) y se avisa `! skills externas  (sin agentes: se instalan cuando agregues uno con basekit sync --agents <a,b>)`.
-13. **Infraestructura**: si `--db ≠ auto`, ejecutar `bash .agents/skills/infra-setup/scripts/infra.sh --db <db> [--redis]`. Es el **mismo script** que usa el agente, así que la lógica vive en un solo lugar. El script trabaja en el proyecto que lo contiene (`$(dirname "$0")/../../../..`, nunca `git rev-parse --show-toplevel`): en un combinado se ejecuta, desde la raíz, la copia del backend (`bash backend/.agents/skills/infra-setup/scripts/infra.sh …`). También se ejecuta, sin `--db`, cuando un proyecto de un solo stack pasa a combinado y la base de datos (o Redis) del manifest pasa al backend: el lado nuevo aún no tiene overlays. `--dry-run` solo lo muestra.
+13. **Infraestructura** (solo con Docker): si `--db ≠ auto`, ejecutar `bash .agents/skills/infra-setup/scripts/infra.sh --db <db> [--redis]`. Es el **mismo script** que usa el agente, así que la lógica vive en un solo lugar. El script trabaja en el proyecto que lo contiene (`$(dirname "$0")/../../../..`, nunca `git rev-parse --show-toplevel`): en un combinado se ejecuta, desde la raíz, la copia del backend (`bash backend/.agents/skills/infra-setup/scripts/infra.sh …`). También se ejecuta, sin `--db`, cuando un proyecto de un solo stack pasa a combinado y la base de datos (o Redis) del manifest pasa al backend: el lado nuevo aún no tiene overlays. `--dry-run` solo lo muestra.
 14. **Resumen y próximo paso.** Imprimir el prompt sugerido:
     > «Lee AGENTS.md y ejecuta el bootstrap. El proyecto trata de: `<contexto>`»
 
@@ -147,7 +151,7 @@ Prioridades: **10** para los stacks originales (`fastapi`, `laravel`, `nextjs`, 
   "version": "0.1.0",
   "stack": "nextjs",
   "agents": ["claude-code", "opencode", "hermes-agent"],
-  "options": { "db": "auto", "redis": false, "externalSkills": ["grill-me", "grill-with-docs", "grilling", "domain-modeling"] },
+  "options": { "db": "auto", "redis": false, "docker": true, "externalSkills": ["grill-me", "grill-with-docs", "grilling", "domain-modeling"] },
   "externalSkills": {
     "cli": "skills@1.7.4",
     "source": "https://github.com/mattpocock/skills",
@@ -196,6 +200,7 @@ DISABLE_TELEMETRY=1 DO_NOT_TRACK=1 npx -y skills@1.7.4 add \
 3. Regenera los archivos **generados**: `.claude/agents/*.md` y `.opencode/agents/*.md`, desde `.agents/roles/` y `.agents/zones/`.
 4. Crea solo si faltan: `CLAUDE.md`, `.claude/settings.json`, `opencode.json` y `.gemini/settings.json`. Son del usuario una vez creados; la única excepción es que, en un proyecto combinado, a `.claude/settings.json` se le agregan los bloqueos de secretos de `backend/` y `frontend/` que le falten (guía 03, sección 3).
 5. Rehace los enlaces de skills que falten. Si se añadieron agentes, reinstala las skills externas elegidas (`options.externalSkills`) para ellos: así se instalan las de un proyecto creado sin agentes. Con `--external-skills`, reemplaza `options.externalSkills` e instala las elegidas que falten (las ya instaladas que se quiten se quedan); sin agentes no las instala y lo avisa con `!`.
+6. Conserva `options.docker`; un manifest sin esa clave queda con `"docker": true`.
 
 ## 11. `doctor`
 
@@ -208,6 +213,8 @@ Imprime `OK` o `FALTA` con una sugerencia:
 - Los enlaces de skills por agente.
 - Hermes: que no exista `.hermes.md` ni `HERMES.md`.
 - `.env` (en un combinado, `backend/.env` y `frontend/.env`).
+
+Sin Docker (`options.docker: false`) no se revisan docker, `docker compose`, make ni openssl, ni los archivos de Docker y Make, ni `.env`: se imprime `·     sin Docker (manifest): se omiten Docker, Makefile y .env`, y la sugerencia del `appMarker` es `crea la app con las herramientas del framework`.
 
 ## 12. Requisitos de seguridad del CLI
 
@@ -252,4 +259,5 @@ Imprime `OK` o `FALTA` con una sugerencia:
 - **Roles y zonas**: cada rol del stack se escribe como `<lado>-<rol>` (`backend-data-writer`, `frontend-ui-writer`), con `name:` cambiado, una nota inicial (`core/combo/role.note.md`) y la referencia a su zona actualizada. Cada glob de las zonas de un lado lleva el prefijo de su carpeta. `orchestrator.txt` es lo común más, por cada lado, lo común y `orchestrator.stack.txt` con el prefijo del lado. Así, `zone-check --owners` da 0 archivos sin dueño justo después de `init`.
 - **API**: el navegador llama a la API por el host. `frontend/.env.example` recibe `VITE_API_URL=http://127.0.0.1:<puerto del backend>` y `backend/.env.example`, `CORS_ORIGINS=http://127.0.0.1:<puerto del frontend>,http://localhost:<puerto del frontend>`. Si el `.env.example` del stack no tiene esa variable, `init` avisa con `!` y no inventa una. Los dos lados son proyectos de Compose distintos: no comparten red, así que los servicios `app` no chocan.
 - **Base de datos**: `--db` y `--redis` van al backend; infra-setup escribe sus overlays en `backend/`. Al cambiar un proyecto existente a un stack frontend, la base de datos y Redis del manifest no se arrastran: quedan `none` y `false`. Al cambiar un proyecto de un solo stack con base de datos a combinado, sí se arrastran al backend, `infra.sh` crea sus overlays en `backend/` y cada overlay que quede en la raíz (`compose.db.yaml`, `compose.redis.yaml`, `.make/db.mk`) se avisa con `!` ("la base de datos ahora vive en backend/"); nunca se borra.
+- **Docker**: un combinado siempre usa Docker: `init` no pregunta «Docker + Makefile» y `--no-docker` es un error de uso (exit 2): `un proyecto combinado (<backend>+<frontend>) necesita Docker: cada lado corre con su Makefile y compose; quita --no-docker`.
 - **`sync`** regenera el bloque de `AGENTS.md`, los adaptadores (con los roles prefijados) y los enlaces de los dos stacks. **`doctor`** revisa la raíz y cada lado (sección 11).

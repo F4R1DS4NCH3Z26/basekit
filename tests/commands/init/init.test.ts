@@ -64,7 +64,7 @@ describe("acceptance 1: init in an empty folder, per stack", () => {
     assert.equal(m.version, "0.2.0");
     assert.equal(m.stack, "nextjs");
     assert.deepEqual(m.agents, ["claude-code", "opencode"]);
-    assert.deepEqual(m.options, { db: "auto", redis: false });
+    assert.deepEqual(m.options, { db: "auto", redis: false, docker: true });
     assert.equal(m.externalSkills.ref, "5beb35b040e3de97e54fa9e386d7e42d15c295c2");
     assert.ok(m.createdAt && m.updatedAt);
 
@@ -553,5 +553,65 @@ describe("--no-git", () => {
 
   it("is listed in the help", () => {
     assert.match(basekit(["--help"]).stdout, /--no-git\s+No ejecuta git init \(zone-check lo necesita\)/);
+  });
+});
+
+describe("--no-docker", () => {
+  it("skips the Makefile and the stack files, keeps git and the kit, and doctor does not ask for Docker", () => {
+    const d = scratch();
+    const r = init(d, "--stack", "laravel", "--no-docker");
+    assert.equal(r.code, 0, r.stderr);
+    for (const f of ["Makefile", "Dockerfile", "compose.yaml", ".make/stack.mk", ".env.example"]) {
+      assert.ok(!existsSync(join(d, f)), `${f} created with --no-docker`);
+    }
+    for (const f of [".git", "AGENTS.md", ".agents/skills/php-verify/SKILL.md", "docs/PROJECT.md", ".gitignore"]) {
+      assert.ok(existsSync(join(d, f)), f);
+    }
+    assert.match(r.stdout, /^! Makefile {2}\(sin Docker: no se crean Makefile, Dockerfile ni compose; las reglas de AGENTS\.md asumen Docker y make, adáptalas\)$/m);
+    assert.match(r.stdout, /^Falta la app del framework: créala con las herramientas del stack \(composer\.json\)\.$/m);
+    assert.doesNotMatch(r.stdout, /make new-app/);
+    assert.equal(JSON.parse(read(d, ".agents/manifest.json")).options.docker, false);
+
+    const doc = basekit(["doctor", d]);
+    assert.match(doc.stdout, /^· {5}sin Docker \(manifest\): se omiten Docker, Makefile y \.env$/m);
+    assert.doesNotMatch(doc.stdout, /^(OK|FALTA) +(docker|make|openssl|Makefile|Dockerfile|compose|\.env)\b/m);
+    assert.match(doc.stdout, /^FALTA composer\.json \(app del framework\) {2}→ crea la app con las herramientas del framework$/m);
+  });
+
+  it("rejects --db and --redis before writing anything", () => {
+    for (const extra of [["--db", "postgres"], ["--redis"]]) {
+      const d = scratch();
+      const r = init(d, "--stack", "nextjs", "--no-docker", ...extra);
+      assert.equal(r.code, 2, `${extra.join(" ")}: ${r.stderr}`);
+      assert.equal(r.stderr, "ERROR: --db y --redis necesitan Docker: no se pueden usar con --no-docker ni sin Docker en el manifest\n");
+      assert.deepEqual(readdirSync(d), []);
+    }
+  });
+
+  it("rejects a combined project before writing anything", () => {
+    const d = scratch();
+    const r = init(d, "--stack", "fastapi+react", "--no-docker");
+    assert.equal(r.code, 2);
+    assert.equal(r.stderr, "ERROR: un proyecto combinado (<backend>+<frontend>) necesita Docker: cada lado corre con su Makefile y compose; quita --no-docker\n");
+    assert.deepEqual(readdirSync(d), []);
+  });
+
+  it("is kept by sync, and a manifest without the option counts as Docker", () => {
+    const d = scratch();
+    assert.equal(init(d, "--stack", "flask", "--no-docker").code, 0);
+    assert.equal(basekit(["sync", d, "--no-external-skills"]).code, 0);
+    assert.equal(JSON.parse(read(d, ".agents/manifest.json")).options.docker, false);
+
+    const old = scratch();
+    assert.equal(init(old, "--stack", "flask").code, 0);
+    const m = JSON.parse(read(old, ".agents/manifest.json"));
+    delete m.options.docker;
+    writeFileSync(join(old, ".agents/manifest.json"), JSON.stringify(m));
+    assert.equal(basekit(["sync", old, "--no-external-skills"]).code, 0);
+    assert.equal(JSON.parse(read(old, ".agents/manifest.json")).options.docker, true);
+  });
+
+  it("is listed in the help", () => {
+    assert.match(basekit(["--help"]).stdout, /--no-docker\s+Sin Docker ni Makefile \(no compatible con --db, --redis ni un combinado\)/);
   });
 });

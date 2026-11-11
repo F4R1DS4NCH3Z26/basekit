@@ -12,7 +12,7 @@ import { VERSION } from "./kit/templates.js";
 import { Prompter } from "./ui/prompt.js";
 /** Options each command accepts; anything else is an error instead of being silently ignored. */
 const ALLOWED = {
-    init: ["stack", "agents", "context", "db", "redis", "no-git", "external-skills", "no-external-skills", "force", "dry-run", "yes"],
+    init: ["stack", "agents", "context", "db", "redis", "no-docker", "no-git", "external-skills", "no-external-skills", "force", "dry-run", "yes"],
     sync: ["agents", "external-skills", "no-external-skills", "dry-run"],
     install: ["global", "project", "from"],
     doctor: [],
@@ -44,6 +44,7 @@ Opciones de init:
   --db <motor>            auto | postgres | mysql | sqlite | none (por defecto: auto;
                           un stack frontend solo admite auto o none; en un combinado, va al backend)
   --redis                 Agrega Redis (no en un stack frontend; en un combinado, va al backend)
+  --no-docker             Sin Docker ni Makefile (no compatible con --db, --redis ni un combinado)
   --no-git                No ejecuta git init (zone-check lo necesita)
   --external-skills <a,b> Skills externas a instalar: grill-me, grill-with-docs, grilling, domain-modeling.
                           Reemplaza la elección guardada y no pregunta; --external-skills none: ninguna
@@ -94,6 +95,7 @@ async function main(argv) {
             context: { type: "string" },
             db: { type: "string" },
             redis: { type: "boolean" },
+            "no-docker": { type: "boolean" },
             "no-git": { type: "boolean" },
             "external-skills": { type: "string" },
             "no-external-skills": { type: "boolean" },
@@ -158,6 +160,7 @@ async function main(argv) {
                     redis: values.redis,
                     externalSkills: !values["no-external-skills"],
                     externalChoice: values["external-skills"],
+                    noDocker: values["no-docker"] ?? false,
                     noGit: values["no-git"] ?? false,
                     force: values.force ?? false,
                     dryRun: values["dry-run"] ?? false,

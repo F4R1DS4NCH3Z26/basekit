@@ -44,6 +44,7 @@ export function writeManifest(project, prev, data) {
             ...(base.options ?? {}),
             db: data.db,
             redis: data.redis,
+            docker: data.docker,
             ...(data.externalSkills ? { externalSkills: data.externalSkills } : {}),
         },
         externalSkills: EXTERNAL_SKILLS,

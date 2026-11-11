@@ -20,11 +20,15 @@ export function doctor(dir, ctx) {
     const node = Number(process.versions.node.split(".")[0]);
     check(node >= 20, `Node ≥ 20 (v${process.versions.node})`, "instala Node 20 o superior");
     check(ctx.runner.works("git", ["--version"]), "git", "instala git");
-    check(ctx.runner.works("docker", ["--version"]), "docker", "instala Docker");
-    check(ctx.runner.works("docker", ["compose", "version"]), "docker compose (plugin v2 o superior)", "instala el plugin Compose v2");
-    check(ctx.runner.works("make", ["--version"]), "make", "instala GNU Make");
-    check(ctx.runner.works("openssl", ["version"]), "openssl", "instala OpenSSL (lo usa make env)");
     const manifest = readManifest(project);
+    // Without Docker (manifest `options.docker: false`) the Docker tools, the Makefile and .env are not checked.
+    const docker = manifest?.options?.docker !== false;
+    if (docker) {
+        check(ctx.runner.works("docker", ["--version"]), "docker", "instala Docker");
+        check(ctx.runner.works("docker", ["compose", "version"]), "docker compose (plugin v2 o superior)", "instala el plugin Compose v2");
+        check(ctx.runner.works("make", ["--version"]), "make", "instala GNU Make");
+        check(ctx.runner.works("openssl", ["version"]), "openssl", "instala OpenSSL (lo usa make env)");
+    }
     check(manifest !== undefined, MANIFEST, "ejecuta `basekit init`");
     const parts = partsOf(loadStacks(), manifest?.stack);
     if (!manifest || !parts) {
@@ -36,15 +40,19 @@ export function doctor(dir, ctx) {
     const hasBlock = agentsMd.includes("<!-- basekit:start") && agentsMd.includes("<!-- basekit:end -->");
     check(hasBlock && agentsMd.length <= AGENTS_MD_WARN, `AGENTS.md (bloque de basekit, ${agentsMd.length} caracteres)`, hasBlock ? "acórtalo: Hermes trunca a partir de 20.000" : "ejecuta `basekit sync`");
     // A combined project (S16): the root Makefile delegates, and each side is a complete project of its stack.
-    if (isCombined(parts))
+    if (docker && isCombined(parts))
         check(project.exists("Makefile"), "Makefile (raíz)", "ejecuta `basekit init`");
+    if (!docker)
+        ctx.log("·     sin Docker (manifest): se omiten Docker, Makefile y .env");
     for (const part of parts) {
-        for (const f of ["Makefile", ".make/stack.mk", "Dockerfile", "compose.yaml", "compose.dev.yaml", "compose.prod.yaml", ".env.example"]) {
-            check(project.exists(inPart(part, f)), inPart(part, f), "ejecuta `basekit init`");
+        if (docker) {
+            for (const f of ["Makefile", ".make/stack.mk", "Dockerfile", "compose.yaml", "compose.dev.yaml", "compose.prod.yaml", ".env.example"]) {
+                check(project.exists(inPart(part, f)), inPart(part, f), "ejecuta `basekit init`");
+            }
         }
         const marker = part.stack.appMarker;
         if (marker) {
-            check(project.exists(inPart(part, marker)), `${inPart(part, marker)} (app del framework)`, `ejecuta \`${newAppCommand(part)}\``);
+            check(project.exists(inPart(part, marker)), `${inPart(part, marker)} (app del framework)`, docker ? `ejecuta \`${newAppCommand(part)}\`` : "crea la app con las herramientas del framework");
         }
     }
     const kit = [...skillNames(join(TEMPLATES, "skills")), ...parts.flatMap((p) => skillNames(join(stackDir(p.stack), "skills")))];
@@ -73,7 +81,8 @@ export function doctor(dir, ctx) {
     const hermesFiles = [".hermes.md", "HERMES.md"].filter((f) => project.exists(f));
     check(hermesFiles.length === 0, "Hermes: sin .hermes.md ni HERMES.md", `borra ${hermesFiles.join(" y ")}: Hermes lo carga en lugar de AGENTS.md`);
     // Only existence is checked: basekit never reads .env.
-    for (const part of parts)
-        check(project.exists(inPart(part, ".env")), inPart(part, ".env"), "ejecuta `make env`");
+    if (docker)
+        for (const part of parts)
+            check(project.exists(inPart(part, ".env")), inPart(part, ".env"), "ejecuta `make env`");
     return missing > 0 ? 1 : 0;
 }

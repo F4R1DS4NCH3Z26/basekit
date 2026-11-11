@@ -29,6 +29,7 @@ export async function sync(o, ctx) {
         agents,
         db: prev.options?.db ?? "auto",
         redis: prev.options?.redis ?? false,
+        docker: prev.options?.docker !== false,
         externalSkills: choice,
         files: prev.files ?? {},
     });

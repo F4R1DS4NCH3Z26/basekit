@@ -308,7 +308,7 @@ const quietInit = (o: Partial<InitOptions> & { dir: string }, prompt?: Prompter)
 describe("init with interactive answers", () => {
   it("uses the stack, agents and context answered, re-asking after an invalid stack", async () => {
     const d = join(scratch(), "app");
-    const { p, output } = prompter("nope", "1", "Python", "flask", "1,2", "", "Tienda de bicis");
+    const { p, output } = prompter("nope", "1", "Python", "flask", "1,2", "", "", "Tienda de bicis");
     assert.equal(await quietInit({ dir: d }, p), 0);
     p.close();
     assert.match(output(), /«nope» no es una opción válida/);
@@ -345,7 +345,7 @@ describe("init with interactive answers", () => {
 
   it("asks before git init and leaves the project without git when the answer is no", async () => {
     const d = join(scratch(), "app");
-    const { p, output } = prompter("n", "");
+    const { p, output } = prompter("", "n", "");
     assert.equal(await quietInit({ dir: d, stack: "flask", agents: "codex" }, p), 0);
     p.close();
     assert.match(output(), /¿Inicializar git \(git init\)\? zone-check lo necesita \[S\/n\]/);
@@ -354,9 +354,44 @@ describe("init with interactive answers", () => {
     assert.ok(existsSync(join(d, ".agents/manifest.json")));
   });
 
+  it("asks about Docker after the agents and before git; no skips the Docker files and a rerun keeps the choice", async () => {
+    const d = join(scratch(), "app");
+    const { p, output } = prompter("", "n", "", "");
+    assert.equal(await quietInit({ dir: d, stack: "flask" }, p), 0);
+    p.close();
+    const text = output();
+    const docker = text.indexOf("¿Usar Docker + Makefile? Todo corre en contenedores y el Makefile es la interfaz [S/n]");
+    assert.ok(docker > text.indexOf("¿Con qué herramientas vas a trabajar?"), "Docker comes after the agents");
+    assert.ok(docker >= 0 && docker < text.indexOf("¿Inicializar git"), "Docker comes before git");
+    for (const f of ["Makefile", "Dockerfile", "compose.yaml", ".make/stack.mk", ".env.example"]) assert.ok(!existsSync(join(d, f)), f);
+    assert.equal(manifest(d).options.docker, false);
+
+    const rerun = prompter();
+    assert.equal(await quietInit({ dir: d }, rerun.p), 0);
+    rerun.p.close();
+    assert.equal(rerun.output(), "", "a rerun with a manifest asks nothing");
+    assert.ok(!existsSync(join(d, "Makefile")), "the stored no-Docker choice is kept");
+  });
+
+  it("does not ask about Docker with --no-docker nor for a combined project", async () => {
+    const d = join(scratch(), "app");
+    const flag = prompter("", "");
+    assert.equal(await quietInit({ dir: d, stack: "flask", agents: "codex", noDocker: true }, flag.p), 0);
+    flag.p.close();
+    assert.doesNotMatch(flag.output(), /Docker/);
+    assert.equal(manifest(d).options.docker, false);
+
+    const combo = join(scratch(), "app");
+    const both = prompter("", "");
+    assert.equal(await quietInit({ dir: combo, stack: "fastapi+react", agents: "codex" }, both.p), 0);
+    both.p.close();
+    assert.doesNotMatch(both.output(), /Docker/);
+    assert.equal(manifest(combo).options.docker, true);
+  });
+
   it("does not ask about git with --no-git", async () => {
     const d = join(scratch(), "app");
-    const { p, output } = prompter("Reservas");
+    const { p, output } = prompter("", "Reservas");
     assert.equal(await quietInit({ dir: d, stack: "flask", agents: "codex", noGit: true }, p), 0);
     p.close();
     assert.doesNotMatch(output(), /Inicializar git/);
