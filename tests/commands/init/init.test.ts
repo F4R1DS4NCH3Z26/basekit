@@ -44,7 +44,7 @@ describe("acceptance 1: init in an empty folder, per stack", () => {
     assert.ok(!existsSync(join(d, ".agents/zones/orchestrator.stack.txt")));
 
     const agents = read(d, "AGENTS.md");
-    assert.match(agents, /^<!-- basekit:start v0\.1\.0 /);
+    assert.match(agents, /^<!-- basekit:start v0\.2\.0 /);
     assert.match(agents, /<!-- basekit:end -->\n$/);
     assert.ok(agents.includes(`**${loadStacks().find((s) => s.id === "nextjs")!.name}**`), "the stack name in AGENTS.md");
     assert.match(agents, /\| `nextjs-scaffold` \| Feature nueva: estructura \+ contrato \|/);
@@ -61,7 +61,7 @@ describe("acceptance 1: init in an empty folder, per stack", () => {
 
     const m = JSON.parse(read(d, ".agents/manifest.json"));
     assert.equal(m.kit, "basekit");
-    assert.equal(m.version, "0.1.0");
+    assert.equal(m.version, "0.2.0");
     assert.equal(m.stack, "nextjs");
     assert.deepEqual(m.agents, ["claude-code", "opencode"]);
     assert.deepEqual(m.options, { db: "auto", redis: false });
