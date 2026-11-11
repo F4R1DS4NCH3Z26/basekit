@@ -12,6 +12,32 @@ Node ≥ 20.12 (una sola dependencia en tiempo de ejecución, `@clack/prompts`) 
 
 Se instala desde este repositorio (todavía no está publicado en npm). El repositorio incluye el CLI ya compilado (`dist/src`), así que instalar no compila nada.
 
+### Paso a paso
+
+1. **Comprueba los requisitos:** Node.js 20.12 o superior (`node -v`), npm y git.
+2. **Instala la versión v0.2.0:**
+
+   ```bash
+   # macOS, Linux, WSL y Git Bash
+   curl -fsSL https://raw.githubusercontent.com/F4R1DS4NCH3Z26/basekit/main/install.sh | sh -s -- --version v0.2.0
+   ```
+
+   ```powershell
+   # Windows (PowerShell)
+   & ([scriptblock]::Create((irm https://raw.githubusercontent.com/F4R1DS4NCH3Z26/basekit/main/install.ps1))) -Version v0.2.0
+   ```
+
+   Sin `--version` (o `-Version`), instala lo último de `main`.
+3. **Deja `basekit` en tu `PATH`:** si el instalador avisa que la carpeta global de npm no está en tu `PATH`, agrega la línea que muestra y abre una terminal nueva.
+4. **Verifica:** `basekit --version` imprime `0.2.0`.
+5. **Prepara un proyecto:** `basekit init mi-proyecto` pregunta el stack; `basekit init mi-proyecto --stack nextjs` lo elige directamente.
+
+> **Usa una sola implementación.** Este CLI y [basekit-go](https://github.com/F4R1DS4NCH3Z26/basekit-go) instalan el mismo comando, `basekit`, y se ejecuta el que aparezca primero en tu `PATH`. Para quitar el de Node: `npm uninstall -g basekit`. Para quitar el de Go: borra `~/.local/bin/basekit` (en Windows, la carpeta `%LOCALAPPDATA%\Programs\basekit`).
+
+Si vas a usar `make dev` y Docker en Windows, instálalo dentro de WSL2 (ver [Windows](#windows)).
+
+### Opciones y detalles
+
 **Con un comando** (global): necesita Node.js 20.12 o superior y git.
 
 ```bash
