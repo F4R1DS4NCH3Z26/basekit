@@ -152,6 +152,9 @@ jobs:
         run: ./scripts/test-install.ps1
 
   e2e:
+    # Slow (every stack with Docker): not on pull requests, so a PR is quick to merge. It runs on every push to main
+    # and by hand (workflow_dispatch), for example before tagging a release.
+    if: github.event_name != 'pull_request'
     name: e2e ${{ matrix.env || 'dev' }} (${{ matrix.stack }}${{ matrix.db && format(' + {0}', matrix.db) || '' }})
     needs: test
     runs-on: ubuntu-latest

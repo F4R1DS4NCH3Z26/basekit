@@ -15,21 +15,21 @@ Se instala desde este repositorio (todavía no está publicado en npm). El repos
 ### Paso a paso
 
 1. **Comprueba los requisitos:** Node.js 20.12 o superior (`node -v`), npm y git.
-2. **Instala la versión v0.2.0:**
+2. **Instala la versión v0.3.0:**
 
    ```bash
    # macOS, Linux, WSL y Git Bash
-   curl -fsSL https://raw.githubusercontent.com/F4R1DS4NCH3Z26/basekit/main/install.sh | sh -s -- --version v0.2.0
+   curl -fsSL https://raw.githubusercontent.com/F4R1DS4NCH3Z26/basekit/main/install.sh | sh -s -- --version v0.3.0
    ```
 
    ```powershell
    # Windows (PowerShell)
-   & ([scriptblock]::Create((irm https://raw.githubusercontent.com/F4R1DS4NCH3Z26/basekit/main/install.ps1))) -Version v0.2.0
+   & ([scriptblock]::Create((irm https://raw.githubusercontent.com/F4R1DS4NCH3Z26/basekit/main/install.ps1))) -Version v0.3.0
    ```
 
    Sin `--version` (o `-Version`), instala lo último de `main`.
 3. **Deja `basekit` en tu `PATH`:** si el instalador avisa que la carpeta global de npm no está en tu `PATH`, agrega la línea que muestra y abre una terminal nueva.
-4. **Verifica:** `basekit --version` imprime `0.2.0`.
+4. **Verifica:** `basekit --version` imprime `0.3.0`.
 5. **Prepara un proyecto:** `basekit init mi-proyecto` pregunta el stack; `basekit init mi-proyecto --stack nextjs` lo elige directamente.
 
 > **Usa una sola implementación.** Este CLI y [basekit-go](https://github.com/F4R1DS4NCH3Z26/basekit-go) instalan el mismo comando, `basekit`, y se ejecuta el que aparezca primero en tu `PATH`. Para quitar uno, ejecuta `basekit uninstall`: desinstala el que corre y avisa si queda otra copia en el `PATH`. A mano: `npm uninstall -g basekit` (Node) o borra `~/.local/bin/basekit` (Go; en Windows, la carpeta `%LOCALAPPDATA%\Programs\basekit`).
@@ -177,7 +177,7 @@ Cada acción se reporta con `+` (creado), `~` (actualizado), `=` (existía, se c
 | Adaptadores (Claude Code, OpenCode, Gemini CLI, Hermes) y enlaces de skills | Hecho |
 | Skills externas fijadas (`grill-me`, `grill-with-docs`, `grilling`, `domain-modeling`) | Hecho |
 | Prueba 9 (`docker compose config` con overlays) | Pasa en `npm test` si hay Docker |
-| Prueba 12 (`make new-app` + `make dev` reales) | `scripts/e2e.sh <stack> [db]`; el CI la corre en todos los stacks (Spring con `postgres`; los frontend sin base de datos). Pasa en `fastapi`, `laravel`, `nextjs` y `spring`; en los demás falta su primera corrida con Docker |
+| Prueba 12 (`make new-app` + `make dev` reales) | `scripts/e2e.sh <stack> [db]`; el CI la corre en todos los stacks al pushear a `main` o a mano (`workflow_dispatch`), no en los PR (Spring con `postgres`; los frontend sin base de datos). Pasa en `fastapi`, `laravel`, `nextjs` y `spring`; en los demás falta su primera corrida con Docker |
 
 ## Comandos
 
