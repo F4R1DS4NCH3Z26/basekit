@@ -1,0 +1,42 @@
+# Overlay de MongoDB 8.0 (activado por infra-setup). Solo la conexión: no crea colecciones ni datos.
+x-db-env: &db-env
+  DB_DRIVER: mongodb
+  DB_CONNECTION: mongodb
+  DB_HOST: db
+  DB_PORT: "27017"
+  DB_DATABASE: ${DB_NAME:-app}
+  DB_USERNAME: ${DB_USER:-app}
+  DB_PASSWORD: ${DB_PASSWORD}
+  DATABASE_URL: mongodb://${DB_USER:-app}:${DB_PASSWORD}@db:27017/${DB_NAME:-app}?authSource=admin
+  MONGO_URL: mongodb://${DB_USER:-app}:${DB_PASSWORD}@db:27017/${DB_NAME:-app}?authSource=admin
+  SPRING_DATA_MONGODB_URI: mongodb://${DB_USER:-app}:${DB_PASSWORD}@db:27017/${DB_NAME:-app}?authSource=admin
+
+services:
+  db:
+    image: mongo:8.0
+    environment:
+      MONGO_INITDB_DATABASE: ${DB_NAME:-app}
+      MONGO_INITDB_ROOT_USERNAME: ${DB_USER:-app}
+      MONGO_INITDB_ROOT_PASSWORD: ${DB_PASSWORD:?Define DB_PASSWORD (make env)}
+    volumes:
+      - db-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    # Sin "ports": la BD no se expone al host. Usa `make db-shell`.
+  app:
+    depends_on:
+      db:
+        condition: service_healthy
+    environment: *db-env
+  migrate:
+    depends_on:
+      db:
+        condition: service_healthy
+    environment: *db-env
+
+volumes:
+  db-data: {}

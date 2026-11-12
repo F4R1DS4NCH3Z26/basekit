@@ -51,7 +51,43 @@ describe("infra.sh", () => {
     assert.equal(init(d).code, 0);
     const r = infra(d, "--db");
     assert.equal(r.code, 2, r.stdout + r.stderr);
-    assert.match(r.stdout + r.stderr, /Uso: infra\.sh --db postgres\|mysql\|sqlite\|none/);
+    assert.match(r.stdout + r.stderr, /Uso: infra\.sh --db postgres\|mysql\|sqlite\|mongo\|none/);
+  });
+
+  it("activates MongoDB: the connection only (overlay, .env.example block and a mongosh db-shell)", () => {
+    const d = scratch();
+    assert.equal(init(d).code, 0);
+    const r = infra(d, "--db", "mongo");
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /^\s*\+ compose\.db\.yaml$/m);
+    assert.match(r.stdout, /^\s*~ \.env\.example \[db\]$/m);
+    const overlay = read(d, "compose.db.yaml");
+    assert.match(overlay, /image: mongo:/);
+    assert.match(overlay, /MONGO_URL: mongodb:\/\//);
+    assert.match(overlay, /DATABASE_URL: mongodb:\/\//);
+    assert.doesNotMatch(overlay, /^\s*ports:/m, "the database publishes no ports");
+    assert.match(read(d, ".env.example"), /^# >>> db\nDB_NAME=app\nDB_USER=app\nDB_PASSWORD=__GENERATE__\n# <<< db$/m);
+    assert.match(read(d, ".make/db.mk"), /^DB_SHELL_CMD = .*mongosh/);
+    assert.match(r.stdout, /infra OK: db=mongo redis=0/);
+  });
+
+  it("rejects an unknown engine and lists mongo among the valid ones", () => {
+    const d = scratch();
+    assert.equal(init(d).code, 0);
+    const r = infra(d, "--db", "oracle");
+    assert.equal(r.code, 2);
+    assert.match(r.stdout, /ERROR: --db debe ser postgres, mysql, sqlite, mongo o none/);
+  });
+
+  it("without a Makefile (Docker only) it writes no .make/ but still activates the database", () => {
+    const d = scratch();
+    assert.equal(init(d).code, 0);
+    rmSync(join(d, "Makefile"));
+    rmSync(join(d, ".make"), { recursive: true, force: true });
+    const r = infra(d, "--db", "postgres");
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    assert.ok(existsSync(join(d, "compose.db.yaml")));
+    assert.equal(existsSync(join(d, ".make")), false, ".make/ was created without a Makefile");
   });
 
   it("replaces a different overlay only with --force", () => {

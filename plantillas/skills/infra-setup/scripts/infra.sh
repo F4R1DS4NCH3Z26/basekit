@@ -3,7 +3,7 @@
 # Uso: ver la variable usage (la única fuente del texto de ayuda).
 set -euo pipefail
 db=""; redis=0; force=0
-usage="Uso: infra.sh --db postgres|mysql|sqlite|none [--redis] [--force]"
+usage="Uso: infra.sh --db postgres|mysql|sqlite|mongo|none [--redis] [--force]"
 while [ $# -gt 0 ]; do
   case "$1" in
     --db) [ $# -ge 2 ] || { echo "$usage"; exit 2; }; db=$2; shift 2 ;;
@@ -12,7 +12,7 @@ while [ $# -gt 0 ]; do
     *) echo "$usage"; exit 2 ;;
   esac
 done
-case "$db" in postgres|mysql|sqlite|none) ;; *) echo "ERROR: --db debe ser postgres, mysql, sqlite o none"; exit 2 ;; esac
+case "$db" in postgres|mysql|sqlite|mongo|none) ;; *) echo "ERROR: --db debe ser postgres, mysql, sqlite, mongo o none"; exit 2 ;; esac
 # The project is the folder that holds .agents/ (<project>/.agents/skills/infra-setup/scripts/infra.sh), never git's top
 # level: in a combined project backend/ is a project of its own inside the repository.
 here=$(cd "$(dirname "$0")" && pwd)
@@ -30,7 +30,9 @@ if [ -L .env.example ]; then
        echo "       Copia ese archivo dentro del proyecto o agrega a mano los bloques de infra-setup."; exit 1 ;;
   esac
 fi
-mkdir -p .make
+# .make/ belongs to the Makefile: a project without one (Docker only) gets no .make/db.mk.
+makefile=0; [ -f Makefile ] && makefile=1 && mkdir -p .make
+db_mk() { if [ $makefile -eq 1 ]; then echo "$1" > .make/db.mk; else rm -f .make/db.mk; fi; }
 
 place() { # origen destino: + creado, ~ reemplazado (con --force), = sin cambios
   if [ -f "$2" ]; then
@@ -69,9 +71,11 @@ else
   place "$assets/compose.$db.yaml" compose.db.yaml
   case "$db" in
     postgres) env_block db $'DB_NAME=app\nDB_USER=app\nDB_PASSWORD=__GENERATE__'
-              echo 'DB_SHELL_CMD = sh -c '\''psql -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"'\''' > .make/db.mk ;;
+              db_mk 'DB_SHELL_CMD = sh -c '\''psql -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"'\''' ;;
     mysql)    env_block db $'DB_NAME=app\nDB_USER=app\nDB_PASSWORD=__GENERATE__\nDB_ROOT_PASSWORD=__GENERATE__'
-              echo 'DB_SHELL_CMD = sh -c '\''mysql -u"$$MYSQL_USER" -p"$$MYSQL_PASSWORD" "$$MYSQL_DATABASE"'\''' > .make/db.mk ;;
+              db_mk 'DB_SHELL_CMD = sh -c '\''mysql -u"$$MYSQL_USER" -p"$$MYSQL_PASSWORD" "$$MYSQL_DATABASE"'\''' ;;
+    mongo)    env_block db $'DB_NAME=app\nDB_USER=app\nDB_PASSWORD=__GENERATE__'
+              db_mk 'DB_SHELL_CMD = sh -c '\''mongosh -u "$$MONGO_INITDB_ROOT_USERNAME" -p "$$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin "$$MONGO_INITDB_DATABASE"'\''' ;;
     sqlite)   env_block db "# SQLite: archivo en el volumen app-data (/app/data/app.db)"; rm -f .make/db.mk ;;
   esac
 fi
