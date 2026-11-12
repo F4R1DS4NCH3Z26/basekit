@@ -6,11 +6,11 @@ import { templateVars, writeAgentsMd } from "../../kit/agents-md.js";
 import { UsageError } from "../../kit/errors.js";
 import { installExternalSkills, missingExternal } from "../../kit/external-skills.js";
 import { displayName, INFRA, INFRA_SKILL, inPart, isCombined, nameCompose, newAppCommand, partsOf, resolveParts, roleFiles, specOf, wireEnv, zoneFiles, } from "../../kit/layout.js";
-import { chosenExternal, EXTERNAL_SKILLS, readManifest, resolveMakefile, writeManifest } from "../../kit/manifest.js";
+import { chosenExternal, EXTERNAL_SKILLS, MANIFEST, readManifest, resolveDocker, resolveMakefile, writeManifest } from "../../kit/manifest.js";
 import { Project, resolveRoot } from "../../kit/project.js";
 import { detectStack, hasDatabase, loadStacks, stackDir } from "../../kit/stacks.js";
 import { modeOf, render, template, TEMPLATES, walk } from "../../kit/templates.js";
-import { checkDb, checkStackDb, dbChoices, DEFAULT_DB_CHOICE, validateFlags } from "./options.js";
+import { checkDb, checkStackDb, dbChoices, DEFAULT_DB_CHOICE, NEEDS_DOCKER, needsDocker, validateFlags } from "./options.js";
 /** The kit skills plus each part's stack skills, as installed in .agents/skills (shown before the external ones). */
 function skillsOf(parts) {
     const names = (dir) => existsSync(dir) ? readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name).sort() : [];
@@ -50,6 +50,25 @@ function writeMakefile(project, dir, text, prev, files, force) {
         project.report("!", at("Makefile"), "ya existe uno propio: el de basekit queda en Makefile.basekit; intégralos a mano");
     }
 }
+/** The infra-setup overlays (not tracked in the manifest's files). */
+const OVERLAYS = ["compose.db.yaml", "compose.redis.yaml", ".make/db.mk"];
+/**
+ * What Docker left behind when a run turns it off (docker follow-ups S1b, S5), in path order and only what exists:
+ * with `stack`, basekit's Makefiles and `.make/` files the previous manifest tracks plus the stack's Docker and Make
+ * files (its `files/`); always the infra-setup overlays. A user's own Makefile is not tracked, so it is not listed.
+ */
+function dockerLeftovers(project, prevFiles, parts, stack) {
+    const paths = new Set(OVERLAYS);
+    if (stack) {
+        for (const f of Object.keys(prevFiles))
+            if (/(^|\/)(Makefile(\.basekit)?$|\.make\/)/.test(f))
+                paths.add(f);
+        for (const part of parts)
+            for (const f of walk(join(stackDir(part.stack), "files")))
+                paths.add(inPart(part, f));
+    }
+    return [...paths].filter((f) => project.exists(f)).sort();
+}
 /** Spec 02 §3: the `init` algorithm, step by step. */
 export async function init(o, ctx) {
     const stacks = loadStacks();
@@ -57,10 +76,20 @@ export async function init(o, ctx) {
     const project = new Project(resolveRoot(o.dir), o.dryRun, ctx.log, ctx.fs);
     const root = project.root;
     const prev = project.existsRoot() ? readManifest(project) : undefined;
+    // docker follow-ups S3: `--db` other than auto/none and `--redis` need Docker. With Docker off by flag or by the
+    // manifest they are a usage error raised before any question or write; on a first run they answer the Docker question.
+    const dbNeedsDocker = needsDocker(o);
+    const dockerOff = o.noDocker || (!o.docker && prev?.options?.docker === false);
+    const checkDockerFlags = () => {
+        if (dockerOff && dbNeedsDocker)
+            throw new UsageError(NEEDS_DOCKER);
+    };
     // 2 · Stack: flag → manifest → detection → question. `<backend>+<frontend>` is a combined project (S16).
     let stackId = o.stack ?? prev?.stack ?? (project.existsRoot() ? detectStack(stacks, project)?.id : undefined);
-    if (!stackId && ctx.prompt)
+    if (!stackId && ctx.prompt) {
+        checkDockerFlags();
         stackId = await ctx.prompt.stack(stacks);
+    }
     if (!stackId) {
         throw new UsageError(`No se pudo detectar el stack. Usa --stack <id> (disponibles: ${stacks.map((s) => s.id).join(", ")})`);
     }
@@ -71,13 +100,16 @@ export async function init(o, ctx) {
     const dbStack = parts[0].stack;
     const saved = hasDatabase(dbStack) ? prev?.options : undefined;
     let db = checkStackDb(dbStack, checkDb(o.db ?? saved?.db ?? "auto"), o.redis, o.db !== undefined);
-    const redis = o.redis ?? saved?.redis ?? false;
+    let redis = o.redis ?? saved?.redis ?? false;
     if (isCombined(parts) && o.noDocker) {
         throw new UsageError("un proyecto combinado (<backend>+<frontend>) necesita Docker: cada lado corre con su Makefile y compose; quita --no-docker");
     }
     if (isCombined(parts) && o.noMakefile) {
         throw new UsageError("un proyecto combinado (<backend>+<frontend>) necesita el Makefile: el Makefile raíz delega en cada lado; quita --no-makefile");
     }
+    // A combined project always uses Docker, whatever the manifest says.
+    if (!isCombined(parts))
+        checkDockerFlags();
     // Overlays left by an earlier backend stay (they are the user's files): say they no longer apply.
     if (!hasDatabase(dbStack) && parts.length === 1) {
         for (const f of ["compose.db.yaml", "compose.redis.yaml"]) {
@@ -107,24 +139,21 @@ export async function init(o, ctx) {
         const detected = project.existsRoot() ? detectAgents(project) : [];
         agents = detected.length > 0 ? detected : ctx.prompt ? await ctx.prompt.agents(DEFAULT_AGENTS) : DEFAULT_AGENTS;
     }
-    // Docker: flag → manifest → question → yes. A combined project always uses it: each side is a
-    // Docker project of its stack, and the root Makefile delegates to both.
-    const savedDocker = prev?.options?.docker;
-    let docker;
-    if (isCombined(parts))
-        docker = true;
-    else if (o.noDocker)
-        docker = false;
-    else if (typeof savedDocker === "boolean")
-        docker = savedDocker;
-    else
-        docker = ctx.prompt ? await ctx.prompt.confirm("¿Usar Docker? Todo corre en contenedores (Dockerfile y compose)", true) : true;
-    if (!docker && ((o.db !== undefined && o.db !== "auto" && o.db !== "none") || o.redis)) {
-        throw new UsageError("--db y --redis necesitan Docker: no se pueden usar con --no-docker ni sin Docker en el manifest");
-    }
-    // Makefile (S3, S5): the rule shared with sync and doctor; asked only on the first run.
+    // Docker (docker follow-ups S1a): the rule shared with sync and doctor; asked only on a first run, and not when
+    // --db or --redis already need it (S3). A combined project always uses it: each side is a Docker project of its
+    // stack, and the root Makefile delegates to both.
     const prompt = ctx.prompt;
-    const makefile = await resolveMakefile({ docker, combined: isCombined(parts), noMakefile: o.noMakefile, manifest: prev }, prompt && (() => prompt.confirm("¿Usar Makefile? Es la interfaz para correr los comandos en los contenedores", true)));
+    const docker = await resolveDocker({ combined: isCombined(parts), noDocker: o.noDocker, docker: o.docker, manifest: prev }, prompt && !dbNeedsDocker ? () => prompt.confirm("¿Usar Docker? Todo corre en contenedores (Dockerfile y compose)", true) : undefined);
+    // Without Docker, a database or Redis that comes from the manifest is dropped instead of failing (S5).
+    const dropped = !docker && ((o.db === undefined && db !== "auto" && db !== "none") || (o.redis === undefined && redis));
+    if (dropped) {
+        db = "none";
+        redis = false;
+    }
+    // Makefile (S3, S5): the rule shared with sync and doctor; asked only on the first run. When Docker comes back on
+    // (S2), the stored makefile: false was derived from "no Docker", not chosen: the Makefile resolves as on a first run.
+    const reenabled = docker && prev?.options?.docker === false;
+    const makefile = await resolveMakefile({ docker, combined: isCombined(parts), noMakefile: o.noMakefile, manifest: reenabled ? undefined : prev }, prompt && (() => prompt.confirm("¿Usar Makefile? Es la interfaz para correr los comandos en los contenedores", true)));
     // Database (S1): asked only on the first run (no manifest), with Docker, for a stack (or backend side) that has
     // one, and without --db. A rerun keeps the saved engine, even auto: the agent may have run infra.sh itself.
     // The answer counts as an explicit --db: infra-setup runs with it.
@@ -197,6 +226,15 @@ export async function init(o, ctx) {
         writeMakefile(project, "", template("core/combo/Makefile"), prevFiles, files, o.force);
     if (!docker) {
         project.report("!", "Makefile", "sin Docker: no se crean Makefile, Dockerfile ni compose; las reglas de AGENTS.md asumen Docker y make, adáptalas");
+        if (dropped)
+            project.report("!", MANIFEST, "sin Docker no se usan la base de datos ni Redis guardados: quedan db none y redis false");
+        // S1b: nothing is deleted (they are the user's files now); each leftover gets a warning.
+        const turnedOff = prev !== undefined && prev.options?.docker !== false;
+        if (turnedOff || dropped) {
+            for (const f of dockerLeftovers(project, prevFiles, before ?? parts, turnedOff)) {
+                project.report("!", f, "queda de cuando el proyecto usaba Docker: sin Docker no se usa; bórralo si ya no lo necesitas");
+            }
+        }
     }
     else if (!makefile) {
         project.report("!", "Makefile", "sin Makefile: usa docker compose directo, crea .env desde .env.example (reemplaza __GENERATE__) y adapta las reglas de AGENTS.md que usan make");

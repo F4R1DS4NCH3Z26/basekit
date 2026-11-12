@@ -3,7 +3,7 @@ import { AGENTS } from "../../kit/agents.js";
 import { AGENTS_MD_WARN } from "../../kit/agents-md.js";
 import { missingExternal } from "../../kit/external-skills.js";
 import { inPart, isCombined, newAppCommand, partsOf } from "../../kit/layout.js";
-import { chosenExternal, MANIFEST, readManifest, resolveMakefile } from "../../kit/manifest.js";
+import { chosenExternal, MANIFEST, readManifest, resolveDocker, resolveMakefile } from "../../kit/manifest.js";
 import { Project, resolveRoot } from "../../kit/project.js";
 import { loadStacks, stackDir } from "../../kit/stacks.js";
 import { TEMPLATES, walk } from "../../kit/templates.js";
@@ -21,11 +21,12 @@ export function doctor(dir, ctx) {
     check(node >= 20, `Node ≥ 20 (v${process.versions.node})`, "instala Node 20 o superior");
     check(ctx.runner.works("git", ["--version"]), "git", "instala git");
     const manifest = readManifest(project);
-    // Without Docker (manifest `options.docker: false`) the Docker tools, the Makefile and .env are not checked.
-    const docker = manifest?.options?.docker !== false;
-    // With Docker but without the Makefile (S5, as init and sync resolve it), make and the Makefile files are not checked.
+    // Without Docker (as init and sync resolve it) the Docker tools, the Makefile and .env are not checked.
+    // With Docker but without the Makefile (S5), make and the Makefile files are not checked.
     const parts = partsOf(loadStacks(), manifest?.stack);
-    const makefile = resolveMakefile({ docker, combined: parts !== undefined && isCombined(parts), manifest });
+    const combined = parts !== undefined && isCombined(parts);
+    const docker = resolveDocker({ combined, manifest });
+    const makefile = resolveMakefile({ docker, combined, manifest });
     if (docker) {
         check(ctx.runner.works("docker", ["--version"]), "docker", "instala Docker");
         check(ctx.runner.works("docker", ["compose", "version"]), "docker compose (plugin v2 o superior)", "instala el plugin Compose v2");

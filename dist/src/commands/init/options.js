@@ -17,6 +17,12 @@ export function dbChoices(stack) {
     const accepted = dbEngines(stack);
     return DB_CHOICES.filter((c) => accepted.includes(c.id));
 }
+/** docker follow-ups S3: the error of `--db` other than auto/none or `--redis` without Docker (unchanged text). */
+export const NEEDS_DOCKER = "--db y --redis necesitan Docker: no se pueden usar con --no-docker ni sin Docker en el manifest";
+/** Whether the flags ask for something only Docker runs: `--db` other than auto/none, or `--redis`. */
+export function needsDocker(o) {
+    return (o.db !== undefined && o.db !== "auto" && o.db !== "none") || o.redis === true;
+}
 export function checkDb(db) {
     if (!DBS.includes(db))
         throw new UsageError(`--db '${db}' no es válido. Valores: ${DBS.join(", ")}`);
@@ -24,6 +30,8 @@ export function checkDb(db) {
 }
 /** Validates every flag against its whitelist before anything touches the disk; returns the parsed agents and external skills. */
 export function validateFlags(o, stacks) {
+    if (o.docker && o.noDocker)
+        throw new UsageError("Usa --docker o --no-docker, no los dos");
     if (o.stack !== undefined)
         resolveParts(stacks, o.stack.trim());
     const agents = o.agents !== undefined ? parseAgents(o.agents) : undefined;
