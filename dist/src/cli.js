@@ -1,20 +1,23 @@
 #!/usr/bin/env node
+import { homedir } from "node:os";
 import { parseArgs } from "node:util";
 import { doctor } from "./commands/doctor/index.js";
 import { init } from "./commands/init/index.js";
 import { install, validateInstall } from "./commands/install/index.js";
 import { stacks } from "./commands/stacks/index.js";
 import { sync } from "./commands/sync/index.js";
+import { uninstall, validateUninstall } from "./commands/uninstall/index.js";
 import { nodeFileSystem } from "./infra/file-system.js";
 import { processRunner } from "./infra/runner.js";
 import { failure, UsageError } from "./kit/errors.js";
-import { VERSION } from "./kit/templates.js";
+import { PACKAGE_ROOT, VERSION } from "./kit/templates.js";
 import { Prompter } from "./ui/prompt.js";
 /** Options each command accepts; anything else is an error instead of being silently ignored. */
 const ALLOWED = {
     init: ["stack", "agents", "context", "db", "redis", "no-docker", "no-makefile", "no-git", "external-skills", "no-external-skills", "force", "dry-run", "yes"],
     sync: ["agents", "external-skills", "no-external-skills", "dry-run"],
     install: ["global", "project", "from"],
+    uninstall: ["global", "project", "skills", "yes", "dry-run"],
     doctor: [],
     stacks: [],
 };
@@ -23,6 +26,7 @@ const USAGE = `basekit ${VERSION} — prepara la base de un proyecto para agente
 Uso:
   basekit                         En una terminal: pregunta si instalarlo global o en este proyecto
   basekit install [dir] [--global|--project] [--from <paquete>]
+  basekit uninstall [--global|--project] [--skills] [-y] [--dry-run]   Desinstala este basekit (con --skills, también las skills globales)
   basekit init [dir] [opciones]   Crea la base completa en un proyecto nuevo o existente
   basekit sync [dir] [opciones]   Regenera el bloque de AGENTS.md, los adaptadores y los enlaces
   basekit doctor [dir]            Diagnóstico del entorno y del proyecto (OK / FALTA)
@@ -59,6 +63,13 @@ Opciones de install (instala desde el repositorio de GitHub de basekit, nunca de
   --global                npm install -g: un basekit para todos tus proyectos
   --project               npm install -D en el package.json de [dir] (por defecto, este directorio)
   --from <paquete>        Instala otro origen: un fork, una etiqueta (github:usuario/basekit#v0.2.0) o un .tgz
+
+Opciones de uninstall (muestra lo que va a borrar y pregunta; nunca toca los proyectos creados):
+  --global                npm uninstall -g basekit (por defecto: detectado según dónde corre este basekit)
+  --project               npm uninstall basekit en el proyecto (la carpeta que tiene node_modules)
+  --skills                También borra las skills globales de init --global (las que lista ~/.agents/basekit.json)
+  -y, --yes               No pregunta
+  --dry-run               Muestra lo que borraría sin borrar nada
 
 Opciones de sync:
   --agents <a,b>          Reemplaza la lista de agentes (los nuevos reciben adaptadores, enlaces y skills externas);
@@ -108,6 +119,7 @@ async function main(argv) {
             global: { type: "boolean" },
             project: { type: "boolean" },
             from: { type: "string" },
+            skills: { type: "boolean" },
             help: { type: "boolean", short: "h" },
             version: { type: "boolean", short: "v" },
         },
@@ -134,11 +146,22 @@ async function main(argv) {
     const extra = Object.keys(values).filter((k) => !allowed.includes(k));
     if (extra.length > 0)
         throw new UsageError(`${extra.map((k) => `--${k}`).join(", ")} no aplica a \`${command}\``);
-    if (command === "stacks" && dir !== undefined)
+    if ((command === "stacks" || command === "uninstall") && dir !== undefined)
         throw new UsageError(`Argumentos de más: ${dir}`);
     switch (command) {
         case "install":
             return runInstall({ dir, ...validateInstall(values) }, makeContext(interactive && !values.global && !values.project));
+        case "uninstall": {
+            const o = { ...validateUninstall(values), skills: values.skills ?? false, yes: values.yes ?? false, dryRun: values["dry-run"] ?? false };
+            const ctx = makeContext(interactive && !o.yes && !o.dryRun);
+            try {
+                const env = { home: homedir(), path: process.env.PATH ?? "", packageRoot: PACKAGE_ROOT, cwd: process.cwd(), platform: process.platform };
+                return await uninstall(o, ctx, env);
+            }
+            finally {
+                ctx.prompt?.close();
+            }
+        }
         case "stacks":
             return stacks(makeContext(false));
         case "doctor":

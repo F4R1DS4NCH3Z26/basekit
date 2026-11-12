@@ -4,15 +4,17 @@ import type { Project } from "./project.js";
 /**
  * Supported tools (guide 03 §1). `detect` lists the project paths that reveal each one;
  * `skillsDir` is set only for tools that do not read `.agents/skills/` natively.
+ * `globalSkillsDir` is where the tool reads user-wide skills, relative to the home directory (the same
+ * table as basekit-go and the skills CLI); `init --global` of basekit-go links the kit skills there.
  */
-export const AGENTS: { id: string; detect: string[]; skillsDir?: string }[] = [
-  { id: "claude-code", detect: [".claude", "CLAUDE.md"], skillsDir: ".claude/skills" },
-  { id: "opencode", detect: [".opencode", "opencode.json"] },
-  { id: "codex", detect: [] },
-  { id: "cursor", detect: [".cursor"] },
-  { id: "gemini-cli", detect: [".gemini"] },
-  { id: "github-copilot", detect: [] },
-  { id: "hermes-agent", detect: [".hermes"], skillsDir: ".hermes/skills" },
+export const AGENTS: { id: string; detect: string[]; skillsDir?: string; globalSkillsDir: string }[] = [
+  { id: "claude-code", detect: [".claude", "CLAUDE.md"], skillsDir: ".claude/skills", globalSkillsDir: ".claude/skills" },
+  { id: "opencode", detect: [".opencode", "opencode.json"], globalSkillsDir: ".config/opencode/skills" },
+  { id: "codex", detect: [], globalSkillsDir: ".agents/skills" },
+  { id: "cursor", detect: [".cursor"], globalSkillsDir: ".cursor/skills" },
+  { id: "gemini-cli", detect: [".gemini"], globalSkillsDir: ".gemini/skills" },
+  { id: "github-copilot", detect: [], globalSkillsDir: ".copilot/skills" },
+  { id: "hermes-agent", detect: [".hermes"], skillsDir: ".hermes/skills", globalSkillsDir: ".hermes/skills" },
 ];
 
 export const DEFAULT_AGENTS = ["claude-code", "opencode"];

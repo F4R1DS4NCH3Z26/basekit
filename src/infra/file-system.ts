@@ -1,5 +1,5 @@
 import {
-  chmodSync, cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, symlinkSync, writeFileSync,
+  chmodSync, cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmdirSync, symlinkSync, unlinkSync, writeFileSync,
 } from "node:fs";
 import { dirname } from "node:path";
 
@@ -21,6 +21,8 @@ export interface FileSystem {
   /** Creates the symlink `path` → `target` (relative targets stay relative). */
   symlink(target: string, path: string): void;
   copyDir(from: string, to: string): void;
+  /** Removes a file, a symlink (never its target) or an empty directory; a non-empty directory throws. */
+  remove(path: string): void;
 }
 
 const kindOf = (e: { isSymbolicLink(): boolean; isDirectory(): boolean; isFile(): boolean }): EntryKind =>
@@ -59,5 +61,9 @@ export const nodeFileSystem: FileSystem = {
   },
   copyDir(from, to) {
     cpSync(from, to, { recursive: true });
+  },
+  remove(path) {
+    if (lstatSync(path).isDirectory()) rmdirSync(path);
+    else unlinkSync(path);
   },
 };

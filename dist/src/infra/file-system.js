@@ -1,4 +1,4 @@
-import { chmodSync, cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, symlinkSync, writeFileSync, } from "node:fs";
+import { chmodSync, cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmdirSync, symlinkSync, unlinkSync, writeFileSync, } from "node:fs";
 import { dirname } from "node:path";
 const kindOf = (e) => e.isSymbolicLink() ? "symlink" : e.isDirectory() ? "dir" : e.isFile() ? "file" : "other";
 /** The real disk. */
@@ -37,5 +37,11 @@ export const nodeFileSystem = {
     },
     copyDir(from, to) {
         cpSync(from, to, { recursive: true });
+    },
+    remove(path) {
+        if (lstatSync(path).isDirectory())
+            rmdirSync(path);
+        else
+            unlinkSync(path);
     },
 };

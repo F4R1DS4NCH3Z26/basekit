@@ -127,6 +127,12 @@ describe("install: from the command line (no terminal, no questions)", () => {
     assert.ok(!existsSync("x"));
   });
 
+  it("uninstall's --skills does not apply to install, and install's own flags still parse", () => {
+    const r = basekit(["install", scratch(), "--global", "--skills"]);
+    assert.equal(r.code, 2);
+    assert.equal(r.stderr, "ERROR: --skills no aplica a `install`\n");
+  });
+
   it("plain `basekit` without a terminal still prints the help and exits 2", () => {
     const r = basekit([]);
     assert.equal(r.code, 2);

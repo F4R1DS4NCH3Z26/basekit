@@ -84,6 +84,17 @@ export class Project {
     return this.fs.list(this.path(rel)).filter((e) => e.kind === "file").map((e) => e.name);
   }
 
+  /**
+   * Every entry under `rel` that is not a directory (files, symlinks and others), recursively, as paths
+   * relative to the root. Empty if `rel` does not exist. These are what keep a folder from being removed
+   * by `removeEmptyDirs`.
+   */
+  entriesUnder(rel: string): string[] {
+    return this.fs
+      .list(this.path(rel))
+      .flatMap((e) => (e.kind === "dir" ? this.entriesUnder(`${rel}/${e.name}`) : [`${rel}/${e.name}`]));
+  }
+
   report(mark: Mark, rel: string, note?: string): void {
     if (mark === "+" || mark === "~") this.changed = true;
     this.log(`${mark} ${rel}${note ? `  (${note})` : ""}`);
@@ -117,6 +128,37 @@ export class Project {
       }
     }
     this.report("+", rel);
+  }
+
+  /** True when `rel` is a symlink that resolves to the same real path as `targetRel`. */
+  linksTo(rel: string, targetRel: string): boolean {
+    const abs = this.path(rel);
+    const target = this.path(targetRel);
+    if (this.fs.kind(abs) !== "symlink" || !this.fs.exists(abs) || !this.fs.exists(target)) return false;
+    return this.fs.realpath(abs) === this.fs.realpath(target);
+  }
+
+  /** Removes a file or a symlink (never its target). Missing entries are skipped; no-op in dry-run. */
+  remove(rel: string): void {
+    const abs = this.path(rel);
+    const kind = this.fs.kind(abs);
+    if (kind === undefined || kind === "dir" || this.refuse(rel)) return;
+    if (!this.dryRun) this.fs.remove(abs);
+  }
+
+  /**
+   * Removes the directory `rel` and its sub-directories when they hold nothing else, so a file that
+   * basekit did not write keeps its folder. Returns true when `rel` is gone. No-op in dry-run.
+   */
+  removeEmptyDirs(rel: string): boolean {
+    const abs = this.path(rel);
+    if (this.fs.kind(abs) !== "dir" || this.escapes(rel)) return false;
+    let empty = true;
+    for (const e of this.fs.list(abs)) {
+      if (e.kind !== "dir" || !this.removeEmptyDirs(`${rel}/${e.name}`)) empty = false;
+    }
+    if (empty && !this.dryRun) this.fs.remove(abs);
+    return empty;
   }
 
   /** Creates the file only if it does not exist. */

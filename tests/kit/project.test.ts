@@ -46,6 +46,9 @@ class MemoryFileSystem implements FileSystem {
   copyDir(): void {
     throw new Error("not supported in memory");
   }
+  remove(path: string): void {
+    if (!this.files.delete(path)) this.dirs.delete(path);
+  }
 }
 
 function project(dryRun = false) {

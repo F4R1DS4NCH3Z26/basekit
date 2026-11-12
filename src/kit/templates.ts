@@ -8,6 +8,9 @@ import { fileURLToPath } from "node:url";
  */
 export const TEMPLATES = fileURLToPath(new URL("../../../plantillas/", import.meta.url));
 
+/** The root of the running basekit package (the folder that holds its package.json). */
+export const PACKAGE_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
+
 const PACKAGE = JSON.parse(readFileSync(new URL("../../../package.json", import.meta.url), "utf8")) as {
   version: string;
   repository?: { url?: string } | string;
