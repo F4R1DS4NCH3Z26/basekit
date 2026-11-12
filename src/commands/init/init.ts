@@ -9,12 +9,12 @@ import {
   displayName, INFRA, INFRA_SKILL, inPart, isCombined, nameCompose, newAppCommand, partsOf, resolveParts, roleFiles, specOf, wireEnv, zoneFiles,
   type Part,
 } from "../../kit/layout.js";
-import { chosenExternal, EXTERNAL_SKILLS, readManifest, writeManifest } from "../../kit/manifest.js";
+import { chosenExternal, EXTERNAL_SKILLS, readManifest, resolveMakefile, writeManifest } from "../../kit/manifest.js";
 import { Project, resolveRoot } from "../../kit/project.js";
 import { detectStack, hasDatabase, loadStacks, stackDir } from "../../kit/stacks.js";
 import { modeOf, render, template, TEMPLATES, walk } from "../../kit/templates.js";
 import type { Context } from "../context.js";
-import { checkDb, checkStackDb, validateFlags, type InitOptions } from "./options.js";
+import { checkDb, checkStackDb, dbChoices, DEFAULT_DB_CHOICE, validateFlags, type InitOptions } from "./options.js";
 
 /** The kit skills plus each part's stack skills, as installed in .agents/skills (shown before the external ones). */
 function skillsOf(parts: Part[]): string[] {
@@ -25,7 +25,7 @@ function skillsOf(parts: Part[]): string[] {
   return skills;
 }
 
-function nextStep(ctx: Context, project: Project, parts: Part[], context: string, docker: boolean): void {
+function nextStep(ctx: Context, project: Project, parts: Part[], context: string, makefile: boolean): void {
   ctx.log("");
   ctx.log(project.changed ? `Listo: base de ${displayName(parts)} preparada en ${project.root}` : "Todo al día: no había nada que cambiar.");
   ctx.log("Próximo paso, dile a tu agente:");
@@ -35,7 +35,7 @@ function nextStep(ctx: Context, project: Project, parts: Part[], context: string
     const fromStarter = marker !== undefined && walk(join(stackDir(part.stack), "starter")).includes(marker);
     if (marker !== undefined && !project.exists(inPart(part, marker)) && !fromStarter) {
       const where = part.side ? ` en ${part.side}/` : "";
-      ctx.log(docker
+      ctx.log(makefile
         ? `Falta la app del framework${where}: ejecuta \`${newAppCommand(part)}\` (corre dentro de Docker).`
         : `Falta la app del framework${where}: créala con las herramientas del stack (${marker}).`);
     }
@@ -76,10 +76,13 @@ export async function init(o: InitOptions, ctx: Context): Promise<number> {
   // Redis carry over only to a stack that has a database (an existing project switched to a frontend drops them).
   const dbStack = parts[0]!.stack;
   const saved = hasDatabase(dbStack) ? prev?.options : undefined;
-  const db = checkStackDb(dbStack, checkDb(o.db ?? saved?.db ?? "auto"), o.redis);
+  let db = checkStackDb(dbStack, checkDb(o.db ?? saved?.db ?? "auto"), o.redis, o.db !== undefined);
   const redis = o.redis ?? saved?.redis ?? false;
   if (isCombined(parts) && o.noDocker) {
     throw new UsageError("un proyecto combinado (<backend>+<frontend>) necesita Docker: cada lado corre con su Makefile y compose; quita --no-docker");
+  }
+  if (isCombined(parts) && o.noMakefile) {
+    throw new UsageError("un proyecto combinado (<backend>+<frontend>) necesita el Makefile: el Makefile raíz delega en cada lado; quita --no-makefile");
   }
   // Overlays left by an earlier backend stay (they are the user's files): say they no longer apply.
   if (!hasDatabase(dbStack) && parts.length === 1) {
@@ -87,10 +90,6 @@ export async function init(o: InitOptions, ctx: Context): Promise<number> {
       if (project.exists(f)) project.report("!", f, `queda del stack anterior: un stack frontend no usa base de datos; bórralo si ya no lo necesitas`);
     }
   }
-  // A single-stack project switched to combined with the database carried from the manifest (S19): the new backend
-  // side has no overlays yet, so infra.sh runs for it as with an explicit --db. The root ones stay (the user's files).
-  const before = partsOf(stacks, prev?.stack);
-  const carried = isCombined(parts) && before !== undefined && !isCombined(before) && o.db === undefined && (!["none", "auto"].includes(db) || redis);
   if (isCombined(parts)) {
     for (const f of ["compose.db.yaml", "compose.redis.yaml", ".make/db.mk"]) {
       if (project.exists(f)) project.report("!", f, `queda del stack anterior: la base de datos ahora vive en ${inPart(parts[0]!, "")}; bórralo si ya no lo necesitas`);
@@ -115,17 +114,38 @@ export async function init(o: InitOptions, ctx: Context): Promise<number> {
     agents = detected.length > 0 ? detected : ctx.prompt ? await ctx.prompt.agents(DEFAULT_AGENTS) : DEFAULT_AGENTS;
   }
 
-  // Docker + Makefile: flag → manifest → question → yes. A combined project always uses them: each side is a
+  // Docker: flag → manifest → question → yes. A combined project always uses it: each side is a
   // Docker project of its stack, and the root Makefile delegates to both.
   const savedDocker = prev?.options?.docker;
   let docker: boolean;
   if (isCombined(parts)) docker = true;
   else if (o.noDocker) docker = false;
   else if (typeof savedDocker === "boolean") docker = savedDocker;
-  else docker = ctx.prompt ? await ctx.prompt.confirm("¿Usar Docker + Makefile? Todo corre en contenedores y el Makefile es la interfaz", true) : true;
+  else docker = ctx.prompt ? await ctx.prompt.confirm("¿Usar Docker? Todo corre en contenedores (Dockerfile y compose)", true) : true;
   if (!docker && ((o.db !== undefined && o.db !== "auto" && o.db !== "none") || o.redis)) {
     throw new UsageError("--db y --redis necesitan Docker: no se pueden usar con --no-docker ni sin Docker en el manifest");
   }
+  // Makefile (S3, S5): the rule shared with sync and doctor; asked only on the first run.
+  const prompt = ctx.prompt;
+  const makefile = await resolveMakefile(
+    { docker, combined: isCombined(parts), noMakefile: o.noMakefile, manifest: prev },
+    prompt && (() => prompt.confirm("¿Usar Makefile? Es la interfaz para correr los comandos en los contenedores", true)),
+  );
+
+  // Database (S1): asked only on the first run (no manifest), with Docker, for a stack (or backend side) that has
+  // one, and without --db. A rerun keeps the saved engine, even auto: the agent may have run infra.sh itself.
+  // The answer counts as an explicit --db: infra-setup runs with it.
+  let dbFlag = o.db;
+  if (ctx.prompt && docker && hasDatabase(dbStack) && o.db === undefined && !prev) {
+    dbFlag = (await ctx.prompt.confirm("¿Integrar base de datos?", true))
+      ? await ctx.prompt.choose("¿Qué base de datos?", dbChoices(dbStack), DEFAULT_DB_CHOICE)
+      : "none";
+    db = dbFlag;
+  }
+  // A single-stack project switched to combined with the database carried from the manifest (S19): the new backend
+  // side has no overlays yet, so infra.sh runs for it as with an explicit --db. The root ones stay (the user's files).
+  const before = partsOf(stacks, prev?.stack);
+  const carried = isCombined(parts) && before !== undefined && !isCombined(before) && dbFlag === undefined && (!["none", "auto"].includes(db) || redis);
 
   // Git: only asked when .git is missing (zone-check needs it).
   const hasGit = project.exists(".git");
@@ -179,17 +199,22 @@ export async function init(o: InitOptions, ctx: Context): Promise<number> {
 
   // 8 · Docker and Make: each part is a complete project of its stack (S16: in its side folder,
   // with a root Makefile that delegates to both).
-  if (docker && isCombined(parts)) writeMakefile(project, "", template("core/combo/Makefile"), prevFiles, files, o.force);
+  if (makefile && isCombined(parts)) writeMakefile(project, "", template("core/combo/Makefile"), prevFiles, files, o.force);
   if (!docker) {
     project.report("!", "Makefile", "sin Docker: no se crean Makefile, Dockerfile ni compose; las reglas de AGENTS.md asumen Docker y make, adáptalas");
+  } else if (!makefile) {
+    project.report("!", "Makefile",
+      "sin Makefile: usa docker compose directo, crea .env desde .env.example (reemplaza __GENERATE__) y adapta las reglas de AGENTS.md que usan make");
   }
   for (const part of parts) {
     const sdir = stackDir(part.stack);
     const marker = part.stack.appMarker;
     const appMissing = marker !== undefined && !project.exists(inPart(part, marker));
     if (docker) {
-      writeMakefile(project, part.side ?? "", template("core/Makefile"), prevFiles, files, o.force);
+      if (makefile) writeMakefile(project, part.side ?? "", template("core/Makefile"), prevFiles, files, o.force);
       for (const f of walk(join(sdir, "files"))) {
+        // .make/ belongs to the Makefile: Docker only gets the Dockerfile, compose and .env.example.
+        if (!makefile && f.startsWith(".make/")) continue;
         const src = join(sdir, "files", f);
         let text = copy(src);
         if (part.side && f === ".env.example" && !project.exists(inPart(part, f))) {
@@ -231,9 +256,9 @@ export async function init(o: InitOptions, ctx: Context): Promise<number> {
   linkSkills(project, parts, agents);
 
   // 13 · Infrastructure, through the same script the agent uses: the copy of the part with the database, which
-  // works on the folder that holds it. Only when --db is passed or the database moves to a new backend side: a rerun
+  // works on the folder that holds it. Only when --db is passed (or answered, S1) or the database moves to a new backend side: a rerun
   // that takes the db from the manifest must not touch the infrastructure again.
-  if (docker && ((o.db !== undefined && o.db !== "auto") || carried)) {
+  if (docker && ((dbFlag !== undefined && dbFlag !== "auto") || carried)) {
     const script = inPart(parts[0]!, INFRA);
     const args = [script, "--db", db, ...(redis ? ["--redis"] : [])];
     const shown = `bash ${args.join(" ")}`;
@@ -241,9 +266,9 @@ export async function init(o: InitOptions, ctx: Context): Promise<number> {
     else if (!ctx.runner.run(ctx.log, "bash", args, root)) project.report("!", script, `falló; reinténtalo con: ${shown}`);
   }
 
-  writeManifest(project, prev, { stack: specOf(parts), agents, db, redis, docker, externalSkills: choice, files });
+  writeManifest(project, prev, { stack: specOf(parts), agents, db, redis, docker, makefile, externalSkills: choice, files });
 
   // 14 · Summary and next step.
-  nextStep(ctx, project, parts, context, docker);
+  nextStep(ctx, project, parts, context, makefile);
   return 0;
 }

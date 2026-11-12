@@ -18,6 +18,22 @@ export function readManifest(project) {
         throw new Error(`${MANIFEST} no es JSON válido; corrígelo o bórralo antes de continuar`);
     }
 }
+/**
+ * S5: whether the project uses the Makefile, the single rule of init, sync and doctor. In order: no Docker → no;
+ * a combined project → yes (its root Makefile delegates); `--no-makefile` → no; the manifest's boolean; a manifest
+ * without it (written before the option existed) → yes, never asked; a first run → the answer of `ask`; otherwise yes.
+ */
+export function resolveMakefile(c, ask) {
+    if (!c.docker)
+        return false;
+    if (c.combined)
+        return true;
+    if (c.noMakefile)
+        return false;
+    if (c.manifest)
+        return c.manifest.options?.makefile !== false;
+    return ask ? ask() : true;
+}
 const withoutUpdatedAt = ({ updatedAt: _ignored, ...rest }) => JSON.stringify(rest);
 /** The external skills to install: the persisted choice (only pinned names, in pinned order), or all of them. */
 export function chosenExternal(manifest) {
@@ -45,6 +61,7 @@ export function writeManifest(project, prev, data) {
             db: data.db,
             redis: data.redis,
             docker: data.docker,
+            makefile: data.makefile,
             ...(data.externalSkills ? { externalSkills: data.externalSkills } : {}),
         },
         externalSkills: EXTERNAL_SKILLS,

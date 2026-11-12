@@ -1,7 +1,7 @@
 import { after, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { join } from "node:path";
-import { hasDatabase, loadStacks } from "../../src/kit/stacks.js";
+import { dbEngines, hasDatabase, loadStacks } from "../../src/kit/stacks.js";
 import { basekit, cleanup, hasDocker, scratch, sh } from "../helpers.js";
 
 after(cleanup);
@@ -76,9 +76,10 @@ describe("dev and prod never share a Compose project", { skip: docker ? false : 
 
 describe("acceptance 9: compose config with the DB overlay", { skip: docker ? false : "Docker no disponible" }, () => {
   // Frontend stacks have no database (S1b): init rejects --db for them.
-  for (const stack of loadStacks().filter(hasDatabase).map((s) => s.id)) {
-    for (const db of ["postgres", "mysql", "sqlite"]) {
-      if (stack === "spring" && db === "sqlite") continue; // 05 §3: SQLite is not offered for Spring
+  // S6: each stack only with the engines its stack.json accepts (init rejects the others).
+  for (const s of loadStacks().filter(hasDatabase)) {
+    const stack = s.id;
+    for (const db of dbEngines(s)) {
       it(`${stack} + ${db}: valid, and migrate receives DATABASE_URL`, () => {
         const d = scratch();
         const r = basekit(["init", d, "-y", "--no-external-skills", "--stack", stack, "--db", db]);

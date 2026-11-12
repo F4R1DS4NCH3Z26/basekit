@@ -2,8 +2,8 @@ import { linkSkills, writeAdapters } from "../../kit/adapters.js";
 import { parseAgents, savedAgents } from "../../kit/agents.js";
 import { writeAgentsMd } from "../../kit/agents-md.js";
 import { installExternalSkills, parseExternalSkills } from "../../kit/external-skills.js";
-import { resolveParts, specOf } from "../../kit/layout.js";
-import { chosenExternal, MANIFEST, readManifest, writeManifest } from "../../kit/manifest.js";
+import { isCombined, resolveParts, specOf } from "../../kit/layout.js";
+import { chosenExternal, MANIFEST, readManifest, resolveMakefile, writeManifest } from "../../kit/manifest.js";
 import { Project, resolveRoot } from "../../kit/project.js";
 import { loadStacks } from "../../kit/stacks.js";
 /** Spec 02 §10: regenerates the AGENTS.md block, the adapters and the links from `.agents/`. */
@@ -17,6 +17,9 @@ export async function sync(o, ctx) {
     const saved = prev.agents ?? [];
     const agents = o.agents !== undefined ? parseAgents(o.agents) : (savedAgents(saved) ?? []);
     const added = agents.filter((a) => !saved.includes(a));
+    // Docker and the Makefile are init's choices: sync only keeps them (it never writes the Makefile nor .make/).
+    const docker = prev.options?.docker !== false;
+    const makefile = resolveMakefile({ docker, combined: isCombined(parts), manifest: prev });
     if (o.dryRun)
         ctx.log(`(dry-run: no se escribe nada en ${project.root})`);
     writeAgentsMd(project, parts, "");
@@ -29,7 +32,8 @@ export async function sync(o, ctx) {
         agents,
         db: prev.options?.db ?? "auto",
         redis: prev.options?.redis ?? false,
-        docker: prev.options?.docker !== false,
+        docker,
+        makefile,
         externalSkills: choice,
         files: prev.files ?? {},
     });

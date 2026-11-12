@@ -1,13 +1,13 @@
 ---
 name: infra-setup
-description: Activa la base de datos (PostgreSQL, MySQL o SQLite) y/o Redis de un proyecto creado con basekit, agregando el overlay de Docker Compose, las variables a .env.example y el acceso con make db-shell. Úsala SIEMPRE después de decidir en el bootstrap (o en una ADR) qué persistencia necesita el proyecto, en lugar de editar compose a mano.
+description: Activa la base de datos (PostgreSQL, MySQL, SQLite o MongoDB) y/o Redis de un proyecto creado con basekit, agregando el overlay de Docker Compose, las variables a .env.example y el acceso con make db-shell. Úsala SIEMPRE después de decidir en el bootstrap (o en una ADR) qué persistencia necesita el proyecto, en lugar de editar compose a mano.
 allowed-tools: Bash(bash .agents/skills/infra-setup/scripts/infra.sh:*)
 ---
 
 # infra-setup
 
 ```bash
-bash .agents/skills/infra-setup/scripts/infra.sh --db postgres            # o mysql | sqlite | none
+bash .agents/skills/infra-setup/scripts/infra.sh --db postgres            # o mysql | sqlite | mongo | none
 bash .agents/skills/infra-setup/scripts/infra.sh --db postgres --redis    # + Redis
 ```
 
@@ -20,7 +20,10 @@ Qué hace:
   - `DATABASE_URL` (Prisma, Drizzle, SQLAlchemy).
   - `DB_HOST`, `DB_PORT`, `DB_DATABASE`… (Laravel).
   - `SPRING_DATASOURCE_*` (Spring).
-- La base de datos **no publica puertos** al host. Para entrar, usa `make db-shell`.
+  - Con MongoDB: `DATABASE_URL` y `MONGO_URL` (`mongodb://…`), y `SPRING_DATA_MONGODB_URI`.
+- La base de datos **no publica puertos** al host. Para entrar, usa `make db-shell` (`mongosh` con MongoDB).
+- Solo deja la conexión: no crea tablas, colecciones ni datos. Con MongoDB, el ORM de la plantilla es SQL: integra el driver u ODM de Mongo del stack.
+- Sin `Makefile` (proyecto solo con Docker) no escribe `.make/`: copia `.env.example` a `.env` y reemplaza los `__GENERATE__` a mano.
 
 Es idempotente y no reemplaza un overlay modificado a mano sin `--force`. Si `.env` ya existe, avisa qué variables agregar: nunca toca secretos.
 

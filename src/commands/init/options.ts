@@ -2,9 +2,24 @@ import { parseAgents } from "../../kit/agents.js";
 import { UsageError } from "../../kit/errors.js";
 import { parseExternalSkills } from "../../kit/external-skills.js";
 import { resolveParts } from "../../kit/layout.js";
-import { hasDatabase, type Stack } from "../../kit/stacks.js";
+import { dbEngines, hasDatabase, type Stack } from "../../kit/stacks.js";
 
-export const DBS = ["auto", "postgres", "mysql", "sqlite", "none"];
+export const DBS = ["auto", "postgres", "mysql", "sqlite", "mongo", "none"];
+
+/** The engines of the interactive database question (S1), in its order; PostgreSQL is the default. */
+const DB_CHOICES = [
+  { id: "mysql", label: "MySQL", hint: "mysql" },
+  { id: "sqlite", label: "SQLite", hint: "sqlite" },
+  { id: "postgres", label: "PostgreSQL", hint: "postgres" },
+  { id: "mongo", label: "MongoDB", hint: "mongo" },
+];
+export const DEFAULT_DB_CHOICE = "postgres";
+
+/** S6: the database question offers only the engines the stack accepts, in the S1 order. */
+export function dbChoices(stack: Stack): { id: string; label: string; hint: string }[] {
+  const accepted = dbEngines(stack);
+  return DB_CHOICES.filter((c) => accepted.includes(c.id));
+}
 
 export interface InitOptions {
   dir?: string;
@@ -18,6 +33,8 @@ export interface InitOptions {
   externalChoice?: string;
   /** No Makefile nor stack files (Dockerfile, compose, .env.example): not with --db, --redis or a combined project. */
   noDocker?: boolean;
+  /** Docker without the Makefile nor `.make/`: not with a combined project. */
+  noMakefile?: boolean;
   /** Skips `git init` (zone-check needs a repository). */
   noGit?: boolean;
   force: boolean;
@@ -40,10 +57,17 @@ export function validateFlags(o: InitOptions, stacks: Stack[]): { agents?: strin
 
 /**
  * S1b: a frontend stack has no database. `--db` other than auto/none and `--redis` are usage errors
- * for it; returns the engine to record (auto becomes none).
+ * for it; returns the engine to record (auto becomes none). S6: an explicit `--db` (`explicit`) must be one
+ * of the stack's engines; an engine saved in the manifest is kept as is.
  */
-export function checkStackDb(stack: Stack, db: string, redisFlag: boolean | undefined): string {
-  if (hasDatabase(stack)) return db;
+export function checkStackDb(stack: Stack, db: string, redisFlag: boolean | undefined, explicit: boolean): string {
+  if (hasDatabase(stack)) {
+    const accepted = dbEngines(stack);
+    if (explicit && db !== "auto" && db !== "none" && !accepted.includes(db)) {
+      throw new UsageError(`--db '${db}' no aplica a ${stack.id}: motores admitidos: ${accepted.join(", ")} (o auto, none)`);
+    }
+    return db;
+  }
   if (db !== "auto" && db !== "none") {
     throw new UsageError(`--db '${db}' no aplica a ${stack.id}: un stack frontend no tiene base de datos (usa --db none o quita --db)`);
   }

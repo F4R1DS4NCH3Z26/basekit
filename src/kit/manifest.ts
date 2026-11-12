@@ -17,10 +17,11 @@ export interface Manifest {
   stack?: string;
   agents?: string[];
   /**
-   * `docker`: whether the project uses Docker + Makefile; missing means yes.
+   * `docker`: whether the project uses Docker; missing means yes.
+   * `makefile`: whether it also uses the Makefile (only with Docker); missing means yes.
    * `externalSkills`: the pinned external skills the user chose (S1); missing means all of them.
    */
-  options?: { db?: string; redis?: boolean; docker?: boolean; externalSkills?: string[]; [k: string]: unknown };
+  options?: { db?: string; redis?: boolean; docker?: boolean; makefile?: boolean; externalSkills?: string[]; [k: string]: unknown };
   files?: Record<string, string>;
   createdAt?: string;
   updatedAt?: string;
@@ -35,6 +36,22 @@ export function readManifest(project: Project): Manifest | undefined {
   } catch {
     throw new Error(`${MANIFEST} no es JSON válido; corrígelo o bórralo antes de continuar`);
   }
+}
+
+/**
+ * S5: whether the project uses the Makefile, the single rule of init, sync and doctor. In order: no Docker → no;
+ * a combined project → yes (its root Makefile delegates); `--no-makefile` → no; the manifest's boolean; a manifest
+ * without it (written before the option existed) → yes, never asked; a first run → the answer of `ask`; otherwise yes.
+ */
+export function resolveMakefile<A = never>(
+  c: { docker: boolean; combined: boolean; noMakefile?: boolean; manifest: Manifest | undefined },
+  ask?: () => A,
+): boolean | A {
+  if (!c.docker) return false;
+  if (c.combined) return true;
+  if (c.noMakefile) return false;
+  if (c.manifest) return c.manifest.options?.makefile !== false;
+  return ask ? ask() : true;
 }
 
 const withoutUpdatedAt = ({ updatedAt: _ignored, ...rest }: Manifest) => JSON.stringify(rest);
@@ -54,7 +71,7 @@ export function chosenExternal(manifest: Manifest | undefined): string[] {
 export function writeManifest(
   project: Project,
   prev: Manifest | undefined,
-  data: { stack: string; agents: string[]; db: string; redis: boolean; docker: boolean; externalSkills?: string[]; files: Record<string, string> },
+  data: { stack: string; agents: string[]; db: string; redis: boolean; docker: boolean; makefile: boolean; externalSkills?: string[]; files: Record<string, string> },
 ): void {
   const now = new Date().toISOString();
   const base = prev ?? {};
@@ -69,6 +86,7 @@ export function writeManifest(
       db: data.db,
       redis: data.redis,
       docker: data.docker,
+      makefile: data.makefile,
       ...(data.externalSkills ? { externalSkills: data.externalSkills } : {}),
     },
     externalSkills: EXTERNAL_SKILLS,

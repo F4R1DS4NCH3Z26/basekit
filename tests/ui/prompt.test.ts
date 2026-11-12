@@ -9,7 +9,7 @@ import { nodeFileSystem } from "../../src/infra/file-system.js";
 import { processRunner, type Runner } from "../../src/infra/runner.js";
 import { Prompter } from "../../src/ui/prompt.js";
 import { loadStacks } from "../../src/kit/stacks.js";
-import { cleanup, scratch } from "../helpers.js";
+import { cleanup, scratch, sh } from "../helpers.js";
 
 after(cleanup);
 
@@ -254,6 +254,16 @@ describe("menu and yes/no questions", () => {
     d.p.close();
   });
 
+  it("choose: with a default, Enter takes it and the prompt shows its number", async () => {
+    const a = prompter("");
+    assert.equal(await a.p.choose("¿Dónde?", options, "project"), "project");
+    assert.match(a.output(), /Número \[2\]: /);
+    a.p.close();
+    const b = prompter("1");
+    assert.equal(await b.p.choose("¿Dónde?", options, "project"), "global");
+    b.p.close();
+  });
+
   it("confirm: s/sí/n/no, Enter or end of input takes the default, anything else asks again", async () => {
     for (const [answers, byDefault, expected] of [
       [["s"], false, true], [["Sí"], false, true], [["no"], true, false], [[""], true, true], [[], false, false], [["tal vez", "n"], true, false],
@@ -308,7 +318,7 @@ const quietInit = (o: Partial<InitOptions> & { dir: string }, prompt?: Prompter)
 describe("init with interactive answers", () => {
   it("uses the stack, agents and context answered, re-asking after an invalid stack", async () => {
     const d = join(scratch(), "app");
-    const { p, output } = prompter("nope", "1", "Python", "flask", "1,2", "", "", "Tienda de bicis");
+    const { p, output } = prompter("nope", "1", "Python", "flask", "1,2", "", "", "n", "", "Tienda de bicis");
     assert.equal(await quietInit({ dir: d }, p), 0);
     p.close();
     assert.match(output(), /«nope» no es una opción válida/);
@@ -320,7 +330,7 @@ describe("init with interactive answers", () => {
 
   it("a combined answer becomes a backend/ + frontend/ project (S16)", async () => {
     const d = join(scratch(), "app");
-    const { p } = prompter("3", "combinar", "Python", "fastapi", "react", "", "", "");
+    const { p } = prompter("3", "combinar", "Python", "fastapi", "react", "", "n", "", "");
     assert.equal(await quietInit({ dir: d }, p), 0);
     p.close();
     assert.equal(JSON.parse(readFileSync(join(d, ".agents/manifest.json"), "utf8")).stack, "fastapi+react");
@@ -330,7 +340,7 @@ describe("init with interactive answers", () => {
 
   it("asks only what flags, the manifest or detection did not answer", async () => {
     const d = join(scratch(), "app");
-    const first = prompter("", "Reservas");
+    const first = prompter("", "", "n", "", "Reservas");
     assert.equal(await quietInit({ dir: d, stack: "fastapi", agents: "codex" }, first.p), 0);
     first.p.close();
     assert.doesNotMatch(first.output(), /tipo de app|lenguaje|framework|herramientas|skills externas/);
@@ -345,7 +355,7 @@ describe("init with interactive answers", () => {
 
   it("asks before git init and leaves the project without git when the answer is no", async () => {
     const d = join(scratch(), "app");
-    const { p, output } = prompter("", "n", "");
+    const { p, output } = prompter("", "", "n", "n", "");
     assert.equal(await quietInit({ dir: d, stack: "flask", agents: "codex" }, p), 0);
     p.close();
     assert.match(output(), /¿Inicializar git \(git init\)\? zone-check lo necesita \[S\/n\]/);
@@ -360,9 +370,10 @@ describe("init with interactive answers", () => {
     assert.equal(await quietInit({ dir: d, stack: "flask" }, p), 0);
     p.close();
     const text = output();
-    const docker = text.indexOf("¿Usar Docker + Makefile? Todo corre en contenedores y el Makefile es la interfaz [S/n]");
+    const docker = text.indexOf("¿Usar Docker? Todo corre en contenedores (Dockerfile y compose) [S/n]");
     assert.ok(docker > text.indexOf("¿Con qué herramientas vas a trabajar?"), "Docker comes after the agents");
     assert.ok(docker >= 0 && docker < text.indexOf("¿Inicializar git"), "Docker comes before git");
+    assert.doesNotMatch(text, /¿Usar Makefile\?|base de datos/, "no Makefile nor database question without Docker");
     for (const f of ["Makefile", "Dockerfile", "compose.yaml", ".make/stack.mk", ".env.example"]) assert.ok(!existsSync(join(d, f)), f);
     assert.equal(manifest(d).options.docker, false);
 
@@ -382,16 +393,143 @@ describe("init with interactive answers", () => {
     assert.equal(manifest(d).options.docker, false);
 
     const combo = join(scratch(), "app");
-    const both = prompter("", "");
+    const both = prompter("n", "", "");
     assert.equal(await quietInit({ dir: combo, stack: "fastapi+react", agents: "codex" }, both.p), 0);
     both.p.close();
-    assert.doesNotMatch(both.output(), /Docker/);
+    assert.doesNotMatch(both.output(), /Docker|Makefile/);
     assert.equal(manifest(combo).options.docker, true);
+    assert.equal(manifest(combo).options.makefile, true);
+    assert.ok(existsSync(join(combo, "Makefile")), "a combined project always has the root Makefile");
+  });
+
+  it("asks about the Makefile only after a yes to Docker; no keeps the Docker files without Makefile and a rerun keeps it (S3)", async () => {
+    const d = join(scratch(), "app");
+    const { p, output } = prompter("", "n", "n", "", "");
+    assert.equal(await quietInit({ dir: d, stack: "flask", agents: "codex" }, p), 0);
+    p.close();
+    const text = output();
+    const docker = text.indexOf("¿Usar Docker? Todo corre en contenedores (Dockerfile y compose) [S/n]");
+    const makefile = text.indexOf("¿Usar Makefile? Es la interfaz para correr los comandos en los contenedores [S/n]");
+    assert.ok(docker >= 0 && makefile > docker, "the Makefile question comes after Docker");
+    assert.ok(makefile < text.indexOf("¿Integrar base de datos?") && makefile < text.indexOf("¿Inicializar git"));
+    for (const f of ["Makefile", ".make"]) assert.ok(!existsSync(join(d, f)), f);
+    for (const f of ["Dockerfile", "compose.yaml", ".env.example"]) assert.ok(existsSync(join(d, f)), f);
+    assert.deepEqual(manifest(d).options, { db: "none", redis: false, docker: true, makefile: false });
+
+    const rerun = prompter();
+    assert.equal(await quietInit({ dir: d }, rerun.p), 0);
+    rerun.p.close();
+    assert.equal(rerun.output(), "", "a rerun with a manifest asks nothing");
+    assert.ok(!existsSync(join(d, "Makefile")), "the stored no-Makefile choice is kept");
+  });
+
+  it("does not ask about the Makefile with --no-makefile", async () => {
+    const d = join(scratch(), "app");
+    const { p, output } = prompter("", "n", "", "");
+    assert.equal(await quietInit({ dir: d, stack: "flask", agents: "codex", noMakefile: true }, p), 0);
+    p.close();
+    assert.doesNotMatch(output(), /¿Usar Makefile\?/);
+    assert.equal(manifest(d).options.makefile, false);
+    assert.ok(!existsSync(join(d, "Makefile")));
+  });
+
+  it("asks for the database after Docker and the Makefile: yes and an engine run infra-setup like --db (S1)", async () => {
+    const d = join(scratch(), "app");
+    const { p, output } = prompter("", "", "", "4", "", "");
+    assert.equal(await quietInit({ dir: d, stack: "flask", agents: "codex" }, p), 0);
+    p.close();
+    const text = output();
+    const ask = text.indexOf("¿Integrar base de datos? [S/n]");
+    assert.ok(ask > text.indexOf("¿Usar Makefile?"), "after the Makefile question");
+    assert.ok(text.indexOf("¿Qué base de datos?") > ask && text.indexOf("¿Qué base de datos?") < text.indexOf("¿Inicializar git"));
+    assert.match(text, /¿Qué base de datos\?\n {2}1\) MySQL {7}mysql\n {2}2\) SQLite {6}sqlite\n {2}3\) PostgreSQL {2}postgres\n {2}4\) MongoDB {5}mongo\nNúmero \[3\]: /);
+    assert.equal(manifest(d).options.db, "mongo");
+    assert.match(readFileSync(join(d, "compose.db.yaml"), "utf8"), /mongo/);
+    assert.match(readFileSync(join(d, ".make/db.mk"), "utf8"), /mongosh/);
+
+    const byDefault = join(scratch(), "app");
+    const q = prompter("", "", "", "", "", "");
+    assert.equal(await quietInit({ dir: byDefault, stack: "flask", agents: "codex" }, q.p), 0);
+    q.p.close();
+    assert.equal(manifest(byDefault).options.db, "postgres", "Enter takes PostgreSQL");
+    assert.match(readFileSync(join(byDefault, "compose.db.yaml"), "utf8"), /postgres/);
+  });
+
+  it("offers only the engines the stack accepts, in the S1 order, with PostgreSQL as default (S6)", async () => {
+    const d = join(scratch(), "app");
+    const { p, output } = prompter("", "", "", "", "", "");
+    assert.equal(await quietInit({ dir: d, stack: "spring", agents: "codex" }, p), 0);
+    p.close();
+    assert.match(output(), /¿Qué base de datos\?\n {2}1\) MySQL {7}mysql\n {2}2\) PostgreSQL {2}postgres\n {2}3\) MongoDB {5}mongo\nNúmero \[2\]: /);
+    assert.doesNotMatch(output(), /SQLite/);
+    assert.equal(manifest(d).options.db, "postgres", "Enter takes PostgreSQL");
+    assert.match(readFileSync(join(d, "compose.db.yaml"), "utf8"), /postgres/);
+  });
+
+  it("does not ask about the Makefile on a rerun of a legacy manifest without the key, and keeps it (S5)", async () => {
+    const d = join(scratch(), "app");
+    assert.equal(await quietInit({ dir: d, stack: "flask", agents: "codex" }), 0);
+    const m = manifest(d);
+    delete m.options.makefile;
+    writeFileSync(join(d, ".agents/manifest.json"), JSON.stringify(m));
+    const rerun = prompter();
+    assert.equal(await quietInit({ dir: d }, rerun.p), 0);
+    rerun.p.close();
+    assert.equal(rerun.output(), "", "a rerun with a legacy manifest asks nothing");
+    assert.equal(manifest(d).options.makefile, true);
+    for (const f of ["Makefile", ".make/stack.mk"]) assert.ok(existsSync(join(d, f)), f);
+  });
+
+  it("no to the database records none and adds no overlay (S1)", async () => {
+    const d = join(scratch(), "app");
+    const { p, output } = prompter("", "", "n", "", "");
+    assert.equal(await quietInit({ dir: d, stack: "flask", agents: "codex" }, p), 0);
+    p.close();
+    assert.doesNotMatch(output(), /¿Qué base de datos\?/);
+    assert.equal(manifest(d).options.db, "none");
+    assert.ok(!existsSync(join(d, "compose.db.yaml")));
+  });
+
+  it("does not ask for the database for a frontend stack, with --db, or on a rerun, even with a saved auto (S1)", async () => {
+    const front = join(scratch(), "app");
+    const f = prompter("", "", "", "");
+    assert.equal(await quietInit({ dir: front, stack: "react", agents: "codex" }, f.p), 0);
+    f.p.close();
+    assert.doesNotMatch(f.output(), /base de datos/);
+    assert.equal(manifest(front).options.db, "none");
+
+    const flag = join(scratch(), "app");
+    const g = prompter("", "", "", "");
+    assert.equal(await quietInit({ dir: flag, stack: "flask", agents: "codex", db: "sqlite" }, g.p), 0);
+    g.p.close();
+    assert.doesNotMatch(g.output(), /base de datos/);
+    assert.equal(manifest(flag).options.db, "sqlite");
+    const rerun = prompter();
+    assert.equal(await quietInit({ dir: flag }, rerun.p), 0);
+    rerun.p.close();
+    assert.equal(rerun.output(), "", "a saved engine is not asked again");
+
+    const auto = join(scratch(), "app");
+    assert.equal(await quietInit({ dir: auto, stack: "flask", agents: "codex" }), 0);
+    assert.equal(manifest(auto).options.db, "auto", "without a prompter the default stays auto");
+    // The agent activated the database itself (bootstrap runs infra.sh), which leaves options.db as auto.
+    const infra = sh("bash", [".agents/skills/infra-setup/scripts/infra.sh", "--db", "postgres"], auto);
+    assert.equal(infra.code, 0, infra.stdout + infra.stderr);
+    const overlay = readFileSync(join(auto, "compose.db.yaml"), "utf8");
+    const again = prompter();
+    const lines: string[] = [];
+    assert.equal(await init({ dir: auto, externalSkills: false, force: false, dryRun: false },
+      { log: (l) => lines.push(l), prompt: again.p, fs: nodeFileSystem, runner: processRunner }), 0);
+    again.p.close();
+    assert.doesNotMatch(again.output(), /base de datos/, "a rerun never asks for the database");
+    assert.doesNotMatch(lines.join("\n"), /infra OK|ya existe con otro contenido|^\s*[+~] compose\.db\.yaml/m, "a rerun does not run infra-setup again");
+    assert.equal(manifest(auto).options.db, "auto");
+    assert.equal(readFileSync(join(auto, "compose.db.yaml"), "utf8"), overlay, "the agent's overlay is untouched");
   });
 
   it("does not ask about git with --no-git", async () => {
     const d = join(scratch(), "app");
-    const { p, output } = prompter("", "Reservas");
+    const { p, output } = prompter("", "", "n", "Reservas");
     assert.equal(await quietInit({ dir: d, stack: "flask", agents: "codex", noGit: true }, p), 0);
     p.close();
     assert.doesNotMatch(output(), /Inicializar git/);
@@ -402,7 +540,7 @@ describe("init with interactive answers", () => {
   it("lists the included skills and installs all the external ones when the answer is the default", async () => {
     const d = join(scratch(), "app");
     const { runner, calls } = fakeRunner();
-    const { p, output } = prompter("", "", "");
+    const { p, output } = prompter("", "", "", "n", "");
     const lines: string[] = [];
     const code = await init({ dir: d, stack: "flask", agents: "codex", externalSkills: true, force: false, dryRun: false }, { log: (l) => lines.push(l), prompt: p, fs: nodeFileSystem, runner });
     p.close();
@@ -417,7 +555,7 @@ describe("init with interactive answers", () => {
   it("installs only the chosen external skills, persists the choice and does not ask again (S1)", async () => {
     const d = join(scratch(), "app");
     const { runner, calls } = fakeRunner();
-    const { p, output } = prompter("1,grilling", "", "");
+    const { p, output } = prompter("1,grilling", "", "", "n", "");
     const lines: string[] = [];
     assert.equal(await init({ dir: d, stack: "flask", agents: "codex", externalSkills: true, force: false, dryRun: false }, { log: (l) => lines.push(l), prompt: p, fs: nodeFileSystem, runner }), 0);
     p.close();
@@ -441,7 +579,7 @@ describe("init with interactive answers", () => {
   it("ninguna installs nothing, reports it and persists an empty choice (S1)", async () => {
     const d = join(scratch(), "app");
     const { runner, calls } = fakeRunner();
-    const { p } = prompter("ninguna", "", "");
+    const { p } = prompter("ninguna", "", "", "n", "");
     const lines: string[] = [];
     assert.equal(await init({ dir: d, stack: "flask", agents: "codex", externalSkills: true, force: false, dryRun: false }, { log: (l) => lines.push(l), prompt: p, fs: nodeFileSystem, runner }), 0);
     p.close();
@@ -461,7 +599,7 @@ describe("init with interactive answers", () => {
   it("ninguno as the agents answer writes no tool files and a rerun keeps it without detection (S2)", async () => {
     const d = join(scratch(), "app");
     const { runner, calls } = fakeRunner();
-    const { p, output } = prompter("", "ninguno", "", "");
+    const { p, output } = prompter("", "ninguno", "", "", "n", "");
     const lines: string[] = [];
     assert.equal(await init({ dir: d, stack: "flask", externalSkills: true, force: false, dryRun: false }, { log: (l) => lines.push(l), prompt: p, fs: nodeFileSystem, runner }), 0);
     p.close();
@@ -483,7 +621,7 @@ describe("init with interactive answers", () => {
   it("--external-skills skips the question, installs the chosen skills and persists them (S4)", async () => {
     const d = join(scratch(), "app");
     const { runner, calls } = fakeRunner();
-    const { p, output } = prompter("", "");
+    const { p, output } = prompter("", "", "n", "");
     const lines: string[] = [];
     const o = { dir: d, stack: "flask", agents: "codex", externalSkills: true, externalChoice: "grilling,grill-me", force: false, dryRun: false };
     assert.equal(await init(o, { log: (l) => lines.push(l), prompt: p, fs: nodeFileSystem, runner }), 0);
@@ -508,7 +646,7 @@ describe("init with interactive answers", () => {
       mkdirSync(join(d, ".agents/skills", s), { recursive: true });
       writeFileSync(join(d, ".agents/skills", s, "SKILL.md"), "---\nname: x\n---\n");
     }
-    const { p, output } = prompter("", "");
+    const { p, output } = prompter("", "", "n", "");
     const code = await init({ dir: d, stack: "flask", agents: "codex", externalSkills: true, force: false, dryRun: false }, { log: () => {}, prompt: p, fs: nodeFileSystem, runner: processRunner });
     p.close();
     assert.equal(code, 0);

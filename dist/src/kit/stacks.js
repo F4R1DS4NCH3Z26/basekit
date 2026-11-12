@@ -4,6 +4,8 @@ import { UsageError } from "./errors.js";
 import { TEMPLATES } from "./templates.js";
 /** The kinds of app a stack builds (S1b). A frontend stack has no database. */
 export const KINDS = ["backend", "frontend", "fullstack"];
+/** The database engines a stack can accept (S6): what a stack.json without `dbs` accepts. */
+export const DB_ENGINES = ["postgres", "mysql", "sqlite", "mongo"];
 const ID = /^[a-z0-9][a-z0-9-]*$/;
 /** Every stack, sorted by id (that is also the detection order). */
 export function loadStacks(dir = join(TEMPLATES, "stacks")) {
@@ -26,11 +28,16 @@ export function loadStacks(dir = join(TEMPLATES, "stacks")) {
             (s.detect.priority === undefined || Number.isInteger(s.detect.priority)) &&
             Array.isArray(s.roles) &&
             Array.isArray(s.skills) &&
-            s.skills.every((r) => Array.isArray(r) && r.length === 2);
+            s.skills.every((r) => Array.isArray(r) && r.length === 2) &&
+            (s.dbs === undefined || (Array.isArray(s.dbs) && s.dbs.length > 0 && s.dbs.every((d) => DB_ENGINES.includes(d))));
         if (!valid)
             throw new Error(`stack.json inválido: stacks/${name}/stack.json`);
         return s;
     });
+}
+/** S6: the engines a stack accepts: its `dbs`, or every engine. */
+export function dbEngines(stack) {
+    return stack.dbs ?? DB_ENGINES;
 }
 /** S1b: a frontend stack has no database, so neither a database engine nor Redis applies to it. */
 export function hasDatabase(stack) {

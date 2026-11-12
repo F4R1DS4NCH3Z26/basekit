@@ -64,7 +64,7 @@ describe("acceptance 1: init in an empty folder, per stack", () => {
     assert.equal(m.version, "0.2.0");
     assert.equal(m.stack, "nextjs");
     assert.deepEqual(m.agents, ["claude-code", "opencode"]);
-    assert.deepEqual(m.options, { db: "auto", redis: false, docker: true });
+    assert.deepEqual(m.options, { db: "auto", redis: false, docker: true, makefile: true });
     assert.equal(m.externalSkills.ref, "5beb35b040e3de97e54fa9e386d7e42d15c295c2");
     assert.ok(m.createdAt && m.updatedAt);
 
@@ -171,7 +171,7 @@ describe("acceptance 4: --dry-run", () => {
 });
 
 describe("acceptance 5: invalid values", () => {
-  for (const [flag, value] of [["--stack", "foo"], ["--agents", "x"], ["--db", "mongo"]] as const) {
+  for (const [flag, value] of [["--stack", "foo"], ["--agents", "x"], ["--db", "oracle"]] as const) {
     it(`${flag} ${value} fails with a clear error`, () => {
       const d = scratch();
       const r = init(d, "--stack", "nextjs", flag, value);
@@ -571,6 +571,7 @@ describe("--no-docker", () => {
     assert.match(r.stdout, /^Falta la app del framework: créala con las herramientas del stack \(composer\.json\)\.$/m);
     assert.doesNotMatch(r.stdout, /make new-app/);
     assert.equal(JSON.parse(read(d, ".agents/manifest.json")).options.docker, false);
+    assert.equal(JSON.parse(read(d, ".agents/manifest.json")).options.makefile, false);
 
     const doc = basekit(["doctor", d]);
     assert.match(doc.stdout, /^· {5}sin Docker \(manifest\): se omiten Docker, Makefile y \.env$/m);
@@ -613,5 +614,194 @@ describe("--no-docker", () => {
 
   it("is listed in the help", () => {
     assert.match(basekit(["--help"]).stdout, /--no-docker\s+Sin Docker ni Makefile \(no compatible con --db, --redis ni un combinado\)/);
+  });
+});
+
+describe("--db mongo (S2)", () => {
+  it("is accepted: infra-setup adds the Mongo overlay and the manifest stores it", () => {
+    const d = scratch();
+    const r = init(d, "--stack", "flask", "--db", "mongo");
+    assert.equal(r.code, 0, r.stderr);
+    assert.match(r.stdout, /infra OK: db=mongo/);
+    assert.match(read(d, "compose.db.yaml"), /mongo/);
+    assert.match(read(d, ".make/db.mk"), /mongosh/);
+    assert.match(read(d, ".env.example"), /^DB_PASSWORD=__GENERATE__$/m);
+    assert.equal(JSON.parse(read(d, ".agents/manifest.json")).options.db, "mongo");
+  });
+
+  it("is listed in the help and in the invalid-value error", () => {
+    assert.ok(basekit(["--help"]).stdout.includes("--db <motor>            auto | postgres | mysql | sqlite | mongo | none (por defecto: auto;"));
+    const r = init(scratch(), "--stack", "flask", "--db", "oracle");
+    assert.equal(r.code, 2);
+    assert.equal(r.stderr, "ERROR: --db 'oracle' no es válido. Valores: auto, postgres, mysql, sqlite, mongo, none\n");
+  });
+});
+
+describe("engines per stack (S6)", () => {
+  const SPRING_SQLITE = "ERROR: --db 'sqlite' no aplica a spring: motores admitidos: postgres, mysql, mongo (o auto, none)\n";
+
+  it("rejects an explicit engine the stack does not accept, with exit 2 and before writing anything", () => {
+    const d = scratch();
+    const r = init(d, "--stack", "spring", "--db", "sqlite");
+    assert.equal(r.code, 2, r.stdout);
+    assert.equal(r.stderr, SPRING_SQLITE);
+    assert.equal(r.stdout, "");
+    assert.deepEqual(readdirSync(d), []);
+  });
+
+  it("applies to the backend of a combined project", () => {
+    const d = scratch();
+    const r = init(d, "--stack", "spring+react", "--db", "sqlite");
+    assert.equal(r.code, 2, r.stdout);
+    assert.equal(r.stderr, SPRING_SQLITE);
+    assert.deepEqual(readdirSync(d), []);
+  });
+
+  it("accepts an engine the stack lists", () => {
+    const d = scratch();
+    const r = init(d, "--stack", "spring", "--db", "mongo");
+    assert.equal(r.code, 0, r.stderr);
+    assert.match(r.stdout, /infra OK: db=mongo/);
+    assert.match(read(d, "compose.db.yaml"), /mongo/);
+    assert.equal(JSON.parse(read(d, ".agents/manifest.json")).options.db, "mongo");
+  });
+
+  it("keeps an engine already saved in the manifest without validating it again", () => {
+    const d = scratch();
+    assert.equal(init(d, "--stack", "spring").code, 0);
+    const m = JSON.parse(read(d, ".agents/manifest.json"));
+    m.options.db = "sqlite";
+    writeFileSync(join(d, ".agents/manifest.json"), JSON.stringify(m));
+    const r = init(d);
+    assert.equal(r.code, 0, r.stderr);
+    assert.equal(r.stderr, "");
+    assert.doesNotMatch(r.stdout, /infra OK/);
+    assert.equal(JSON.parse(read(d, ".agents/manifest.json")).options.db, "sqlite");
+  });
+
+  it("a stack without dbs still accepts every engine", () => {
+    for (const db of ["postgres", "mysql", "sqlite", "mongo"]) {
+      const r = init(scratch(), "--stack", "flask", "--db", db);
+      assert.equal(r.code, 0, `${db}: ${r.stderr}`);
+      assert.match(r.stdout, new RegExp(`infra OK: db=${db}`));
+    }
+  });
+});
+
+describe("--no-makefile (S3)", () => {
+  const NEXT = /^Falta la app del framework: créala con las herramientas del stack \(composer\.json\)\.$/m;
+  const WARNING = "! Makefile  (sin Makefile: usa docker compose directo, crea .env desde .env.example (reemplaza __GENERATE__) y adapta las reglas de AGENTS.md que usan make)";
+
+  it("writes the Docker files but no Makefile nor .make/, warns, and stores makefile: false", () => {
+    const d = scratch();
+    const r = init(d, "--stack", "laravel", "--no-makefile");
+    assert.equal(r.code, 0, r.stderr);
+    for (const f of ["Makefile", ".make"]) assert.ok(!existsSync(join(d, f)), `${f} created with --no-makefile`);
+    for (const f of ["Dockerfile", "compose.yaml", "compose.dev.yaml", "compose.prod.yaml", ".env.example", ".dockerignore", ".git", "AGENTS.md"]) {
+      assert.ok(existsSync(join(d, f)), f);
+    }
+    assert.ok(r.stdout.split("\n").includes(WARNING), r.stdout);
+    assert.match(r.stdout, NEXT);
+    assert.doesNotMatch(r.stdout, /make new-app/);
+    const m = JSON.parse(read(d, ".agents/manifest.json"));
+    assert.deepEqual(m.options, { db: "auto", redis: false, docker: true, makefile: false });
+  });
+
+  it("still runs infra-setup, which leaves .make/ alone without a Makefile", () => {
+    const d = scratch();
+    const r = init(d, "--stack", "flask", "--no-makefile", "--db", "postgres", "--redis");
+    assert.equal(r.code, 0, r.stderr);
+    assert.match(r.stdout, /infra OK: db=postgres redis=1/);
+    for (const f of ["compose.db.yaml", "compose.redis.yaml"]) assert.ok(existsSync(join(d, f)), f);
+    for (const f of ["Makefile", ".make"]) assert.ok(!existsSync(join(d, f)), f);
+    assert.match(read(d, ".env.example"), /^REDIS_PASSWORD=__GENERATE__$/m);
+  });
+
+  it("rejects a combined project before writing anything", () => {
+    const d = scratch();
+    const r = init(d, "--stack", "fastapi+react", "--no-makefile");
+    assert.equal(r.code, 2);
+    assert.equal(r.stderr, "ERROR: un proyecto combinado (<backend>+<frontend>) necesita el Makefile: el Makefile raíz delega en cada lado; quita --no-makefile\n");
+    assert.deepEqual(readdirSync(d), []);
+  });
+
+  it("is reused on a rerun and kept by sync, which writes no Makefile", () => {
+    const d = scratch();
+    assert.equal(init(d, "--stack", "flask", "--no-makefile").code, 0);
+    const again = init(d);
+    assert.equal(again.code, 0, again.stderr);
+    assert.ok(!existsSync(join(d, "Makefile")), "the rerun keeps makefile: false");
+    assert.equal(JSON.parse(read(d, ".agents/manifest.json")).options.makefile, false);
+    const s = basekit(["sync", d, "--no-external-skills"]);
+    assert.equal(s.code, 0, s.stderr);
+    for (const f of ["Makefile", ".make"]) assert.ok(!existsSync(join(d, f)), f);
+    assert.equal(JSON.parse(read(d, ".agents/manifest.json")).options.makefile, false);
+  });
+
+  it("sync stores makefile: true for a manifest without the key, and false without Docker", () => {
+    const old = scratch();
+    assert.equal(init(old, "--stack", "flask").code, 0);
+    const m = JSON.parse(read(old, ".agents/manifest.json"));
+    delete m.options.makefile;
+    writeFileSync(join(old, ".agents/manifest.json"), JSON.stringify(m));
+    assert.equal(basekit(["sync", old, "--no-external-skills"]).code, 0);
+    assert.equal(JSON.parse(read(old, ".agents/manifest.json")).options.makefile, true);
+
+    const none = scratch();
+    assert.equal(init(none, "--stack", "flask", "--no-docker").code, 0);
+    assert.equal(basekit(["sync", none, "--no-external-skills"]).code, 0);
+    assert.equal(JSON.parse(read(none, ".agents/manifest.json")).options.makefile, false);
+  });
+
+  it("a legacy manifest (Docker, no makefile key) keeps the Makefile in init, sync and doctor (S5)", () => {
+    const d = scratch();
+    assert.equal(init(d, "--stack", "flask").code, 0);
+    const m = JSON.parse(read(d, ".agents/manifest.json"));
+    delete m.options.makefile;
+    writeFileSync(join(d, ".agents/manifest.json"), JSON.stringify(m));
+    const again = init(d);
+    assert.equal(again.code, 0, again.stderr);
+    assert.doesNotMatch(again.stdout, /sin Makefile/);
+    assert.ok(existsSync(join(d, "Makefile")) && existsSync(join(d, ".make/stack.mk")));
+    assert.equal(JSON.parse(read(d, ".agents/manifest.json")).options.makefile, true);
+
+    delete m.options.makefile;
+    writeFileSync(join(d, ".agents/manifest.json"), JSON.stringify(m));
+    assert.equal(basekit(["sync", d, "--no-external-skills"]).code, 0);
+    assert.equal(JSON.parse(read(d, ".agents/manifest.json")).options.makefile, true);
+
+    delete m.options.makefile;
+    writeFileSync(join(d, ".agents/manifest.json"), JSON.stringify(m));
+    const doc = basekit(["doctor", d]);
+    assert.doesNotMatch(doc.stdout, /sin Makefile/);
+    assert.match(doc.stdout, /^(OK|FALTA) +make\b/m);
+    assert.match(doc.stdout, /^OK {4}Makefile$/m);
+  });
+
+  it("doctor skips make and the Makefile but keeps the Docker checks", () => {
+    const d = scratch();
+    assert.equal(init(d, "--stack", "laravel", "--no-makefile").code, 0);
+    const doc = basekit(["doctor", d]);
+    assert.match(doc.stdout, /^· {5}sin Makefile \(manifest\): se omiten make y el Makefile$/m);
+    assert.doesNotMatch(doc.stdout, /^(OK|FALTA) +(make|Makefile|\.make\/)/m);
+    assert.match(doc.stdout, /^(OK|FALTA) +docker\b/m);
+    assert.match(doc.stdout, /^(OK|FALTA) +docker compose\b/m);
+    for (const f of ["Dockerfile", "compose.yaml", "compose.dev.yaml", "compose.prod.yaml", ".env.example"]) {
+      assert.match(doc.stdout, new RegExp(`^OK {4}${f.replace(/\./g, "\\.")}$`, "m"), f);
+    }
+    assert.match(doc.stdout, /^(OK|FALTA) +\.env\b/m);
+  });
+
+  it("is listed in the help", () => {
+    assert.ok(basekit(["--help"]).stdout.includes("--no-makefile           Docker sin Makefile: usa docker compose directo (no compatible con un combinado)"));
+  });
+
+  it("-y keeps the defaults: database auto, Docker and Makefile", () => {
+    const d = scratch();
+    const r = init(d, "--stack", "flask");
+    assert.equal(r.code, 0, r.stderr);
+    assert.deepEqual(JSON.parse(read(d, ".agents/manifest.json")).options, { db: "auto", redis: false, docker: true, makefile: true });
+    for (const f of ["Makefile", ".make/stack.mk", "Dockerfile"]) assert.ok(existsSync(join(d, f)), f);
+    assert.doesNotMatch(r.stdout, /infra OK|¿/);
   });
 });

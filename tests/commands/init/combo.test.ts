@@ -86,7 +86,7 @@ describe("combined backend + frontend (S16): --stack <backend>+<frontend>", () =
 
     const m = JSON.parse(read(d, ".agents/manifest.json"));
     assert.equal(m.stack, "fastapi+react");
-    assert.deepEqual(m.options, { db: "auto", redis: false, docker: true });
+    assert.deepEqual(m.options, { db: "auto", redis: false, docker: true, makefile: true });
     assert.ok(m.files["backend/.agents/skills/py-verify/SKILL.md"], "side skills are tracked");
 
     assert.match(r.stdout, /make -C frontend new-app/);
@@ -147,7 +147,7 @@ describe("combined backend + frontend (S16): --stack <backend>+<frontend>", () =
     assert.match(read(d, "backend/.env.example"), /^DB_PASSWORD=__GENERATE__$/m);
     assert.match(read(d, "backend/.env.example"), /^REDIS_PASSWORD=__GENERATE__$/m);
     assert.doesNotMatch(read(d, "frontend/.env.example"), /DB_|REDIS/);
-    assert.deepEqual(JSON.parse(read(d, ".agents/manifest.json")).options, { db: "postgres", redis: true, docker: true });
+    assert.deepEqual(JSON.parse(read(d, ".agents/manifest.json")).options, { db: "postgres", redis: true, docker: true, makefile: true });
     assert.match(sh("make", ["-C", "backend", "-n", "dev"], d).stdout, /-f compose\.db\.yaml -f compose\.redis\.yaml/);
   });
 
@@ -249,7 +249,7 @@ describe("combined backend + frontend (S16): --stack <backend>+<frontend>", () =
       assert.ok(existsSync(join(d, f)), `root ${f} is not deleted`);
       assert.match(r.stdout, new RegExp(`^! ${f.replace(/\./g, "\\.")}  \\(queda del stack anterior: la base de datos ahora vive en backend/; bórralo si ya no lo necesitas\\)$`, "m"));
     }
-    assert.deepEqual(JSON.parse(read(d, ".agents/manifest.json")).options, { db: "postgres", redis: true, docker: true });
+    assert.deepEqual(JSON.parse(read(d, ".agents/manifest.json")).options, { db: "postgres", redis: true, docker: true, makefile: true });
     assert.match(read(d, "backend/.env.example"), /^DB_PASSWORD=__GENERATE__$/m);
     assert.match(sh("make", ["-C", "backend", "-n", "dev"], d).stdout, /-f compose\.db\.yaml -f compose\.redis\.yaml/);
     // settings.json is the user's once created: init only appends the side secret entries it lacks (S20).
