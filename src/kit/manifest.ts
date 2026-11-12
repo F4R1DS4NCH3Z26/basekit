@@ -39,7 +39,24 @@ export function readManifest(project: Project): Manifest | undefined {
 }
 
 /**
- * S5: whether the project uses the Makefile, the single rule of init, sync and doctor. In order: no Docker → no;
+ * Whether the project uses Docker, the single rule of init, sync and doctor (docker follow-ups S1a). In order:
+ * a combined project → yes; `--no-docker` → no; `--docker` → yes; the manifest's `options.docker !== false` (a
+ * manifest without it, written before the option existed, is yes and never asked); a first run → the answer of
+ * `ask`; otherwise yes. sync and doctor pass no flags.
+ */
+export function resolveDocker<A = never>(
+  c: { combined: boolean; noDocker?: boolean; docker?: boolean; manifest: Manifest | undefined },
+  ask?: () => A,
+): boolean | A {
+  if (c.combined) return true;
+  if (c.noDocker) return false;
+  if (c.docker) return true;
+  if (c.manifest) return c.manifest.options?.docker !== false;
+  return ask ? ask() : true;
+}
+
+/**
+ * Makefile question S5: whether the project uses the Makefile, the single rule of init, sync and doctor. In order: no Docker → no;
  * a combined project → yes (its root Makefile delegates); `--no-makefile` → no; the manifest's boolean; a manifest
  * without it (written before the option existed) → yes, never asked; a first run → the answer of `ask`; otherwise yes.
  */

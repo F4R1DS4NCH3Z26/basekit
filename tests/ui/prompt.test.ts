@@ -480,6 +480,70 @@ describe("init with interactive answers", () => {
     for (const f of ["Makefile", ".make/stack.mk"]) assert.ok(existsSync(join(d, f)), f);
   });
 
+  it("does not ask about Docker on a rerun of a legacy manifest without the key, and keeps it (docker follow-ups S1a)", async () => {
+    const d = join(scratch(), "app");
+    assert.equal(await quietInit({ dir: d, stack: "flask", agents: "codex" }), 0);
+    const m = manifest(d);
+    delete m.options.docker;
+    writeFileSync(join(d, ".agents/manifest.json"), JSON.stringify(m));
+    const rerun = prompter("n", "n");
+    assert.equal(await quietInit({ dir: d }, rerun.p), 0);
+    rerun.p.close();
+    assert.equal(rerun.output(), "", "a rerun with a legacy manifest asks nothing");
+    assert.equal(manifest(d).options.docker, true);
+    for (const f of ["Makefile", "Dockerfile", "compose.yaml"]) assert.ok(existsSync(join(d, f)), f);
+  });
+
+  it("--docker on a project without Docker asks about the Makefile but not the database (docker follow-ups S2)", async () => {
+    const d = join(scratch(), "app");
+    assert.equal(await quietInit({ dir: d, stack: "flask", agents: "codex", noDocker: true }), 0);
+    const { p, output } = prompter("n");
+    assert.equal(await quietInit({ dir: d, docker: true }, p), 0);
+    p.close();
+    const text = output();
+    assert.match(text, /¿Usar Makefile\? Es la interfaz para correr los comandos en los contenedores \[S\/n\]/);
+    assert.doesNotMatch(text, /¿Usar Docker\?|base de datos/);
+    assert.ok(existsSync(join(d, "Dockerfile")));
+    assert.ok(!existsSync(join(d, "Makefile")), "no to the Makefile");
+    assert.deepEqual(manifest(d).options, { db: "auto", redis: false, docker: true, makefile: false });
+  });
+
+  it("rejects --db/--redis without Docker before any question, the stack one included (docker follow-ups S3)", async () => {
+    for (const extra of [{ db: "postgres" }, { redis: true }]) {
+      const d = join(scratch(), "app");
+      const { p, output } = prompter("1", "Python", "flask", "", "");
+      await assert.rejects(quietInit({ dir: d, noDocker: true, ...extra }, p),
+        { message: "--db y --redis necesitan Docker: no se pueden usar con --no-docker ni sin Docker en el manifest" });
+      p.close();
+      assert.equal(output(), "", JSON.stringify(extra));
+      assert.ok(!existsSync(d), "nothing written");
+    }
+
+    const saved = join(scratch(), "app");
+    assert.equal(await quietInit({ dir: saved, stack: "flask", noDocker: true }), 0);
+    const before = readFileSync(join(saved, ".agents/manifest.json"), "utf8");
+    const q = prompter("", "");
+    await assert.rejects(quietInit({ dir: saved, redis: true, externalSkills: true }, q.p), /--db y --redis necesitan Docker/);
+    q.p.close();
+    assert.equal(q.output(), "", "not even the external skills question");
+    assert.equal(readFileSync(join(saved, ".agents/manifest.json"), "utf8"), before);
+  });
+
+  it("--db or --redis on a first run skip the Docker question: Docker is yes, the Makefile is still asked (docker follow-ups S3)", async () => {
+    for (const extra of [{ db: "sqlite" }, { redis: true }]) {
+      const d = join(scratch(), "app");
+      const { p, output } = prompter("n", "", "");
+      assert.equal(await quietInit({ dir: d, stack: "flask", agents: "codex", ...extra }, p), 0);
+      p.close();
+      const text = output();
+      assert.doesNotMatch(text, /¿Usar Docker\?/, JSON.stringify(extra));
+      assert.match(text, /¿Usar Makefile\?/);
+      assert.equal(manifest(d).options.docker, true);
+      assert.equal(manifest(d).options.makefile, false);
+      assert.ok(existsSync(join(d, "Dockerfile")));
+    }
+  });
+
   it("no to the database records none and adds no overlay (S1)", async () => {
     const d = join(scratch(), "app");
     const { p, output } = prompter("", "", "n", "", "");

@@ -1,6 +1,6 @@
 import { after, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { loadStacks } from "../../../src/kit/stacks.js";
 import { basekit, cleanup, fakeNpx, gitCommitAll, REPO, scratch, sh } from "../../helpers.js";
@@ -612,10 +612,325 @@ describe("--no-docker", () => {
     assert.equal(JSON.parse(read(old, ".agents/manifest.json")).options.docker, true);
   });
 
-  it("is listed in the help", () => {
-    assert.match(basekit(["--help"]).stdout, /--no-docker\s+Sin Docker ni Makefile \(no compatible con --db, --redis ni un combinado\)/);
+  it("is listed in the help, with the exact conflicts (S4)", () => {
+    const help = basekit(["--help"]).stdout.split("\n");
+    assert.ok(help.includes("  --no-docker             Sin Docker ni Makefile (no compatible con --redis, un combinado ni --db distinto de auto/none)"));
+  });
+
+  it("accepts --db auto and --db none", () => {
+    for (const db of ["auto", "none"]) {
+      const d = scratch();
+      const r = init(d, "--stack", "flask", "--no-docker", "--db", db);
+      assert.equal(r.code, 0, `${db}: ${r.stderr}`);
+      assert.equal(JSON.parse(read(d, ".agents/manifest.json")).options.docker, false);
+    }
   });
 });
+
+const MANIFEST_FILE = ".agents/manifest.json";
+const manifestOf = (d: string) => JSON.parse(read(d, MANIFEST_FILE));
+const editManifest = (d: string, edit: (m: { options: Record<string, unknown> }) => void) => {
+  const m = manifestOf(d);
+  edit(m);
+  writeFileSync(join(d, MANIFEST_FILE), JSON.stringify(m));
+};
+const LEFTOVER = "  (queda de cuando el proyecto usaba Docker: sin Docker no se usa; bórralo si ya no lo necesitas)";
+/** The S1b warnings of a run, in output order. */
+const leftovers = (stdout: string) =>
+  stdout.split("\n").filter((l) => l.endsWith(LEFTOVER)).map((l) => l.slice(2, -LEFTOVER.length));
+
+describe("one Docker rule for init, sync and doctor (S1a)", () => {
+  it("a legacy manifest without docker keeps Docker in init, sync and doctor", () => {
+    const d = scratch();
+    assert.equal(init(d, "--stack", "flask").code, 0);
+    editManifest(d, (m) => delete m.options.docker);
+    const again = init(d);
+    assert.equal(again.code, 0, again.stderr);
+    assert.doesNotMatch(again.stdout, /sin Docker/);
+    assert.equal(manifestOf(d).options.docker, true);
+
+    editManifest(d, (m) => delete m.options.docker);
+    const doc = basekit(["doctor", d]);
+    assert.doesNotMatch(doc.stdout, /sin Docker/);
+    assert.match(doc.stdout, /^(OK|FALTA) +docker\b/m);
+    assert.match(doc.stdout, /^OK {4}Dockerfile$/m);
+  });
+});
+
+describe("sync and doctor under the shared Docker rule (docker follow-ups S10)", () => {
+  it("a combined manifest edited to docker: false is still Docker for sync and doctor", () => {
+    const d = scratch();
+    assert.equal(init(d, "--stack", "fastapi+react").code, 0);
+    editManifest(d, (m) => (m.options.docker = false));
+    const s = basekit(["sync", d, "--no-external-skills"]);
+    assert.equal(s.code, 0, s.stderr);
+    assert.equal(manifestOf(d).options.docker, true);
+
+    editManifest(d, (m) => (m.options.docker = false));
+    const doc = basekit(["doctor", d]);
+    assert.doesNotMatch(doc.stdout, /sin Docker/);
+    assert.match(doc.stdout, /^(OK|FALTA) +docker\b/m);
+    assert.match(doc.stdout, /^OK {4}backend\/Dockerfile$/m);
+    assert.match(doc.stdout, /^OK {4}Makefile \(raíz\)$/m);
+  });
+});
+
+describe("turning Docker off leaves the Docker files with a warning (S1b)", () => {
+  it("warns once per leftover file, in path order, keeps them and stores docker: false", () => {
+    const d = scratch();
+    assert.equal(init(d, "--stack", "flask").code, 0);
+    const r = init(d, "--no-docker");
+    assert.equal(r.code, 0, r.stderr);
+    // docker follow-ups S9: the root Makefile is reported by the "sin Docker" line, not by a second S1b line.
+    const expected = [".dockerignore", ".env.example", ".make/stack.mk", "Dockerfile", "compose.dev.yaml", "compose.prod.yaml", "compose.yaml"];
+    assert.deepEqual(leftovers(r.stdout), expected);
+    for (const f of [...expected, "Makefile"]) assert.ok(existsSync(join(d, f)), `${f} was deleted`);
+    assert.equal(manifestOf(d).options.docker, false);
+
+    const keep = init(d);
+    assert.equal(keep.code, 0, keep.stderr);
+    assert.deepEqual(leftovers(keep.stdout), [], "a run that keeps Docker off warns nothing");
+    const flag = init(d, "--no-docker");
+    assert.deepEqual(leftovers(flag.stdout), [], "neither with --no-docker again");
+  });
+
+  it("includes the infra-setup overlays", () => {
+    const d = scratch();
+    const first = init(d, "--stack", "flask", "--db", "postgres", "--redis");
+    assert.equal(first.code, 0, first.stderr);
+    const r = init(d, "--no-docker");
+    assert.equal(r.code, 0, r.stderr);
+    const got = leftovers(r.stdout);
+    for (const f of ["compose.db.yaml", "compose.redis.yaml", ".make/db.mk"]) {
+      assert.ok(got.includes(f), `${f} missing from ${got.join(", ")}`);
+      assert.ok(existsSync(join(d, f)), f);
+    }
+    assert.deepEqual(got, [...got].sort());
+  });
+
+  it("reports the Makefile with exactly one ! line (docker follow-ups S9)", () => {
+    const d = scratch();
+    assert.equal(init(d, "--stack", "flask").code, 0);
+    const r = init(d, "--no-docker");
+    assert.equal(r.code, 0, r.stderr);
+    assert.deepEqual(r.stdout.split("\n").filter((l) => l.startsWith("! Makefile  ")), [
+      "! Makefile  (sin Docker: no se crean Makefile, Dockerfile ni compose; las reglas de AGENTS.md asumen Docker y make, adáptalas)",
+    ]);
+  });
+
+  it("a combined project switched to a single stack warns the previous combined layout once per path (docker follow-ups S10)", () => {
+    const d = scratch();
+    assert.equal(init(d, "--stack", "fastapi+react").code, 0);
+    const r = init(d, "--stack", "flask", "--no-docker");
+    assert.equal(r.code, 0, r.stderr);
+    const side = [".dockerignore", ".env.example", ".make/stack.mk", "Dockerfile", "Makefile", "compose.dev.yaml", "compose.prod.yaml", "compose.yaml"];
+    const expected = [...side.map((f) => `backend/${f}`), ...side.map((f) => `frontend/${f}`), "frontend/nginx.conf"].sort();
+    assert.deepEqual(leftovers(r.stdout), expected);
+    for (const f of [...expected, "Makefile"]) assert.ok(existsSync(join(d, f)), `${f} was deleted`);
+    // The root Makefile (the combined one) is reported once, by the "sin Docker" line (S9).
+    assert.equal(r.stdout.split("\n").filter((l) => l.startsWith("! Makefile  ")).length, 1, r.stdout);
+    assert.equal(manifestOf(d).options.docker, false);
+  });
+
+  it("gives no warning for the user's own Makefile, only for basekit's Makefile.basekit", () => {
+    const d = scratch();
+    writeFileSync(join(d, "Makefile"), "all:\n\techo mine\n");
+    assert.equal(init(d, "--stack", "flask").code, 0);
+    assert.ok(existsSync(join(d, "Makefile.basekit")));
+    const got = leftovers(init(d, "--no-docker").stdout);
+    assert.ok(got.includes("Makefile.basekit"), got.join(", "));
+    assert.ok(!got.includes("Makefile"), "the user's own Makefile is not basekit's");
+    assert.equal(read(d, "Makefile"), "all:\n\techo mine\n");
+  });
+});
+
+describe("--docker (S2)", () => {
+  it("re-enables Docker: writes the Docker files and resolves the Makefile again", () => {
+    const d = scratch();
+    assert.equal(init(d, "--stack", "flask", "--no-docker").code, 0);
+    assert.equal(manifestOf(d).options.makefile, false);
+    const r = init(d, "--docker");
+    assert.equal(r.code, 0, r.stderr);
+    for (const f of ["Makefile", ".make/stack.mk", "Dockerfile", "compose.yaml", ".env.example"]) assert.ok(existsSync(join(d, f)), f);
+    assert.doesNotMatch(r.stdout, /sin Docker|sin Makefile|infra OK/);
+    assert.deepEqual(manifestOf(d).options, { db: "auto", redis: false, docker: true, makefile: true });
+    const again = init(d);
+    assert.equal(again.code, 0, again.stderr);
+    assert.equal(manifestOf(d).options.docker, true, "a rerun keeps it on");
+  });
+
+  it("honors --no-makefile when re-enabling", () => {
+    const d = scratch();
+    assert.equal(init(d, "--stack", "flask", "--no-docker").code, 0);
+    const r = init(d, "--docker", "--no-makefile");
+    assert.equal(r.code, 0, r.stderr);
+    assert.ok(existsSync(join(d, "Dockerfile")));
+    assert.ok(!existsSync(join(d, "Makefile")));
+    assert.deepEqual(manifestOf(d).options, { db: "auto", redis: false, docker: true, makefile: false });
+  });
+
+  it("allows --db with it on a project created without Docker", () => {
+    const d = scratch();
+    assert.equal(init(d, "--stack", "flask", "--no-docker").code, 0);
+    const r = init(d, "--docker", "--db", "postgres");
+    assert.equal(r.code, 0, r.stderr);
+    assert.match(r.stdout, /infra OK: db=postgres/);
+    assert.equal(manifestOf(d).options.db, "postgres");
+  });
+
+  it("changes nothing on a project that already uses Docker", () => {
+    const d = scratch();
+    assert.equal(init(d, "--stack", "flask").code, 0);
+    const before = read(d, MANIFEST_FILE);
+    const r = init(d, "--docker");
+    assert.equal(r.code, 0, r.stderr);
+    assert.match(r.stdout, /^Todo al día: no había nada que cambiar\.$/m);
+    assert.equal(read(d, MANIFEST_FILE), before);
+  });
+
+  it("with --no-docker is a usage error before writing anything", () => {
+    const d = scratch();
+    const r = init(d, "--stack", "flask", "--docker", "--no-docker");
+    assert.equal(r.code, 2);
+    assert.equal(r.stderr, "ERROR: Usa --docker o --no-docker, no los dos\n");
+    assert.equal(r.stdout, "");
+    assert.deepEqual(readdirSync(d), []);
+  });
+
+  it("is init-only and listed in the help right before --no-docker", () => {
+    const s = basekit(["sync", scratch(), "--docker"]);
+    assert.equal(s.code, 2);
+    assert.equal(s.stderr, "ERROR: --docker no aplica a `sync`\n");
+    const help = basekit(["--help"]).stdout.split("\n");
+    const i = help.indexOf("  --docker                Vuelve a usar Docker en un proyecto creado sin Docker");
+    assert.ok(i >= 0, "help line");
+    assert.ok(help[i + 1]!.startsWith("  --no-docker "), "right before --no-docker");
+  });
+});
+
+describe("the --db/--redis check without Docker (S3)", () => {
+  it("rejects --db and --redis on a manifest without Docker, before writing anything", () => {
+    for (const extra of [["--db", "postgres"], ["--redis"]]) {
+      const d = scratch();
+      assert.equal(init(d, "--stack", "flask", "--no-docker").code, 0);
+      const before = read(d, MANIFEST_FILE);
+      const r = init(d, ...extra);
+      assert.equal(r.code, 2, `${extra.join(" ")}: ${r.stdout}`);
+      assert.equal(r.stderr, "ERROR: --db y --redis necesitan Docker: no se pueden usar con --no-docker ni sin Docker en el manifest\n");
+      assert.equal(r.stdout, "");
+      assert.equal(read(d, MANIFEST_FILE), before);
+    }
+  });
+});
+
+describe("a saved database without Docker (docker follow-ups S5)", () => {
+  const KEPT = "! .agents/manifest.json  (sin Docker no se usan la base de datos ni Redis guardados; se conservan para cuando vuelvas a usar Docker)";
+  const kept = (stdout: string) => stdout.split("\n").filter((l) => l === KEPT).length;
+
+  it("turning Docker off keeps the saved database and Redis, warns once, with the overlays warned", () => {
+    const d = scratch();
+    assert.equal(init(d, "--stack", "flask", "--db", "postgres", "--redis").code, 0);
+    const r = init(d, "--no-docker");
+    assert.equal(r.code, 0, r.stderr);
+    assert.equal(kept(r.stdout), 1, r.stdout);
+    assert.doesNotMatch(r.stdout, /infra OK|quedan db none/);
+    assert.deepEqual(manifestOf(d).options, { db: "postgres", redis: true, docker: false, makefile: false });
+    for (const f of ["compose.db.yaml", "compose.redis.yaml", ".make/db.mk"]) assert.ok(leftovers(r.stdout).includes(f), f);
+  });
+
+  it("a manifest already without Docker with a saved engine keeps it, without failing nor overlay warnings", () => {
+    const d = scratch();
+    assert.equal(init(d, "--stack", "flask", "--no-docker").code, 0);
+    editManifest(d, (m) => (m.options.db = "mysql"));
+    writeFileSync(join(d, "compose.db.yaml"), "services: {}\n");
+    const r = init(d);
+    assert.equal(r.code, 0, r.stderr);
+    assert.equal(kept(r.stdout), 1, r.stdout);
+    assert.deepEqual(leftovers(r.stdout), [], "the overlays are warned only on the run that turns Docker off");
+    assert.equal(manifestOf(d).options.db, "mysql");
+  });
+
+  it("--no-docker --db auto on a manifest with redis: true stores db auto, keeps Redis and warns", () => {
+    const d = scratch();
+    assert.equal(init(d, "--stack", "flask", "--db", "postgres", "--redis").code, 0);
+    const r = init(d, "--no-docker", "--db", "auto");
+    assert.equal(r.code, 0, r.stderr);
+    assert.equal(kept(r.stdout), 1, r.stdout);
+    const m = manifestOf(d);
+    assert.equal(m.options.db, "auto");
+    assert.equal(m.options.redis, true);
+  });
+
+  it("keeps a saved auto or none as is, without a warning", () => {
+    for (const db of ["auto", "none"]) {
+      const d = scratch();
+      assert.equal(init(d, "--stack", "flask", "--db", db).code, 0);
+      const r = init(d, "--no-docker");
+      assert.equal(r.code, 0, r.stderr);
+      assert.doesNotMatch(r.stdout, /sin Docker no se usan/);
+      assert.equal(manifestOf(d).options.db, db);
+      assert.equal(manifestOf(d).options.redis, false);
+    }
+  });
+
+  it("--no-docker then --docker restores the engine and runs infra-setup again", () => {
+    const d = scratch();
+    assert.equal(init(d, "--stack", "flask", "--db", "postgres", "--redis").code, 0);
+    assert.equal(init(d, "--no-docker").code, 0);
+    for (const f of ["compose.db.yaml", "compose.redis.yaml", ".make/db.mk"]) rmSync(join(d, f));
+    const r = init(d, "--docker");
+    assert.equal(r.code, 0, r.stderr);
+    assert.match(r.stdout, /^ *infra OK: db=postgres redis=1 /m);
+    assert.equal(kept(r.stdout), 0);
+    for (const f of ["compose.db.yaml", "compose.redis.yaml", ".make/db.mk"]) assert.ok(existsSync(join(d, f)), `${f} not restored`);
+    assert.deepEqual(manifestOf(d).options, { db: "postgres", redis: true, docker: true, makefile: true });
+  });
+
+  it("a failed restore prints the exact command to retry it (docker follow-ups S11)", () => {
+    const d = scratch();
+    assert.equal(init(d, "--stack", "flask", "--db", "postgres", "--redis").code, 0);
+    assert.equal(init(d, "--no-docker").code, 0);
+    // infra.sh rewrites .env.example; a folder in its place makes it fail.
+    rmSync(join(d, ".env.example"));
+    mkdirSync(join(d, ".env.example"));
+    const r = init(d, "--docker");
+    assert.match(r.stdout, new RegExp(`^! ${INFRA_PATH}  \\(falló; reinténtalo con: bash ${INFRA_PATH} --db postgres --redis\\)$`, "m"));
+  });
+
+  it("back to Docker with a saved auto and Redis never calls infra.sh with auto, and says how to set Redis up (S11)", () => {
+    const d = scratch();
+    assert.equal(init(d, "--stack", "flask", "--redis").code, 0);
+    assert.equal(init(d, "--no-docker").code, 0);
+    const r = init(d, "--docker");
+    assert.equal(r.code, 0, r.stderr);
+    assert.doesNotMatch(r.stdout + r.stderr, /infra OK|--db auto|falló/);
+    assert.match(r.stdout, new RegExp(`^! ${INFRA_PATH}  \\(${AUTO_REDIS}\\)$`, "m"));
+    assert.deepEqual(manifestOf(d).options, { db: "auto", redis: true, docker: true, makefile: true });
+  });
+
+  it("a single stack with a saved auto and Redis switched to combined never calls infra.sh with auto (S11)", () => {
+    const d = scratch();
+    assert.equal(init(d, "--stack", "flask", "--redis").code, 0);
+    const r = init(d, "--stack", "flask+react");
+    assert.equal(r.code, 0, r.stderr);
+    assert.doesNotMatch(r.stdout + r.stderr, /infra OK|--db auto|falló/);
+    assert.match(r.stdout, new RegExp(`^! backend/${INFRA_PATH}  \\(${AUTO_REDIS}\\)$`, "m"));
+  });
+
+  it("a frontend switch with --no-docker warns each overlay once, with the frontend reason (S11)", () => {
+    const d = scratch();
+    assert.equal(init(d, "--stack", "flask", "--db", "postgres", "--redis").code, 0);
+    const r = init(d, "--stack", "react", "--no-docker");
+    assert.equal(r.code, 0, r.stderr);
+    for (const f of ["compose.db.yaml", "compose.redis.yaml"]) {
+      const lines = r.stdout.split("\n").filter((l) => l.startsWith(`! ${f}  (`));
+      assert.deepEqual(lines, [`! ${f}  (queda del stack anterior: un stack frontend no usa base de datos; bórralo si ya no lo necesitas)`]);
+    }
+  });
+});
+
+const INFRA_PATH = ".agents/skills/infra-setup/scripts/infra.sh";
+const AUTO_REDIS = "Redis guardado con base de datos auto: infra.sh necesita un motor; ejecútalo con --db <motor> --redis";
 
 describe("--db mongo (S2)", () => {
   it("is accepted: infra-setup adds the Mongo overlay and the manifest stores it", () => {

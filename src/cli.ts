@@ -16,7 +16,7 @@ import { Prompter } from "./ui/prompt.js";
 
 /** Options each command accepts; anything else is an error instead of being silently ignored. */
 const ALLOWED: Record<string, string[]> = {
-  init: ["stack", "agents", "context", "db", "redis", "no-docker", "no-makefile", "no-git", "external-skills", "no-external-skills", "force", "dry-run", "yes"],
+  init: ["stack", "agents", "context", "db", "redis", "docker", "no-docker", "no-makefile", "no-git", "external-skills", "no-external-skills", "force", "dry-run", "yes"],
   sync: ["agents", "external-skills", "no-external-skills", "dry-run"],
   install: ["global", "project", "from"],
   uninstall: ["global", "project", "skills", "yes", "dry-run"],
@@ -52,7 +52,8 @@ Opciones de init:
                           un stack frontend solo admite auto o none; los demás, los motores de su
                           stack.json (dbs; todos si falta); en un combinado, va al backend)
   --redis                 Agrega Redis (no en un stack frontend; en un combinado, va al backend)
-  --no-docker             Sin Docker ni Makefile (no compatible con --db, --redis ni un combinado)
+  --docker                Vuelve a usar Docker en un proyecto creado sin Docker
+  --no-docker             Sin Docker ni Makefile (no compatible con --redis, un combinado ni --db distinto de auto/none)
   --no-makefile           Docker sin Makefile: usa docker compose directo (no compatible con un combinado)
   --no-git                No ejecuta git init (zone-check lo necesita)
   --external-skills <a,b> Skills externas a instalar: grill-me, grill-with-docs, grilling, domain-modeling.
@@ -113,6 +114,7 @@ async function main(argv: string[]): Promise<number> {
       context: { type: "string" },
       db: { type: "string" },
       redis: { type: "boolean" },
+      docker: { type: "boolean" },
       "no-docker": { type: "boolean" },
       "no-makefile": { type: "boolean" },
       "no-git": { type: "boolean" },
@@ -191,6 +193,7 @@ async function main(argv: string[]): Promise<number> {
             redis: values.redis,
             externalSkills: !values["no-external-skills"],
             externalChoice: values["external-skills"],
+            docker: values.docker ?? false,
             noDocker: values["no-docker"] ?? false,
             noMakefile: values["no-makefile"] ?? false,
             noGit: values["no-git"] ?? false,

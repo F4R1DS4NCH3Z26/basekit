@@ -31,14 +31,24 @@ export interface InitOptions {
   externalSkills: boolean;
   /** The raw value of `--external-skills` (S4): replaces the persisted choice and skips the question. */
   externalChoice?: string;
-  /** No Makefile nor stack files (Dockerfile, compose, .env.example): not with --db, --redis or a combined project. */
+  /** No Makefile nor stack files (Dockerfile, compose, .env.example): not with --redis, a combined project or --db other than auto/none. */
   noDocker?: boolean;
+  /** `--docker` (docker follow-ups S2): uses Docker again in a project created without it; not with --no-docker. */
+  docker?: boolean;
   /** Docker without the Makefile nor `.make/`: not with a combined project. */
   noMakefile?: boolean;
   /** Skips `git init` (zone-check needs a repository). */
   noGit?: boolean;
   force: boolean;
   dryRun: boolean;
+}
+
+/** docker follow-ups S3: the error of `--db` other than auto/none or `--redis` without Docker (unchanged text). */
+export const NEEDS_DOCKER = "--db y --redis necesitan Docker: no se pueden usar con --no-docker ni sin Docker en el manifest";
+
+/** Whether the flags ask for something only Docker runs: `--db` other than auto/none, or `--redis`. */
+export function needsDocker(o: InitOptions): boolean {
+  return (o.db !== undefined && o.db !== "auto" && o.db !== "none") || o.redis === true;
 }
 
 export function checkDb(db: string): string {
@@ -48,6 +58,7 @@ export function checkDb(db: string): string {
 
 /** Validates every flag against its whitelist before anything touches the disk; returns the parsed agents and external skills. */
 export function validateFlags(o: InitOptions, stacks: Stack[]): { agents?: string[]; externalSkills?: string[] } {
+  if (o.docker && o.noDocker) throw new UsageError("Usa --docker o --no-docker, no los dos");
   if (o.stack !== undefined) resolveParts(stacks, o.stack.trim());
   const agents = o.agents !== undefined ? parseAgents(o.agents) : undefined;
   if (o.db !== undefined) checkDb(o.db);
