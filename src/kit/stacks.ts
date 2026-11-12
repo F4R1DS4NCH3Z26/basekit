@@ -8,6 +8,9 @@ import { TEMPLATES } from "./templates.js";
 export const KINDS = ["backend", "frontend", "fullstack"] as const;
 export type Kind = (typeof KINDS)[number];
 
+/** The database engines a stack can accept (S6): what a stack.json without `dbs` accepts. */
+export const DB_ENGINES = ["postgres", "mysql", "sqlite", "mongo"];
+
 /** `plantillas/stacks/<id>/stack.json` (spec 02 §6). Everything stack-specific lives there, never in code. */
 export interface Stack {
   id: string;
@@ -27,6 +30,8 @@ export interface Stack {
   roles: string[];
   skills: [string, string][];
   defaultAuth?: string;
+  /** S6: the database engines the stack accepts, a subset of DB_ENGINES; missing means all of them. */
+  dbs?: string[];
 }
 
 const ID = /^[a-z0-9][a-z0-9-]*$/;
@@ -53,10 +58,16 @@ export function loadStacks(dir = join(TEMPLATES, "stacks")): Stack[] {
         (s.detect.priority === undefined || Number.isInteger(s.detect.priority)) &&
         Array.isArray(s.roles) &&
         Array.isArray(s.skills) &&
-        s.skills.every((r) => Array.isArray(r) && r.length === 2);
+        s.skills.every((r) => Array.isArray(r) && r.length === 2) &&
+        (s.dbs === undefined || (Array.isArray(s.dbs) && s.dbs.length > 0 && s.dbs.every((d) => DB_ENGINES.includes(d))));
       if (!valid) throw new Error(`stack.json inválido: stacks/${name}/stack.json`);
       return s;
     });
+}
+
+/** S6: the engines a stack accepts: its `dbs`, or every engine. */
+export function dbEngines(stack: Stack): string[] {
+  return stack.dbs ?? DB_ENGINES;
 }
 
 /** S1b: a frontend stack has no database, so neither a database engine nor Redis applies to it. */

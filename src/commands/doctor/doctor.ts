@@ -3,7 +3,7 @@ import { AGENTS } from "../../kit/agents.js";
 import { AGENTS_MD_WARN } from "../../kit/agents-md.js";
 import { missingExternal } from "../../kit/external-skills.js";
 import { inPart, isCombined, newAppCommand, partsOf } from "../../kit/layout.js";
-import { chosenExternal, MANIFEST, readManifest } from "../../kit/manifest.js";
+import { chosenExternal, MANIFEST, readManifest, resolveMakefile } from "../../kit/manifest.js";
 import { Project, resolveRoot } from "../../kit/project.js";
 import { loadStacks, stackDir } from "../../kit/stacks.js";
 import { TEMPLATES, walk } from "../../kit/templates.js";
@@ -26,8 +26,9 @@ export function doctor(dir: string | undefined, ctx: Context): number {
   const manifest = readManifest(project);
   // Without Docker (manifest `options.docker: false`) the Docker tools, the Makefile and .env are not checked.
   const docker = manifest?.options?.docker !== false;
-  // With Docker but without the Makefile (`options.makefile: false`), make and the Makefile files are not checked.
-  const makefile = docker && manifest?.options?.makefile !== false;
+  // With Docker but without the Makefile (S5, as init and sync resolve it), make and the Makefile files are not checked.
+  const parts = partsOf(loadStacks(), manifest?.stack);
+  const makefile = resolveMakefile({ docker, combined: parts !== undefined && isCombined(parts), manifest });
   if (docker) {
     check(ctx.runner.works("docker", ["--version"]), "docker", "instala Docker");
     check(ctx.runner.works("docker", ["compose", "version"]), "docker compose (plugin v2 o superior)", "instala el plugin Compose v2");
@@ -36,7 +37,6 @@ export function doctor(dir: string | undefined, ctx: Context): number {
   }
 
   check(manifest !== undefined, MANIFEST, "ejecuta `basekit init`");
-  const parts = partsOf(loadStacks(), manifest?.stack);
   if (!manifest || !parts) {
     if (manifest) check(false, `stack '${manifest.stack ?? ""}'`, "el manifest apunta a un stack que esta versión no conoce");
     return 1;

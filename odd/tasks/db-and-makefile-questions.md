@@ -78,7 +78,7 @@ User decisions: Q3 "Campo dbs en stack.json"; Q4 "Sí, error de uso"; Q6 the err
 | T3 | S1, S2 (CLI side + Go template tests), S3 in Go, same strings | delegated (writer trigger a: parallel with T2) | done (RED 12 fail → GREEN; go vet/test/gofmt OK incl. 15 mongo compose tests; parent fixed doctor appMarker hint parity RED→GREEN and ported docs/guias/02) | uncommitted |
 | T4 | S1 (rerun no longer asks the database question) in Node and Go | inline | done | see Log L7 |
 | T5 | S4 + S6 template data (compose.mongo.yaml healthcheck; spring stack.json `dbs`), copied to basekit-go | inline | done (RED→GREEN infra.test; real Docker first boot healthy ~9s; Go copy identical) | see git log |
-| T6 | S5, S6 in Node (+ tests, docs) | delegated (writer trigger a: parallel with T7; context backstop) | pending | |
+| T6 | S5, S6 in Node (+ tests, docs) | delegated (writer trigger a: parallel with T7; context backstop) | done (RED 6 → GREEN; verify.sh OK incl. compose engines per stack; differential identical except requested help line; parent spot check 7/7; parent added spec 05 MongoDB row and hardened the S4 $$ assertion after review R3-001) | see git log |
 | T7 | S5, S6 in Go (+ tests, parity tree, docs) | delegated (writer trigger a: parallel with T6) | pending | |
 
 ## Log

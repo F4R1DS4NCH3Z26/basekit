@@ -9,12 +9,12 @@ import {
   displayName, INFRA, INFRA_SKILL, inPart, isCombined, nameCompose, newAppCommand, partsOf, resolveParts, roleFiles, specOf, wireEnv, zoneFiles,
   type Part,
 } from "../../kit/layout.js";
-import { chosenExternal, EXTERNAL_SKILLS, readManifest, writeManifest } from "../../kit/manifest.js";
+import { chosenExternal, EXTERNAL_SKILLS, readManifest, resolveMakefile, writeManifest } from "../../kit/manifest.js";
 import { Project, resolveRoot } from "../../kit/project.js";
 import { detectStack, hasDatabase, loadStacks, stackDir } from "../../kit/stacks.js";
 import { modeOf, render, template, TEMPLATES, walk } from "../../kit/templates.js";
 import type { Context } from "../context.js";
-import { checkDb, checkStackDb, DB_CHOICES, DEFAULT_DB_CHOICE, validateFlags, type InitOptions } from "./options.js";
+import { checkDb, checkStackDb, dbChoices, DEFAULT_DB_CHOICE, validateFlags, type InitOptions } from "./options.js";
 
 /** The kit skills plus each part's stack skills, as installed in .agents/skills (shown before the external ones). */
 function skillsOf(parts: Part[]): string[] {
@@ -76,7 +76,7 @@ export async function init(o: InitOptions, ctx: Context): Promise<number> {
   // Redis carry over only to a stack that has a database (an existing project switched to a frontend drops them).
   const dbStack = parts[0]!.stack;
   const saved = hasDatabase(dbStack) ? prev?.options : undefined;
-  let db = checkStackDb(dbStack, checkDb(o.db ?? saved?.db ?? "auto"), o.redis);
+  let db = checkStackDb(dbStack, checkDb(o.db ?? saved?.db ?? "auto"), o.redis, o.db !== undefined);
   const redis = o.redis ?? saved?.redis ?? false;
   if (isCombined(parts) && o.noDocker) {
     throw new UsageError("un proyecto combinado (<backend>+<frontend>) necesita Docker: cada lado corre con su Makefile y compose; quita --no-docker");
@@ -125,15 +125,12 @@ export async function init(o: InitOptions, ctx: Context): Promise<number> {
   if (!docker && ((o.db !== undefined && o.db !== "auto" && o.db !== "none") || o.redis)) {
     throw new UsageError("--db y --redis necesitan Docker: no se pueden usar con --no-docker ni sin Docker en el manifest");
   }
-  // Makefile (S3): it needs Docker; a combined project always has it (the root Makefile delegates);
-  // then flag → manifest → question → yes.
-  const savedMakefile = prev?.options?.makefile;
-  let makefile: boolean;
-  if (!docker) makefile = false;
-  else if (isCombined(parts)) makefile = true;
-  else if (o.noMakefile) makefile = false;
-  else if (typeof savedMakefile === "boolean") makefile = savedMakefile;
-  else makefile = ctx.prompt ? await ctx.prompt.confirm("¿Usar Makefile? Es la interfaz para correr los comandos en los contenedores", true) : true;
+  // Makefile (S3, S5): the rule shared with sync and doctor; asked only on the first run.
+  const prompt = ctx.prompt;
+  const makefile = await resolveMakefile(
+    { docker, combined: isCombined(parts), noMakefile: o.noMakefile, manifest: prev },
+    prompt && (() => prompt.confirm("¿Usar Makefile? Es la interfaz para correr los comandos en los contenedores", true)),
+  );
 
   // Database (S1): asked only on the first run (no manifest), with Docker, for a stack (or backend side) that has
   // one, and without --db. A rerun keeps the saved engine, even auto: the agent may have run infra.sh itself.
@@ -141,7 +138,7 @@ export async function init(o: InitOptions, ctx: Context): Promise<number> {
   let dbFlag = o.db;
   if (ctx.prompt && docker && hasDatabase(dbStack) && o.db === undefined && !prev) {
     dbFlag = (await ctx.prompt.confirm("¿Integrar base de datos?", true))
-      ? await ctx.prompt.choose("¿Qué base de datos?", DB_CHOICES, DEFAULT_DB_CHOICE)
+      ? await ctx.prompt.choose("¿Qué base de datos?", dbChoices(dbStack), DEFAULT_DB_CHOICE)
       : "none";
     db = dbFlag;
   }

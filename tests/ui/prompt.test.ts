@@ -455,6 +455,31 @@ describe("init with interactive answers", () => {
     assert.match(readFileSync(join(byDefault, "compose.db.yaml"), "utf8"), /postgres/);
   });
 
+  it("offers only the engines the stack accepts, in the S1 order, with PostgreSQL as default (S6)", async () => {
+    const d = join(scratch(), "app");
+    const { p, output } = prompter("", "", "", "", "", "");
+    assert.equal(await quietInit({ dir: d, stack: "spring", agents: "codex" }, p), 0);
+    p.close();
+    assert.match(output(), /¿Qué base de datos\?\n {2}1\) MySQL {7}mysql\n {2}2\) PostgreSQL {2}postgres\n {2}3\) MongoDB {5}mongo\nNúmero \[2\]: /);
+    assert.doesNotMatch(output(), /SQLite/);
+    assert.equal(manifest(d).options.db, "postgres", "Enter takes PostgreSQL");
+    assert.match(readFileSync(join(d, "compose.db.yaml"), "utf8"), /postgres/);
+  });
+
+  it("does not ask about the Makefile on a rerun of a legacy manifest without the key, and keeps it (S5)", async () => {
+    const d = join(scratch(), "app");
+    assert.equal(await quietInit({ dir: d, stack: "flask", agents: "codex" }), 0);
+    const m = manifest(d);
+    delete m.options.makefile;
+    writeFileSync(join(d, ".agents/manifest.json"), JSON.stringify(m));
+    const rerun = prompter();
+    assert.equal(await quietInit({ dir: d }, rerun.p), 0);
+    rerun.p.close();
+    assert.equal(rerun.output(), "", "a rerun with a legacy manifest asks nothing");
+    assert.equal(manifest(d).options.makefile, true);
+    for (const f of ["Makefile", ".make/stack.mk"]) assert.ok(existsSync(join(d, f)), f);
+  });
+
   it("no to the database records none and adds no overlay (S1)", async () => {
     const d = join(scratch(), "app");
     const { p, output } = prompter("", "", "n", "", "");

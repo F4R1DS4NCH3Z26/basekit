@@ -637,6 +637,57 @@ describe("--db mongo (S2)", () => {
   });
 });
 
+describe("engines per stack (S6)", () => {
+  const SPRING_SQLITE = "ERROR: --db 'sqlite' no aplica a spring: motores admitidos: postgres, mysql, mongo (o auto, none)\n";
+
+  it("rejects an explicit engine the stack does not accept, with exit 2 and before writing anything", () => {
+    const d = scratch();
+    const r = init(d, "--stack", "spring", "--db", "sqlite");
+    assert.equal(r.code, 2, r.stdout);
+    assert.equal(r.stderr, SPRING_SQLITE);
+    assert.equal(r.stdout, "");
+    assert.deepEqual(readdirSync(d), []);
+  });
+
+  it("applies to the backend of a combined project", () => {
+    const d = scratch();
+    const r = init(d, "--stack", "spring+react", "--db", "sqlite");
+    assert.equal(r.code, 2, r.stdout);
+    assert.equal(r.stderr, SPRING_SQLITE);
+    assert.deepEqual(readdirSync(d), []);
+  });
+
+  it("accepts an engine the stack lists", () => {
+    const d = scratch();
+    const r = init(d, "--stack", "spring", "--db", "mongo");
+    assert.equal(r.code, 0, r.stderr);
+    assert.match(r.stdout, /infra OK: db=mongo/);
+    assert.match(read(d, "compose.db.yaml"), /mongo/);
+    assert.equal(JSON.parse(read(d, ".agents/manifest.json")).options.db, "mongo");
+  });
+
+  it("keeps an engine already saved in the manifest without validating it again", () => {
+    const d = scratch();
+    assert.equal(init(d, "--stack", "spring").code, 0);
+    const m = JSON.parse(read(d, ".agents/manifest.json"));
+    m.options.db = "sqlite";
+    writeFileSync(join(d, ".agents/manifest.json"), JSON.stringify(m));
+    const r = init(d);
+    assert.equal(r.code, 0, r.stderr);
+    assert.equal(r.stderr, "");
+    assert.doesNotMatch(r.stdout, /infra OK/);
+    assert.equal(JSON.parse(read(d, ".agents/manifest.json")).options.db, "sqlite");
+  });
+
+  it("a stack without dbs still accepts every engine", () => {
+    for (const db of ["postgres", "mysql", "sqlite", "mongo"]) {
+      const r = init(scratch(), "--stack", "flask", "--db", db);
+      assert.equal(r.code, 0, `${db}: ${r.stderr}`);
+      assert.match(r.stdout, new RegExp(`infra OK: db=${db}`));
+    }
+  });
+});
+
 describe("--no-makefile (S3)", () => {
   const NEXT = /^Falta la app del framework: créala con las herramientas del stack \(composer\.json\)\.$/m;
   const WARNING = "! Makefile  (sin Makefile: usa docker compose directo, crea .env desde .env.example (reemplaza __GENERATE__) y adapta las reglas de AGENTS.md que usan make)";
@@ -700,6 +751,31 @@ describe("--no-makefile (S3)", () => {
     assert.equal(init(none, "--stack", "flask", "--no-docker").code, 0);
     assert.equal(basekit(["sync", none, "--no-external-skills"]).code, 0);
     assert.equal(JSON.parse(read(none, ".agents/manifest.json")).options.makefile, false);
+  });
+
+  it("a legacy manifest (Docker, no makefile key) keeps the Makefile in init, sync and doctor (S5)", () => {
+    const d = scratch();
+    assert.equal(init(d, "--stack", "flask").code, 0);
+    const m = JSON.parse(read(d, ".agents/manifest.json"));
+    delete m.options.makefile;
+    writeFileSync(join(d, ".agents/manifest.json"), JSON.stringify(m));
+    const again = init(d);
+    assert.equal(again.code, 0, again.stderr);
+    assert.doesNotMatch(again.stdout, /sin Makefile/);
+    assert.ok(existsSync(join(d, "Makefile")) && existsSync(join(d, ".make/stack.mk")));
+    assert.equal(JSON.parse(read(d, ".agents/manifest.json")).options.makefile, true);
+
+    delete m.options.makefile;
+    writeFileSync(join(d, ".agents/manifest.json"), JSON.stringify(m));
+    assert.equal(basekit(["sync", d, "--no-external-skills"]).code, 0);
+    assert.equal(JSON.parse(read(d, ".agents/manifest.json")).options.makefile, true);
+
+    delete m.options.makefile;
+    writeFileSync(join(d, ".agents/manifest.json"), JSON.stringify(m));
+    const doc = basekit(["doctor", d]);
+    assert.doesNotMatch(doc.stdout, /sin Makefile/);
+    assert.match(doc.stdout, /^(OK|FALTA) +make\b/m);
+    assert.match(doc.stdout, /^OK {4}Makefile$/m);
   });
 
   it("doctor skips make and the Makefile but keeps the Docker checks", () => {

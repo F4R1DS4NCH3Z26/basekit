@@ -45,7 +45,8 @@ Opciones de init:
                           none: ninguno (solo AGENTS.md y .agents/, sin adaptadores)
   --context <texto>       De qué trata el proyecto
   --db <motor>            auto | postgres | mysql | sqlite | mongo | none (por defecto: auto;
-                          un stack frontend solo admite auto o none; en un combinado, va al backend)
+                          un stack frontend solo admite auto o none; los demás, los motores de su
+                          stack.json (dbs; todos si falta); en un combinado, va al backend)
   --redis                 Agrega Redis (no en un stack frontend; en un combinado, va al backend)
   --no-docker             Sin Docker ni Makefile (no compatible con --db, --redis ni un combinado)
   --no-makefile           Docker sin Makefile: usa docker compose directo (no compatible con un combinado)

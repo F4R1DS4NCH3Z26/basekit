@@ -69,6 +69,9 @@ describe("infra.sh", () => {
     // S4: healthy only once the real mongod answers on the service host with the root user (not the init-time
     // localhost-only mongod), with a 30s start period.
     assert.match(overlay, /test: \[.*mongosh.*--host db.*--authenticationDatabase admin/);
+    // As the root user, with $$ so Compose leaves the variables to the container (a single $ would be
+    // interpolated, usually empty, on the host and the check would never pass).
+    assert.match(overlay, /-u \\"\$\$\{MONGO_INITDB_ROOT_USERNAME\}\\" -p \\"\$\$\{MONGO_INITDB_ROOT_PASSWORD\}\\"/);
     assert.match(overlay, /^\s*start_period: 30s$/m);
     assert.match(read(d, ".env.example"), /^# >>> db\nDB_NAME=app\nDB_USER=app\nDB_PASSWORD=__GENERATE__\n# <<< db$/m);
     assert.match(read(d, ".make/db.mk"), /^DB_SHELL_CMD = .*mongosh/);

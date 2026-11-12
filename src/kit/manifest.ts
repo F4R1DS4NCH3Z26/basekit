@@ -38,6 +38,22 @@ export function readManifest(project: Project): Manifest | undefined {
   }
 }
 
+/**
+ * S5: whether the project uses the Makefile, the single rule of init, sync and doctor. In order: no Docker → no;
+ * a combined project → yes (its root Makefile delegates); `--no-makefile` → no; the manifest's boolean; a manifest
+ * without it (written before the option existed) → yes, never asked; a first run → the answer of `ask`; otherwise yes.
+ */
+export function resolveMakefile<A = never>(
+  c: { docker: boolean; combined: boolean; noMakefile?: boolean; manifest: Manifest | undefined },
+  ask?: () => A,
+): boolean | A {
+  if (!c.docker) return false;
+  if (c.combined) return true;
+  if (c.noMakefile) return false;
+  if (c.manifest) return c.manifest.options?.makefile !== false;
+  return ask ? ask() : true;
+}
+
 const withoutUpdatedAt = ({ updatedAt: _ignored, ...rest }: Manifest) => JSON.stringify(rest);
 
 /** The external skills to install: the persisted choice (only pinned names, in pinned order), or all of them. */
