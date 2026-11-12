@@ -69,7 +69,7 @@ User: "arreglá las advertencias de Docker que quedan en los dos".
 - Observable behavior does not change (S1–S5 tests stay green).
 
 ### S8 · Naming, one overlay list, unambiguous comments (review: R2-leftovers-stack-flag-misnamed, R2-overlay-list-duplicated, R2-dup-overlay-list, R2-ambiguous-spec-labels)
-- The boolean parameter of the leftovers helper is named after what it means: Docker was on in the previous manifest (for example `dockerWasOn`). Its doc says so.
+- The leftovers helper takes no boolean. It is called only when Docker was on in the previous manifest, and its doc says so. (The first draft asked to rename the flag; L8 removed it.)
 - One definition of the infra-setup overlays, shared by the frontend-switch warning, the S1b leftovers and the S5 path. Go: one helper such as `dockerOverlays(p)` that both the S1b and S5 paths call. A comment states why the frontend-switch warning covers only the compose overlays and the Docker-off one also covers `.make/db.mk`, or both use the same list if the difference is not needed. Choose the option that keeps today's output.
 - Code comments that cite this feature's specs say "docker follow-ups S#". Comments for other features keep their own qualifier (for example "Makefile question S3"). No bare `(S5)` remains where it is ambiguous.
 
@@ -82,13 +82,22 @@ User: "arreglá las advertencias de Docker que quedan en los dos".
 - `--no-docker --db auto` on a manifest with `redis: true` (S5 example). Both repos.
 - The full set of `!` lines for `Makefile` when Docker is turned off is exactly one (S9).
 
+### S11 · infra.sh never gets `auto`, and one warning per path (review of 532b048: R3-restored-skips-auto-redis, R4-restore-not-retryable, R3-overlay-double-warning-frontend-switch)
+User: "si" (to fixing the Docker advisories of that review).
+- infra.sh is never called with `--db auto`: it rejects it, and `none` would remove a database the agent set up itself. When infra-setup would run with a saved `auto` and Redis (back to Docker, or a single stack switched to combined, the "carried" case), init does not call it and prints:
+  `! <script>  (Redis guardado con base de datos auto: infra.sh necesita un motor; ejecútalo con --db <motor> --redis)`
+  `<script>` is the infra-setup path of the part with the database, for example `backend/.agents/skills/infra-setup/scripts/infra.sh`.
+- A failed restore prints the existing retry line, `! <script>  (falló; reinténtalo con: bash <script> --db <db> [--redis])`. A test pins it. (The review assumed the manifest is written before infra.sh; in fact infra.sh runs first, and the failure line already gives the retry command.)
+- One `!` line per path: when the frontend switch already warned a compose overlay ("queda del stack anterior"), the Docker-off leftovers skip it.
+
 ## Tasks
 | ID | Specs | Route | Status | Commit |
 |---|---|---|---|---|
 | T1 | S1–S6 in Node | delegated (writer trigger a: parallel with T2) | done (RED per rule → GREEN; verify.sh OK, parent re-ran: OK; owners 0 unowned; differential identical) | c917ccf |
 | T2 | S1–S6 in Go | delegated (writer trigger a: parallel with T1) | done (RED per rule → GREEN; make verify OK; GOOS=windows vet OK; differential identical; parent re-ran the Docker tests: ok) | a951dca |
-| T3 | S5 (rewritten), S7–S10 in Node | delegated (writer trigger a: parallel with T4) | done (RED per rule → GREEN; verify.sh OK, parent re-ran: OK; owners 0; differential: only requested changes) | uncommitted |
-| T4 | S5 (rewritten), S7–S10 in Go | delegated (writer trigger a: parallel with T3) | done (RED per rule → GREEN; make verify OK, parent re-ran: OK; windows vet OK; differential: only requested changes) | uncommitted |
+| T3 | S5 (rewritten), S7–S10 in Node | delegated (writer trigger a: parallel with T4) | done (RED per rule → GREEN; verify.sh OK, parent re-ran: OK; owners 0; differential: only requested changes) | 532b048 |
+| T4 | S5 (rewritten), S7–S10 in Go | delegated (writer trigger a: parallel with T3) | done (RED per rule → GREEN; make verify OK, parent re-ran: OK; windows vet OK; differential: only requested changes) | c60540a |
+| T5 | S11 in both repos | inline (small: under 100 lines per repo) | done (RED: the auto+Redis restore, carried and double-warning tests failed in both; the retry test passed, pinning existing behavior; GREEN; verify.sh OK, make verify OK, windows vet OK) | uncommitted |
 
 ## Log
 - L1 (2026-11-12) user: "arreglá las 5 advertencias de Docker en los dos" (after "que advertencias hay?", where the 5 Docker follow-ups were listed from the 2026-11-11 review).
@@ -96,8 +105,8 @@ User: "arreglá las advertencias de Docker que quedan en los dos".
 - L4 T2 done. Resolved ambiguities:
   - S1b: the stack's `files/` are created without being recorded in the manifest `files` (only the Makefile is). So only `Makefile`/`Makefile.basekit` are checked against `files`; the previous stack's `files/` and the root overlays are warned whenever they exist.
   - S3: the Docker-off check also runs after the existing stack/db checks when the stack comes from a flag or the manifest, so the earlier error precedence is unchanged (react + `--no-docker` + `--db postgres` still gives the stack error).
-  - S5: it fires on the resolved values. With `--db auto` and a saved `redis: true`, both drop.
-  - A frontend switch with `--no-docker` may warn an overlay twice, once for each reason.
+  - S5 (first version, replaced by L7): it fired on the resolved values. With `--db auto` and a saved `redis: true`, both dropped.
+  - A frontend switch with `--no-docker` could warn an overlay twice, once for each reason. S11 fixed it.
 - L5 T1 done. Cross-implementation run of the same scenarios on both CLIs (S1b/S5 warnings, `--docker` re-enable, the S2/S3 errors, a legacy manifest with sync, and the help lines). Go printed the S1b/S5 warnings before the file report, Node right after `! Makefile  (sin Docker: …)`. The parent moved Go's to Node's place (make verify OK). After that the outputs are identical, except two differences that already existed: the manifest key order and the AGENTS.md block length (`npx --no-install`).
 - L6 Native review, granted by the user in both repos, lenses readability + reliability, on the uncommitted working trees:
   - Node: assessed high, approved and acknowledged (review-711579fb6df5802f, burned). The untracked feature doc was excluded. Advisories: R2-ambiguous-S5-label, R2-duplicated-docker-off-rule, R2-misleading-stack-flag, R2-overlay-list-duplicated, R3-dropped-overrides-auto (a saved `auto` becomes `none` when Redis is dropped, as S5 says).
@@ -116,4 +125,5 @@ User: "arreglá las advertencias de Docker que quedan en los dos".
   - Combined → single with `--no-docker` warns the backend/ and frontend/ paths (plus frontend/nginx.conf).
 
   Cross-implementation run (scenarios as in L5, plus combined → single with `--no-docker`, and `--redis` then `--no-docker --db auto`): identical output except the two differences that already existed. Existing issue left open, outside scope: the single → combined "carried" path with a saved `auto` + `redis: true` would call `infra.sh --db auto --redis`, which fails.
+- L9 (2026-11-12) Commit reviews of 532b048 (review-1b440f434fd8cc85) and c60540a (review-6db9880bdc36e7e5): both approved and acknowledged. User: "si" to fixing the Docker advisories, which became S11/T5. Left open as uninstall advisories, a separate batch: Node R3-keepsown-ignores-empty-user-dirs and Go R3-001 (a missing canonical folder drops its links from the plan). Also noticed, not fixed: `init --redis` without `--db` on a first run stores `redis: true` but does not run infra-setup. That predates this feature.
 - L3 Engram mirror `odd/docker-follow-ups/tasks`: PENDING. Auto mode cannot review `mem_save` because a hook rewrites its input.

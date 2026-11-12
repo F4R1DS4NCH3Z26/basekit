@@ -885,7 +885,52 @@ describe("a saved database without Docker (docker follow-ups S5)", () => {
     for (const f of ["compose.db.yaml", "compose.redis.yaml", ".make/db.mk"]) assert.ok(existsSync(join(d, f)), `${f} not restored`);
     assert.deepEqual(manifestOf(d).options, { db: "postgres", redis: true, docker: true, makefile: true });
   });
+
+  it("a failed restore prints the exact command to retry it (docker follow-ups S11)", () => {
+    const d = scratch();
+    assert.equal(init(d, "--stack", "flask", "--db", "postgres", "--redis").code, 0);
+    assert.equal(init(d, "--no-docker").code, 0);
+    // infra.sh rewrites .env.example; a folder in its place makes it fail.
+    rmSync(join(d, ".env.example"));
+    mkdirSync(join(d, ".env.example"));
+    const r = init(d, "--docker");
+    assert.match(r.stdout, new RegExp(`^! ${INFRA_PATH}  \\(falló; reinténtalo con: bash ${INFRA_PATH} --db postgres --redis\\)$`, "m"));
+  });
+
+  it("back to Docker with a saved auto and Redis never calls infra.sh with auto, and says how to set Redis up (S11)", () => {
+    const d = scratch();
+    assert.equal(init(d, "--stack", "flask", "--redis").code, 0);
+    assert.equal(init(d, "--no-docker").code, 0);
+    const r = init(d, "--docker");
+    assert.equal(r.code, 0, r.stderr);
+    assert.doesNotMatch(r.stdout + r.stderr, /infra OK|--db auto|falló/);
+    assert.match(r.stdout, new RegExp(`^! ${INFRA_PATH}  \\(${AUTO_REDIS}\\)$`, "m"));
+    assert.deepEqual(manifestOf(d).options, { db: "auto", redis: true, docker: true, makefile: true });
+  });
+
+  it("a single stack with a saved auto and Redis switched to combined never calls infra.sh with auto (S11)", () => {
+    const d = scratch();
+    assert.equal(init(d, "--stack", "flask", "--redis").code, 0);
+    const r = init(d, "--stack", "flask+react");
+    assert.equal(r.code, 0, r.stderr);
+    assert.doesNotMatch(r.stdout + r.stderr, /infra OK|--db auto|falló/);
+    assert.match(r.stdout, new RegExp(`^! backend/${INFRA_PATH}  \\(${AUTO_REDIS}\\)$`, "m"));
+  });
+
+  it("a frontend switch with --no-docker warns each overlay once, with the frontend reason (S11)", () => {
+    const d = scratch();
+    assert.equal(init(d, "--stack", "flask", "--db", "postgres", "--redis").code, 0);
+    const r = init(d, "--stack", "react", "--no-docker");
+    assert.equal(r.code, 0, r.stderr);
+    for (const f of ["compose.db.yaml", "compose.redis.yaml"]) {
+      const lines = r.stdout.split("\n").filter((l) => l.startsWith(`! ${f}  (`));
+      assert.deepEqual(lines, [`! ${f}  (queda del stack anterior: un stack frontend no usa base de datos; bórralo si ya no lo necesitas)`]);
+    }
+  });
 });
+
+const INFRA_PATH = ".agents/skills/infra-setup/scripts/infra.sh";
+const AUTO_REDIS = "Redis guardado con base de datos auto: infra.sh necesita un motor; ejecútalo con --db <motor> --redis";
 
 describe("--db mongo (S2)", () => {
   it("is accepted: infra-setup adds the Mongo overlay and the manifest stores it", () => {

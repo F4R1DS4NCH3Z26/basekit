@@ -120,10 +120,14 @@ export async function init(o, ctx) {
     // Overlays left by an earlier backend stay (they are the user's files): say they no longer apply. A frontend stack
     // keeps the single-stack Makefile, whose `-include .make/db.mk` still reads that file, so only the compose overlays
     // are warned; the root Makefile of a combined project includes no `.make/` file, so `.make/db.mk` is warned too.
+    // `warned` keeps one ! line per path (docker follow-ups S11): the Docker-off leftovers skip what was already warned.
+    const warned = new Set();
     if (!hasDatabase(dbStack) && parts.length === 1) {
         for (const f of OVERLAYS.filter((f) => f.startsWith("compose."))) {
-            if (project.exists(f))
-                project.report("!", f, `queda del stack anterior: un stack frontend no usa base de datos; bórralo si ya no lo necesitas`);
+            if (!project.exists(f))
+                continue;
+            project.report("!", f, `queda del stack anterior: un stack frontend no usa base de datos; bórralo si ya no lo necesitas`);
+            warned.add(f);
         }
     }
     if (isCombined(parts)) {
@@ -180,9 +184,8 @@ export async function init(o, ctx) {
     // side has no overlays yet, so infra.sh runs for it as with an explicit --db. The root ones stay (the user's files).
     const carried = isCombined(parts) && before !== undefined && !isCombined(before) && dbFlag === undefined && hasInfra(db, redis);
     // Back to Docker (docker follow-ups S5) with a saved engine or Redis: infra.sh runs with them as with an explicit
-    // --db, so overlays deleted after the S1b warnings come back. A saved auto is never passed (infra.sh has no auto,
-    // and an explicit --db auto does not run it either).
-    const restored = reenabled && dbFlag === undefined && db !== "auto" && hasInfra(db, redis);
+    // --db, so overlays deleted after the S1b warnings come back.
+    const restored = reenabled && dbFlag === undefined && hasInfra(db, redis);
     // Git: only asked when .git is missing (zone-check needs it).
     const hasGit = project.exists(".git");
     let gitInit = !hasGit && !o.noGit;
@@ -247,7 +250,7 @@ export async function init(o, ctx) {
         // docker follow-ups S1b: on the run that turns Docker off nothing is deleted (they are the user's files now); each
         // leftover gets a warning.
         if (dockerWasOn) {
-            for (const f of dockerLeftovers(project, prevFiles, before ?? parts)) {
+            for (const f of dockerLeftovers(project, prevFiles, before ?? parts).filter((f) => !warned.has(f))) {
                 project.report("!", f, "queda de cuando el proyecto usaba Docker: sin Docker no se usa; bórralo si ya no lo necesitas");
             }
         }
@@ -311,8 +314,13 @@ export async function init(o, ctx) {
     // works on the folder that holds it. Only when --db is passed (or answered, S1), the database moves to a new backend
     // side or Docker comes back on (docker follow-ups S5): a rerun that takes the db from the manifest must not touch the
     // infrastructure again.
-    if (docker && ((dbFlag !== undefined && dbFlag !== "auto") || carried || restored)) {
-        const script = inPart(parts[0], INFRA);
+    // infra.sh has no auto (docker follow-ups S11): a saved auto with Redis is never passed to it; the warning says how
+    // to set Redis up with an engine. `none` is not a substitute: it would remove a database the agent set up itself.
+    const script = inPart(parts[0], INFRA);
+    if (docker && (carried || restored) && db === "auto") {
+        project.report("!", script, "Redis guardado con base de datos auto: infra.sh necesita un motor; ejecútalo con --db <motor> --redis");
+    }
+    else if (docker && ((dbFlag !== undefined && dbFlag !== "auto") || carried || restored)) {
         const args = [script, "--db", db, ...(redis ? ["--redis"] : [])];
         const shown = `bash ${args.join(" ")}`;
         if (o.dryRun)
