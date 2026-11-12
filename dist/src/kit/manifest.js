@@ -36,7 +36,7 @@ export function resolveDocker(c, ask) {
     return ask ? ask() : true;
 }
 /**
- * S5: whether the project uses the Makefile, the single rule of init, sync and doctor. In order: no Docker → no;
+ * Makefile question S5: whether the project uses the Makefile, the single rule of init, sync and doctor. In order: no Docker → no;
  * a combined project → yes (its root Makefile delegates); `--no-makefile` → no; the manifest's boolean; a manifest
  * without it (written before the option existed) → yes, never asked; a first run → the answer of `ask`; otherwise yes.
  */

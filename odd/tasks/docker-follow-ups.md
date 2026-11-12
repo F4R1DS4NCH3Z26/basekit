@@ -46,23 +46,49 @@ Follow-up: "The help text 'no compatible con --db' overstates the conflict: `--d
 - The help line becomes:
   `  --no-docker             Sin Docker ni Makefile (no compatible con --redis, un combinado ni --db distinto de auto/none)`
 
-### S5 · A saved database is checked against no Docker (follow-up 5)
+### S5 · A saved database is checked against no Docker (follow-up 5; rewritten by L7)
 Follow-up: "A database saved in the manifest is not checked against no-Docker: the guard only reads the `--db` and `--redis` flags."
-- Precedent: a project switched to a frontend stack drops the saved database and Redis, and the overlays stay with a warning.
-- When Docker resolves off and the database or Redis comes from the manifest (no `--db`/`--redis` flags; a saved `db` other than `auto`/`none`, or `redis: true`), init does not fail. It records `db: "none"` and `redis: false`, and prints once:
-  `! .agents/manifest.json  (sin Docker no se usan la base de datos ni Redis guardados: quedan db none y redis false)`
-  The overlays get the S1b warnings when they exist. infra-setup does not run.
-- A saved `auto` or `none` with Docker off is kept as is, without a warning.
+- When Docker resolves off and the database or Redis comes from the manifest (a saved `db` other than `auto`/`none` with no `--db`, or a saved `redis: true` with no `--redis`), init does not fail and **keeps the saved values unchanged** in the manifest. infra-setup does not run. It prints once per run:
+  `! .agents/manifest.json  (sin Docker no se usan la base de datos ni Redis guardados; se conservan para cuando vuelvas a usar Docker)`
+  The overlays get the S1b warnings when they exist (only on the run that turns Docker off, as S1b says).
+- Each value is decided on its own: an explicit `--db` (`auto` or `none`, the only ones allowed without Docker, S3) is stored as given, and the saved Redis is kept. Example: `--no-docker --db auto` on a manifest with `redis: true` stores `db: "auto"`, `redis: true`, and prints the warning (because of Redis).
+- A saved `auto` or `none` and `redis: false` with Docker off are kept, without a warning.
+- Back to Docker (S2, Docker off → on) with a saved engine other than `auto`/`none` or `redis: true`: infra-setup runs with them, as with an explicit `--db` (`infra.sh --db <db> [--redis]`), so overlays deleted after the S1b warning come back.
 
 ### S6 · Docs
 - CLI spec (Node `docs/spec/02_especificacion_cli.md`, Go `docs/guias/02_especificacion_cli.md`): the flag table (`--docker`, the `--no-docker` row), the Docker step (the S1a order), the S1b/S5 warnings, the S3 check order, and the S2 Makefile rule.
 - README, wherever it lists the init flags.
 
+### S7 · One Docker rule, no hand-written copies (review: R2-docker-off-rule-reimplemented, R2-dup-manifest-docker-rule)
+User: "arreglá las advertencias de Docker que quedan en los dos".
+- Every Docker decision in init comes from the shared `resolveDocker` (S1a):
+  - the S3 check before the questions: Docker is off without asking exactly when `resolveDocker` would say no without reaching the question step;
+  - "the previous manifest had Docker": `resolveDocker` on the previous manifest alone (no flags), with the previous stack's combined flag;
+  - the S2 off→on Makefile reset and the S1b on→off leftovers use those two values.
+- No other expression re-reads `options.docker` or restates the steps. The combined step comes from `resolveDocker` itself, so no separate `!isCombined` guard is needed for it.
+- Observable behavior does not change (S1–S5 tests stay green).
+
+### S8 · Naming, one overlay list, unambiguous comments (review: R2-leftovers-stack-flag-misnamed, R2-overlay-list-duplicated, R2-dup-overlay-list, R2-ambiguous-spec-labels)
+- The boolean parameter of the leftovers helper is named after what it means: Docker was on in the previous manifest (for example `dockerWasOn`). Its doc says so.
+- One definition of the infra-setup overlays, shared by the frontend-switch warning, the S1b leftovers and the S5 path. Go: one helper such as `dockerOverlays(p)` that both the S1b and S5 paths call. A comment states why the frontend-switch warning covers only the compose overlays and the Docker-off one also covers `.make/db.mk`, or both use the same list if the difference is not needed. Choose the option that keeps today's output.
+- Code comments that cite this feature's specs say "docker follow-ups S#". Comments for other features keep their own qualifier (for example "Makefile question S3"). No bare `(S5)` remains where it is ambiguous.
+
+### S9 · The Makefile gets one warning (review: R3-makefile-double-warning)
+- When Docker is turned off and `Makefile` is a leftover, the S1b list skips `Makefile`, because the existing `! Makefile  (sin Docker: no se crean Makefile, Dockerfile ni compose; las reglas de AGENTS.md asumen Docker y make, adáptalas)` line already reports that path. Every other leftover path, `Makefile.basekit` included, keeps its S1b line.
+
+### S10 · Missing tests (review: R3-sync-docker-rule-untested, R3-002, R3-combined-leftovers-untested, R3-dropped-overrides-explicit-db, R3-001)
+- sync under the shared rule: a legacy manifest without `docker` keeps `docker: true` after sync, and a combined manifest edited to `docker: false` is treated as Docker by sync and doctor. Both repos.
+- A combined project switched to a single stack with `--no-docker`: the leftover warnings cover the previous combined layout (the root Makefile and the side paths), once per path, in path order. Both repos.
+- `--no-docker --db auto` on a manifest with `redis: true` (S5 example). Both repos.
+- The full set of `!` lines for `Makefile` when Docker is turned off is exactly one (S9).
+
 ## Tasks
 | ID | Specs | Route | Status | Commit |
 |---|---|---|---|---|
-| T1 | S1–S6 in Node | delegated (writer trigger a: parallel with T2) | done (RED per rule → GREEN; verify.sh OK, parent re-ran: OK; owners 0 unowned; differential identical) | uncommitted |
-| T2 | S1–S6 in Go | delegated (writer trigger a: parallel with T1) | done (RED per rule → GREEN; make verify OK; GOOS=windows vet OK; differential identical; parent re-ran the Docker tests: ok) | uncommitted |
+| T1 | S1–S6 in Node | delegated (writer trigger a: parallel with T2) | done (RED per rule → GREEN; verify.sh OK, parent re-ran: OK; owners 0 unowned; differential identical) | c917ccf |
+| T2 | S1–S6 in Go | delegated (writer trigger a: parallel with T1) | done (RED per rule → GREEN; make verify OK; GOOS=windows vet OK; differential identical; parent re-ran the Docker tests: ok) | a951dca |
+| T3 | S5 (rewritten), S7–S10 in Node | delegated (writer trigger a: parallel with T4) | done (RED per rule → GREEN; verify.sh OK, parent re-ran: OK; owners 0; differential: only requested changes) | uncommitted |
+| T4 | S5 (rewritten), S7–S10 in Go | delegated (writer trigger a: parallel with T3) | done (RED per rule → GREEN; make verify OK, parent re-ran: OK; windows vet OK; differential: only requested changes) | uncommitted |
 
 ## Log
 - L1 (2026-11-12) user: "arreglá las 5 advertencias de Docker en los dos" (after "que advertencias hay?", where the 5 Docker follow-ups were listed from the 2026-11-11 review).
@@ -77,4 +103,17 @@ Follow-up: "A database saved in the manifest is not checked against no-Docker: t
   - Node: assessed high, approved and acknowledged (review-711579fb6df5802f, burned). The untracked feature doc was excluded. Advisories: R2-ambiguous-S5-label, R2-duplicated-docker-off-rule, R2-misleading-stack-flag, R2-overlay-list-duplicated, R3-dropped-overrides-auto (a saved `auto` becomes `none` when Redis is dropped, as S5 says).
   - Go: assessed medium, approved and acknowledged (review-dc352df5a6db5806, burned). The new test file was included. Advisories: R2-dup-manifest-docker-rule, R2-dup-overlay-list, R3-combined-leftovers-untested, R3-makefile-double-warning (`Makefile` gets both the "sin Docker" line and the S1b line; Node does the same).
   - None of them block. Commits are pending the user's approval.
+- L7 (2026-11-12) User: "arreglá las advertencias de Docker que quedan en los dos" (after the commit reviews of c917ccf/a951dca, review-e103175bca073159, review-535d7756d2c048df and review-fc544051ca41dee1).
+  - S5 is rewritten: the drop to none/false made the `--no-docker` → `--docker` round trip lose the engine (R4) and overrode an explicit `--db auto` (R3, Go R3-001).
+  - Saved values are now kept, and infra-setup runs again on the way back to Docker.
+  - S7–S10 added; T3/T4 open.
+  - The uninstall advisories of the last Go review (uninstall.go R3-001/R3-002) are not Docker ones and stay out of scope.
+- L8 T3/T4 done. Gaps filled the same way in both repos (Node first; the parent sent them to the Go writer):
+  - S8: the leftovers helper takes no boolean. It is called only when Docker was on.
+  - S5: infra-setup runs on the way back only when the saved db is not `auto` (infra.sh rejects `--db auto`) and (db ≠ `none` or `redis`).
+  - S9 wins over S10's wording: the root `Makefile` gets only the "sin Docker" line, while the side Makefiles and `Makefile.basekit` keep S1b lines.
+  - Output order: the "sin Docker" Makefile line, then the S5 line, then S1b.
+  - Combined → single with `--no-docker` warns the backend/ and frontend/ paths (plus frontend/nginx.conf).
+
+  Cross-implementation run (scenarios as in L5, plus combined → single with `--no-docker`, and `--redis` then `--no-docker --db auto`): identical output except the two differences that already existed. Existing issue left open, outside scope: the single → combined "carried" path with a saved `auto` + `redis: true` would call `infra.sh --db auto --redis`, which fails.
 - L3 Engram mirror `odd/docker-follow-ups/tasks`: PENDING. Auto mode cannot review `mem_save` because a hook rewrites its input.

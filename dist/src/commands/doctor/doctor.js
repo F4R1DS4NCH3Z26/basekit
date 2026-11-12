@@ -22,7 +22,7 @@ export function doctor(dir, ctx) {
     check(ctx.runner.works("git", ["--version"]), "git", "instala git");
     const manifest = readManifest(project);
     // Without Docker (as init and sync resolve it) the Docker tools, the Makefile and .env are not checked.
-    // With Docker but without the Makefile (S5), make and the Makefile files are not checked.
+    // With Docker but without the Makefile (Makefile question S5), make and the Makefile files are not checked.
     const parts = partsOf(loadStacks(), manifest?.stack);
     const combined = parts !== undefined && isCombined(parts);
     const docker = resolveDocker({ combined, manifest });
