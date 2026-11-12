@@ -9,7 +9,7 @@ import { nodeFileSystem } from "../../src/infra/file-system.js";
 import { processRunner, type Runner } from "../../src/infra/runner.js";
 import { Prompter } from "../../src/ui/prompt.js";
 import { loadStacks } from "../../src/kit/stacks.js";
-import { cleanup, scratch } from "../helpers.js";
+import { cleanup, scratch, sh } from "../helpers.js";
 
 after(cleanup);
 
@@ -465,7 +465,7 @@ describe("init with interactive answers", () => {
     assert.ok(!existsSync(join(d, "compose.db.yaml")));
   });
 
-  it("does not ask for the database for a frontend stack, with --db, or with a saved engine; a saved auto asks (S1)", async () => {
+  it("does not ask for the database for a frontend stack, with --db, or on a rerun, even with a saved auto (S1)", async () => {
     const front = join(scratch(), "app");
     const f = prompter("", "", "", "");
     assert.equal(await quietInit({ dir: front, stack: "react", agents: "codex" }, f.p), 0);
@@ -487,11 +487,19 @@ describe("init with interactive answers", () => {
     const auto = join(scratch(), "app");
     assert.equal(await quietInit({ dir: auto, stack: "flask", agents: "codex" }), 0);
     assert.equal(manifest(auto).options.db, "auto", "without a prompter the default stays auto");
-    const asked = prompter("n");
-    assert.equal(await quietInit({ dir: auto }, asked.p), 0);
-    asked.p.close();
-    assert.match(asked.output(), /¿Integrar base de datos\? \[S\/n\]/);
-    assert.equal(manifest(auto).options.db, "none");
+    // The agent activated the database itself (bootstrap runs infra.sh), which leaves options.db as auto.
+    const infra = sh("bash", [".agents/skills/infra-setup/scripts/infra.sh", "--db", "postgres"], auto);
+    assert.equal(infra.code, 0, infra.stdout + infra.stderr);
+    const overlay = readFileSync(join(auto, "compose.db.yaml"), "utf8");
+    const again = prompter();
+    const lines: string[] = [];
+    assert.equal(await init({ dir: auto, externalSkills: false, force: false, dryRun: false },
+      { log: (l) => lines.push(l), prompt: again.p, fs: nodeFileSystem, runner: processRunner }), 0);
+    again.p.close();
+    assert.doesNotMatch(again.output(), /base de datos/, "a rerun never asks for the database");
+    assert.doesNotMatch(lines.join("\n"), /infra OK|ya existe con otro contenido|^\s*[+~] compose\.db\.yaml/m, "a rerun does not run infra-setup again");
+    assert.equal(manifest(auto).options.db, "auto");
+    assert.equal(readFileSync(join(auto, "compose.db.yaml"), "utf8"), overlay, "the agent's overlay is untouched");
   });
 
   it("does not ask about git with --no-git", async () => {

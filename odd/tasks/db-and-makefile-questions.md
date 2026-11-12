@@ -11,7 +11,7 @@ User: "agrega una pregunta si se quiere integrar base de datos y si acepta de la
 - If yes, it asks `¿Qué base de datos?` (single choice) with these options, in this order: `MySQL` (`mysql`), `SQLite` (`sqlite`), `PostgreSQL` (`postgres`), `MongoDB` (`mongo`). Default: `PostgreSQL` (assumption).
 - If no, the database is `none`.
 - The answer has the same effect as passing `--db <engine>`: infra-setup runs with that engine, and the manifest stores it in `options.db`.
-- The questions come right after the Docker and Makefile questions (S3). They are asked only when every one of these holds (assumption): there is a prompt (not `-y`); Docker is on; the stack, or the backend part of a combined stack, accepts a database (a frontend stack does not); `--db` was not passed; the manifest has no saved db other than `auto`.
+- The questions come right after the Docker and Makefile questions (S3). They are asked only when every one of these holds (assumption): there is a prompt (not `-y`); Docker is on; the stack, or the backend part of a combined stack, accepts a database (a frontend stack does not); `--db` was not passed; it is the first run (no manifest). A rerun keeps the saved engine, even `auto` (see L7).
 - Without the questions (`-y`, flags, or a rerun), behavior is unchanged: the default stays `auto`.
 
 ### S2 · MongoDB engine (connection only)
@@ -51,6 +51,7 @@ User: "Divide las preguntas de DOCKERfILE y MakeFile." Decision (2026-11-12): "M
 | T1 | S2 (templates: compose.mongo.yaml, infra.sh, SKILL.md, template tests in Node), copied byte-identical to basekit-go/plantillas | inline | done (RED 4 fail → GREEN 17/17 infra.test; compose config OK; Go copy identical) | uncommitted |
 | T2 | S1, S2 (CLI side), S3 in Node: cli.ts, options, init, prompt, manifest, sync, doctor, dist/src, tests, README, docs/spec | delegated (writer trigger a: parallel with T3) | done (RED→GREEN; verify.sh OK incl. 15 mongo compose tests; differential clean; parent spot check 29/29) | uncommitted |
 | T3 | S1, S2 (CLI side + Go template tests), S3 in Go, same strings | delegated (writer trigger a: parallel with T2) | done (RED 12 fail → GREEN; go vet/test/gofmt OK incl. 15 mongo compose tests; parent fixed doctor appMarker hint parity RED→GREEN and ported docs/guias/02) | uncommitted |
+| T4 | S1 (rerun no longer asks the database question) in Node and Go | inline | done | see Log L7 |
 
 ## Log
 - L1 (2026-11-12) user: "en los dos proyectos agrega una pregunta si se quiere integrar base de datos y si acepta de las opciones de Mysql, SQLlITE, PosgreSql y MongoDB. Tambien Divide las preguntas de DOCKERfILE y MakeFile."
@@ -59,3 +60,4 @@ User: "Divide las preguntas de DOCKERfILE y MakeFile." Decision (2026-11-12): "M
 - L4 Route: T1 inline (about 100 lines of shared templates). T2 and T3 are independent units in separate repos with disjoint surfaces, each several hundred lines, so writer trigger (a) fires and they run in parallel after T1.
 - L5 (2026-11-12) user: "puede haber Docker sin base de datos y Docker puede tener frontend" → already covered: DB "no" → none; Docker/Makefile questions apply to every stack, DB question skipped for frontend.
 - L6 Seam check: Node verify.sh OK; Go go vet + go test ./... OK; feature strings byte-identical in both repos. Parity fix: Go doctor suggested `make new-app` without a Makefile; now uses `makefile` like Node. Go spec doc is docs/guias/02 (not docs/spec), ported by parent, including the missing --no-docker row. Next: user approval for commits.
+- L7 (2026-11-12) review finding R1/R3 (rerun with db auto re-asks; if the agent already ran infra.sh, infra fails with `compose.db.yaml ya existe con otro contenido`). User: "si, arreglá eso". S1 rewritten: the database question is asked only on the first run (no manifest). T4 reopened for this fix in both repos.

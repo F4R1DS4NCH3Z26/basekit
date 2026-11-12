@@ -135,10 +135,11 @@ export async function init(o: InitOptions, ctx: Context): Promise<number> {
   else if (typeof savedMakefile === "boolean") makefile = savedMakefile;
   else makefile = ctx.prompt ? await ctx.prompt.confirm("¿Usar Makefile? Es la interfaz para correr los comandos en los contenedores", true) : true;
 
-  // Database (S1): asked only with Docker, for a stack (or backend side) that has one, without --db and without
-  // an engine saved in the manifest. The answer counts as an explicit --db: infra-setup runs with it.
+  // Database (S1): asked only on the first run (no manifest), with Docker, for a stack (or backend side) that has
+  // one, and without --db. A rerun keeps the saved engine, even auto: the agent may have run infra.sh itself.
+  // The answer counts as an explicit --db: infra-setup runs with it.
   let dbFlag = o.db;
-  if (ctx.prompt && docker && hasDatabase(dbStack) && o.db === undefined && (saved?.db === undefined || saved.db === "auto")) {
+  if (ctx.prompt && docker && hasDatabase(dbStack) && o.db === undefined && !prev) {
     dbFlag = (await ctx.prompt.confirm("¿Integrar base de datos?", true))
       ? await ctx.prompt.choose("¿Qué base de datos?", DB_CHOICES, DEFAULT_DB_CHOICE)
       : "none";
