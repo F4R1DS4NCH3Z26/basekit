@@ -177,7 +177,7 @@ Cada acción se reporta con `+` (creado), `~` (actualizado), `=` (existía, se c
 | Adaptadores (Claude Code, OpenCode, Gemini CLI, Hermes) y enlaces de skills | Hecho |
 | Skills externas fijadas (`grill-me`, `grill-with-docs`, `grilling`, `domain-modeling`) | Hecho |
 | Prueba 9 (`docker compose config` con overlays) | Pasa en `npm test` si hay Docker |
-| Prueba 12 (`make new-app` + `make dev` reales) | `scripts/e2e.sh <stack> [db]`; el CI la corre en todos los stacks (Spring con `postgres`; los frontend sin base de datos). Pasa en `fastapi`, `laravel`, `nextjs` y `spring`; en los demás falta su primera corrida con Docker |
+| Prueba 12 (`make new-app` + `make dev` reales) | `scripts/e2e.sh <stack> [db]`; el CI la corre en todos los stacks al pushear a `main` o a mano (`workflow_dispatch`), no en los PR (Spring con `postgres`; los frontend sin base de datos). Pasa en `fastapi`, `laravel`, `nextjs` y `spring`; en los demás falta su primera corrida con Docker |
 
 ## Comandos
 
