@@ -84,6 +84,17 @@ export class Project {
     return this.fs.list(this.path(rel)).filter((e) => e.kind === "file").map((e) => e.name);
   }
 
+  /**
+   * Every entry under `rel` that is not a directory (files, symlinks and others), recursively, as paths
+   * relative to the root. Empty if `rel` does not exist. These are what keep a folder from being removed
+   * by `removeEmptyDirs`.
+   */
+  entriesUnder(rel: string): string[] {
+    return this.fs
+      .list(this.path(rel))
+      .flatMap((e) => (e.kind === "dir" ? this.entriesUnder(`${rel}/${e.name}`) : [`${rel}/${e.name}`]));
+  }
+
   report(mark: Mark, rel: string, note?: string): void {
     if (mark === "+" || mark === "~") this.changed = true;
     this.log(`${mark} ${rel}${note ? `  (${note})` : ""}`);

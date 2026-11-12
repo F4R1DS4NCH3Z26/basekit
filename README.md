@@ -36,7 +36,7 @@ Se instala desde este repositorio (todavía no está publicado en npm). El repos
 
 ### Desinstalar
 
-`basekit uninstall` muestra lo que va a borrar y pregunta antes (por defecto, no). Detecta si este basekit es el global de npm (`npm uninstall -g basekit`) o el de un proyecto (`npm uninstall basekit` en la carpeta que tiene `node_modules`); `--global` o `--project` fuerzan el modo. Con `--skills` también borra las skills globales que instaló `init --global`: solo las que lista `~/.agents/basekit.json`, los enlaces que basekit creó para ellas y ese manifest. Tus otras skills de `~/.agents/skills` y los proyectos que ya creaste no cambian. `-y` no pregunta y `--dry-run` muestra el plan sin borrar nada.
+`basekit uninstall` muestra lo que va a borrar y pregunta antes (por defecto, no). Detecta si este basekit es el global de npm (`npm uninstall -g basekit`) o el de un proyecto (`npm uninstall basekit` en la carpeta que tiene `node_modules`, si su `package.json` lista `basekit`); `--global` o `--project` fuerzan el modo. Con `--skills` también borra las skills globales que instaló `init --global`: solo las que lista `~/.agents/basekit.json`, los enlaces que basekit creó para ellas y ese manifest. Tus otras skills de `~/.agents/skills` y los proyectos que ya creaste no cambian. `-y` no pregunta y `--dry-run` muestra el plan sin borrar nada.
 
 ```bash
 basekit uninstall --dry-run      # qué borraría

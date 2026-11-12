@@ -50,11 +50,28 @@ Decision: "Borra el que corre y avisa".
 - README in both repos: in the "Usa una sola implementación" note and the install section, the manual steps are replaced by `basekit uninstall` (keep one line with the manual fallback).
 - CLI spec: Node `docs/spec/02_especificacion_cli.md`, Go `docs/guias/02_especificacion_cli.md`.
 
+### S6 · Review follow-ups (user: "si, arreglá esas advertencias", 2026-11-12)
+- **S6a, Go Windows PATH and folder:**
+  - The user PATH entry is removed only when the whole installer folder is removed (it holds nothing but basekit). With a shared folder only the `.exe` goes, and the PATH entry stays.
+  - The detached command deletes `basekit.exe` and then runs a non-recursive `rmdir` on the folder (no `/s`). It never removes anything written into the folder after the plan was shown.
+- **S6b, Go links:** when the `basekit` that was invoked (the `PATH` lookup of `os.Args[0]`) is a symlink that resolves to the running binary, only the link is removed and its target is kept. The plan line is `  - <link>  (enlace; se conserva <destino>)`.
+- **S6c, Go `--skills` failures:** if any link or skill file cannot be removed, the global manifest is NOT removed. The command prints `! no se pudo borrar <ruta>: <error>` for each failure, keeps the CLI, and exits 1. A retry then finds what is still listed.
+- **S6d, Node detection:**
+  - A failed or empty `npm root -g` never falls back to "project" silently.
+  - The project mode is detected only when the folder that holds `node_modules` has a `package.json` that lists `basekit` in `dependencies` or `devDependencies`.
+  - Otherwise it is the existing usage error: `basekit uninstall: no se sabe si este basekit (<root>) es global o de un proyecto; usa --global o --project`.
+- **S6e, Both, the plan matches what happens:**
+  - A skill folder that will be empty after its listed files are removed is shown as `  - <carpeta>`.
+  - A folder that keeps files the manifest does not list is shown as `  - <carpeta>  (solo los archivos de basekit; se conservan los tuyos)`.
+  - Listed files that no longer exist are not shown.
+
 ## Tasks
 | ID | Specs | Route | Status | Commit |
 |---|---|---|---|---|
 | T1 | S1–S5 in Node | delegated (writer trigger a: parallel with T2) | done (RED→GREEN; verify.sh OK; 20 uninstall tests; parent: no-TTY exit 2, dry-run output matches Go) | uncommitted |
 | T2 | S1–S5 in Go | delegated (writer trigger a: parallel with T1) | done (RED→GREEN; go vet incl. GOOS=windows, go test OK; parent: real -y removal in scratch + PATH copy warning) | uncommitted |
+| T3 | S6d, S6e in Node | delegated (parallel with T4; context backstop) | done (RED 6 → GREEN; verify.sh OK; 28 uninstall tests) | uncommitted |
+| T4 | S6a, S6b, S6c, S6e in Go | delegated (parallel with T3) | done (RED per rule → GREEN; go vet incl. windows, go test OK) | uncommitted |
 
 ## Log
 - L1 (2026-11-12) user: "hay una forma de desintalar basekit ?" then "si, agregá el comando uninstall en los dos".
@@ -65,3 +82,5 @@ Decision: "Borra el que corre y avisa".
   - Duplicates: "Borra el que corre y avisa (Recommended)".
   - The Windows self-delete mechanism and Node reading the shared global manifest were decided by the parent (technical).
 - L3 Parent accepted the Go writer's Windows safety rule (rmdir only for a folder that holds just basekit). Node-only string for an undetectable install: `basekit uninstall: no se sabe si este basekit (<root>) es global o de un proyecto; usa --global o --project`. Pre-existing Go issue kept: stdin from /dev/null counts as a TTY (ModeCharDevice).
+- L4 (2026-11-12) native review advisories on uninstall; user: "si, arreglá esas advertencias". S6 added. The exact strings and mechanics were decided by the parent.
+- L5 T3/T4 done. Shared choice: a skill folder with none of its listed files left is neither shown nor touched. Go-only: a path with `%` refuses with `basekit uninstall: no se puede programar el borrado de <ruta>: cmd expandiría el '%' de la ruta; bórralo a mano` (exit 1, before the plan); an S6c failure exits 1 with only the `!` lines. Known minor divergence: Go also removes empty user subfolders inside a plain folder; Node may leave them.

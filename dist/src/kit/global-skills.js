@@ -24,9 +24,21 @@ export function findGlobalSkills(home) {
         .map((f) => posix.normalize(f.replaceAll("\\", "/")))
         .filter((f) => f.startsWith(`${CANONICAL}/`) && f.split("/").length > 3 && !f.split("/").includes(".."))
         .sort();
+    const wanted = new Set(files);
     const names = [...new Set(files.map((f) => f.split("/")[2]))];
+    const present = [];
+    const dirs = [];
+    for (const n of names) {
+        const path = `${CANONICAL}/${n}`;
+        const entries = home.entriesUnder(path);
+        const own = entries.filter((e) => wanted.has(e));
+        if (own.length === 0)
+            continue;
+        present.push(...own);
+        dirs.push({ path, keepsOwn: own.length < entries.length });
+    }
     const links = AGENTS.filter((a) => a.globalSkillsDir !== CANONICAL).flatMap((a) => names.map((n) => `${a.globalSkillsDir}/${n}`).filter((l) => home.linksTo(l, `${CANONICAL}/${l.split("/").at(-1)}`)));
-    return { files, dirs: names.map((n) => `${CANONICAL}/${n}`), links, manifest: GLOBAL_MANIFEST };
+    return { files: present, dirs, links, manifest: GLOBAL_MANIFEST };
 }
 /** Removes the links first, then the listed files, the skill folders left empty and the manifest. */
 export function removeGlobalSkills(home, g) {
@@ -35,6 +47,6 @@ export function removeGlobalSkills(home, g) {
     for (const f of g.files)
         home.remove(f);
     for (const d of g.dirs)
-        home.removeEmptyDirs(d);
+        home.removeEmptyDirs(d.path);
     home.remove(g.manifest);
 }

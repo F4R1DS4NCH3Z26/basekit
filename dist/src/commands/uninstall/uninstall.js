@@ -10,7 +10,23 @@ function projectOf(root) {
             return dirname(d);
     return undefined;
 }
-/** True when npm's global root holds this very package (a copy or an `npm link`). */
+/** True when the project's package.json lists basekit in dependencies or devDependencies. */
+function listsBasekit(ctx, dir) {
+    const file = join(dir, "package.json");
+    if (ctx.fs.kind(file) !== "file")
+        return false;
+    try {
+        const pkg = JSON.parse(ctx.fs.read(file));
+        return [pkg.dependencies, pkg.devDependencies].some((d) => !!d && typeof d === "object" && Object.hasOwn(d, "basekit"));
+    }
+    catch {
+        return false;
+    }
+}
+/**
+ * True when npm's global root holds this very package (a copy or an `npm link`). A failed or empty
+ * `npm root -g` is false: the caller then needs other evidence (a project that lists basekit) or the user.
+ */
 function isGlobal(ctx, env, root) {
     const out = [];
     if (!ctx.runner.run((l) => out.push(l.trim()), "npm", ["root", "-g"], env.cwd))
@@ -22,8 +38,9 @@ function isGlobal(ctx, env, root) {
     return ctx.fs.exists(candidate) && ctx.fs.realpath(candidate) === root;
 }
 /**
- * The npm call. A detected project install runs npm in the folder that holds its node_modules; a forced
- * --project runs it in the working directory, like `install --project`.
+ * The npm call. A detected project install (its package.json lists basekit) runs npm in the folder that
+ * holds its node_modules; a forced --project runs it in the working directory, like `install --project`.
+ * Anything else asks the user for --global or --project instead of guessing.
  */
 function target(o, ctx, env, root) {
     const project = (dir) => ({ mode: "project", dir, args: ["uninstall", "basekit"], shown: `npm uninstall basekit (en ${dir})` });
@@ -33,7 +50,7 @@ function target(o, ctx, env, root) {
         return { mode: "global", dir: env.cwd, args: ["uninstall", "-g", "basekit"], shown: "npm uninstall -g basekit" };
     }
     const dir = projectOf(root);
-    if (dir)
+    if (dir && listsBasekit(ctx, dir))
         return project(dir);
     throw new UsageError(`basekit uninstall: no se sabe si este basekit (${root}) es global o de un proyecto; usa --global o --project`);
 }
@@ -70,9 +87,12 @@ export async function uninstall(o, ctx, env) {
     const skills = o.skills ? findGlobalSkills(home) : undefined;
     ctx.log("Se va a desinstalar:");
     ctx.log(`  - ${npm.shown}`);
-    if (skills)
-        for (const rel of [...skills.dirs, ...skills.links, skills.manifest])
+    if (skills) {
+        for (const d of skills.dirs)
+            ctx.log(`  - ${home.path(d.path)}${d.keepsOwn ? "  (solo los archivos de basekit; se conservan los tuyos)" : ""}`);
+        for (const rel of [...skills.links, skills.manifest])
             ctx.log(`  - ${home.path(rel)}`);
+    }
     else if (o.skills)
         ctx.log("= skills globales  (no hay instalación global)");
     if (o.dryRun) {

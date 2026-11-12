@@ -1,8 +1,9 @@
 import { after, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { delimiter, join } from "node:path";
 import { PassThrough } from "node:stream";
+import { UsageError } from "../../../src/kit/errors.js";
 import { uninstall, validateUninstall, type UninstallEnv, type UninstallOptions } from "../../../src/commands/uninstall/index.js";
 import { nodeFileSystem } from "../../../src/infra/file-system.js";
 import type { Runner } from "../../../src/infra/runner.js";
@@ -11,13 +12,17 @@ import { basekit, cleanup, scratch } from "../../helpers.js";
 
 after(cleanup);
 
-/** Records the processes uninstall would start; `npm root -g` answers with `globalRoot`. Never runs npm. */
+/**
+ * Records the processes uninstall would start; `npm root -g` answers with `globalRoot`, or fails when it is
+ * undefined. Never runs npm.
+ */
 class FakeRunner implements Runner {
   calls: { cmd: string; args: string[]; cwd: string }[] = [];
-  constructor(private readonly globalRoot: string, private readonly ok = true) {}
+  constructor(private readonly globalRoot: string | undefined, private readonly ok = true) {}
   run(log: (l: string) => void, cmd: string, args: string[], cwd: string) {
     this.calls.push({ cmd, args, cwd });
     if (args.join(" ") === "root -g") {
+      if (this.globalRoot === undefined) return false;
       log(`  ${this.globalRoot}`);
       return true;
     }
@@ -51,7 +56,7 @@ function machine() {
   const projectPkg = join(project, "node_modules", "basekit");
   const bin = join(s, "bin");
   for (const d of [home, globalPkg, projectPkg, bin]) mkdirSync(d, { recursive: true });
-  touch(join(project, "package.json"), '{ "name": "proj" }\n');
+  touch(join(project, "package.json"), '{ "name": "proj", "devDependencies": { "basekit": "github:x/basekit" } }\n');
   const env = (packageRoot: string, path = bin): UninstallEnv => ({ home, path, packageRoot, cwd: s, platform: "linux" });
   return { s, home, globalRoot, globalPkg, project, projectPkg, bin, env };
 }
@@ -180,6 +185,44 @@ describe("uninstall: plan, question and modes", () => {
     assert.deepEqual(npmCalls(runner), []);
   });
 
+  it("a failed `npm root -g` with a node_modules ancestor whose package.json does not list basekit is a usage error", async () => {
+    const m = machine();
+    touch(join(m.project, "package.json"), '{ "name": "proj", "dependencies": { "other": "1.0.0" } }\n');
+    const runner = new FakeRunner(undefined);
+    await assert.rejects(run({ yes: true }, m.env(m.projectPkg), runner), (e: Error) => {
+      assert.ok(e instanceof UsageError, "a usage error exits 2");
+      assert.equal(e.message, `basekit uninstall: no se sabe si este basekit (${m.projectPkg}) es global o de un proyecto; usa --global o --project`);
+      return true;
+    });
+    assert.deepEqual(npmCalls(runner), []);
+  });
+
+  it("an empty `npm root -g` with a node_modules ancestor but no package.json is a usage error", async () => {
+    const m = machine();
+    rmSync(join(m.project, "package.json"));
+    const runner = new FakeRunner("");
+    await assert.rejects(run({ yes: true }, m.env(m.projectPkg), runner), UsageError);
+    assert.deepEqual(npmCalls(runner), []);
+  });
+
+  it("a failed `npm root -g` in a real project (basekit in devDependencies) runs `npm uninstall basekit` there", async () => {
+    const m = machine();
+    const runner = new FakeRunner(undefined);
+    const r = await run({ yes: true }, m.env(m.projectPkg), runner);
+    assert.equal(r.code, 0);
+    assert.equal(r.lines[1], `  - npm uninstall basekit (en ${m.project})`);
+    assert.deepEqual(npmCalls(runner), [{ cmd: "npm", args: ["uninstall", "basekit"], cwd: m.project }]);
+    assert.equal(r.lines.at(-1), "basekit desinstalado. Los proyectos que ya creaste no cambian.");
+  });
+
+  it("basekit listed in dependencies also marks a project", async () => {
+    const m = machine();
+    touch(join(m.project, "package.json"), '{ "dependencies": { "basekit": "1.0.0" } }\n');
+    const runner = new FakeRunner(m.globalRoot);
+    await run({ yes: true }, m.env(m.projectPkg), runner);
+    assert.deepEqual(npmCalls(runner), [{ cmd: "npm", args: ["uninstall", "basekit"], cwd: m.project }]);
+  });
+
   it("--global together with --project is a usage error", () => {
     assert.throws(() => validateUninstall({ global: true, project: true }), /^Error: Usa --global o --project, no los dos$/);
     assert.deepEqual(validateUninstall({ global: true }), { mode: "global" });
@@ -251,6 +294,65 @@ describe("uninstall --skills", () => {
     assert.equal(readFileSync(join(m.home, ".agents/skills/cli-verify/notes.md"), "utf8"), "mine\n");
     assert.ok(!existsSync(join(m.home, ".agents/skills/cli-verify/SKILL.md")));
     assert.ok(!existsSync(join(m.home, ".agents/skills/cli-verify/scripts")));
+  });
+
+  it("a skill folder with the user's files gets the suffix in the plan, and the folder and those files stay", async () => {
+    const m = machine();
+    globalSkills(m.home);
+    touch(join(m.home, ".agents/skills/cli-verify/notes.md"), "mine\n");
+    const r = await run({ yes: true, skills: true }, m.env(m.globalPkg), new FakeRunner(m.globalRoot));
+    assert.equal(r.code, 0);
+    const h = (p: string) => join(m.home, p);
+    assert.deepEqual(r.lines.slice(2, 4), [
+      `  - ${h(".agents/skills/cli-verify")}  (solo los archivos de basekit; se conservan los tuyos)`,
+      `  - ${h(".agents/skills/zone-check")}`,
+    ]);
+    assert.equal(readFileSync(h(".agents/skills/cli-verify/notes.md"), "utf8"), "mine\n");
+    assert.ok(!existsSync(h(".agents/skills/zone-check")), "a folder with only listed files is removed");
+  });
+
+  it("a symlink the user put in a skill folder counts as the user's file", async () => {
+    const m = machine();
+    globalSkills(m.home);
+    symlinkSync(join(m.home, "elsewhere"), join(m.home, ".agents/skills/zone-check/mine"), "dir");
+    const r = await run({ yes: true, skills: true }, m.env(m.globalPkg), new FakeRunner(m.globalRoot));
+    assert.equal(r.lines[3], `  - ${join(m.home, ".agents/skills/zone-check")}  (solo los archivos de basekit; se conservan los tuyos)`);
+    assert.ok(isLink(join(m.home, ".agents/skills/zone-check/mine")));
+    assert.ok(existsSync(join(m.home, "elsewhere")));
+  });
+
+  it("listed files that no longer exist are not in the plan and do not make a folder line appear", async () => {
+    const m = machine();
+    globalSkills(m.home);
+    rmSync(join(m.home, ".agents/skills/cli-verify/scripts"), { recursive: true });
+    // zone-check: its only listed file is gone, its folder holds just the user's file.
+    rmSync(join(m.home, ".agents/skills/zone-check/SKILL.md"));
+    touch(join(m.home, ".agents/skills/zone-check/notes.md"), "mine\n");
+    for (const dir of [".claude/skills", ".config/opencode/skills"]) rmSync(join(m.home, dir, "zone-check"));
+    const r = await run({ yes: true, skills: true }, m.env(m.globalPkg), new FakeRunner(m.globalRoot));
+    assert.equal(r.code, 0);
+    const h = (p: string) => join(m.home, p);
+    assert.deepEqual(r.lines.slice(0, 6), [
+      "Se va a desinstalar:",
+      "  - npm uninstall -g basekit",
+      `  - ${h(".agents/skills/cli-verify")}`,
+      `  - ${h(".claude/skills/cli-verify")}`,
+      `  - ${h(".config/opencode/skills/cli-verify")}`,
+      `  - ${h(".agents/basekit.json")}`,
+    ]);
+    assert.doesNotMatch(r.log, /zone-check|scripts/);
+    assert.ok(!existsSync(h(".agents/skills/cli-verify")));
+    assert.equal(readFileSync(h(".agents/skills/zone-check/notes.md"), "utf8"), "mine\n");
+  });
+
+  it("a skill folder whose listed files are all gone is not shown and is left as it is", async () => {
+    const m = machine();
+    globalSkills(m.home);
+    rmSync(join(m.home, ".agents/skills/zone-check/SKILL.md"));
+    const r = await run({ yes: true, skills: true }, m.env(m.globalPkg), new FakeRunner(m.globalRoot));
+    assert.equal(r.code, 0);
+    assert.ok(!r.lines.includes(`  - ${join(m.home, ".agents/skills/zone-check")}`));
+    assert.ok(existsSync(join(m.home, ".agents/skills/zone-check")), "a folder the plan does not show is not touched");
   });
 
   it("without a global manifest it reports that there is no global install", async () => {
