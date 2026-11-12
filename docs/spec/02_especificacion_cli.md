@@ -242,7 +242,7 @@ Con Docker pero sin Makefile (`options.makefile: false`, resuelto con la regla d
 | 2 | `init` dos veces seguidas | La segunda solo muestra `=` y "al día"; `git status` queda vacío |
 | 3 | Proyecto con `AGENTS.md` y `Makefile` propios | Contenido original intacto; bloque añadido; `Makefile.basekit` |
 | 4 | `--dry-run` | `git status` vacío después |
-| 5 | `--stack foo`, `--agents x`, `--db mongo` | Error claro, exit ≠ 0 |
+| 5 | `--stack foo`, `--agents x`, `--db oracle`, `--stack spring --db sqlite` | Error claro, exit ≠ 0 |
 | 6 | `bash .agents/skills/zone-check/scripts/check_zones.sh --owners` justo después de `init` | `0 sin dueño` |
 | 7 | `make env` | Sin `__GENERATE__` restantes; permisos 600; secretos distintos entre sí |
 | 8 | `make -n dev`, `make -n verify SCOPE=…`, `make -n migrate`, `make -n prod-up` | Incluye los overlays existentes |
