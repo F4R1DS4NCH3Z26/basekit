@@ -32,7 +32,16 @@ Se instala desde este repositorio (todavía no está publicado en npm). El repos
 4. **Verifica:** `basekit --version` imprime `0.2.0`.
 5. **Prepara un proyecto:** `basekit init mi-proyecto` pregunta el stack; `basekit init mi-proyecto --stack nextjs` lo elige directamente.
 
-> **Usa una sola implementación.** Este CLI y [basekit-go](https://github.com/F4R1DS4NCH3Z26/basekit-go) instalan el mismo comando, `basekit`, y se ejecuta el que aparezca primero en tu `PATH`. Para quitar el de Node: `npm uninstall -g basekit`. Para quitar el de Go: borra `~/.local/bin/basekit` (en Windows, la carpeta `%LOCALAPPDATA%\Programs\basekit`).
+> **Usa una sola implementación.** Este CLI y [basekit-go](https://github.com/F4R1DS4NCH3Z26/basekit-go) instalan el mismo comando, `basekit`, y se ejecuta el que aparezca primero en tu `PATH`. Para quitar uno, ejecuta `basekit uninstall`: desinstala el que corre y avisa si queda otra copia en el `PATH`. A mano: `npm uninstall -g basekit` (Node) o borra `~/.local/bin/basekit` (Go; en Windows, la carpeta `%LOCALAPPDATA%\Programs\basekit`).
+
+### Desinstalar
+
+`basekit uninstall` muestra lo que va a borrar y pregunta antes (por defecto, no). Detecta si este basekit es el global de npm (`npm uninstall -g basekit`) o el de un proyecto (`npm uninstall basekit` en la carpeta que tiene `node_modules`); `--global` o `--project` fuerzan el modo. Con `--skills` también borra las skills globales que instaló `init --global`: solo las que lista `~/.agents/basekit.json`, los enlaces que basekit creó para ellas y ese manifest. Tus otras skills de `~/.agents/skills` y los proyectos que ya creaste no cambian. `-y` no pregunta y `--dry-run` muestra el plan sin borrar nada.
+
+```bash
+basekit uninstall --dry-run      # qué borraría
+basekit uninstall --skills -y    # el CLI y las skills globales, sin preguntar
+```
 
 Si vas a usar `make dev` y Docker en Windows, instálalo dentro de WSL2 (ver [Windows](#windows)).
 
@@ -175,6 +184,7 @@ Cada acción se reporta con `+` (creado), `~` (actualizado), `=` (existía, se c
 - `init [dir]`: crea la base. Sin flags reutiliza lo guardado en `.agents/manifest.json`; `infra.sh` solo corre si pasas `--db`. En una terminal (sin `-y`) pregunta solo lo que no resolvió con flags, manifest o detección: el stack en tres pasos (tipo de app → lenguaje → framework; un paso con una sola opción se elige solo y se anuncia; en Fullstack, «Combinar backend + frontend» pregunta lenguaje y framework de cada lado), qué skills externas instalar (`¿Qué skills externas instalo? (usan npx y red)`: casillas con las cuatro marcadas; sin menú, números o nombres, y `ninguna`/`ninguno`; la elección queda en el manifest y se cambia con `--external-skills`), los agentes (casillas: espacio marca, Enter confirma; arrancan marcados `claude-code` y `opencode`; ninguno marcado, o `ninguno`/`ninguna` sin menú, es no usar ninguna herramienta) y, en la primera corrida, de qué trata el proyecto.
 - `sync [dir] [--agents a,b] [--external-skills a,b] [--no-external-skills] [--dry-run]`: regenera el bloque de `AGENTS.md`, los subagentes de `.claude/agents/` y `.opencode/agents/` desde `.agents/roles/` y `.agents/zones/`, y los enlaces de skills. Con `--agents`, los agentes nuevos reciben adaptadores, enlaces y las skills externas elegidas; `--agents none` deja el proyecto sin herramientas. Con `--external-skills a,b` (o `none`), reemplaza la elección de skills externas e instala las elegidas que falten; las ya instaladas que quites se quedan.
 - `doctor [dir]`: imprime `OK` o `FALTA` con la sugerencia; sale con código 1 si falta algo. Nunca lee `.env`.
+- `uninstall [--global|--project] [--skills] [-y] [--dry-run]`: desinstala este basekit (con `--skills`, también las skills globales); ver [Desinstalar](#desinstalar).
 
 ## Estructura
 

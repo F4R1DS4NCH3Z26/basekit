@@ -20,6 +20,14 @@ El CLI **prepara**; el agente **decide**.
 | `sync [dir] [--agents a,b] [--external-skills a,b]` | Regenera el bloque de `AGENTS.md`, los adaptadores y los enlaces desde `.agents/`; con `--agents`, también añade herramientas; con `--external-skills`, cambia las skills externas elegidas |
 | `doctor [dir]` | Diagnóstico del entorno y del proyecto (sección 11) |
 | `stacks` | Lista los stacks (leídos de `plantillas/stacks/*/stack.json`) y los agentes soportados |
+| `uninstall [--global\|--project] [--skills] [-y] [--dry-run]` | Desinstala el basekit que corre (con `--skills`, también las skills globales); ver abajo |
+
+`uninstall`:
+
+- **Qué borra.** El paquete de npm que corre: si es el global (`npm root -g` contiene este mismo paquete), `npm uninstall -g basekit`; si está bajo el `node_modules` de un proyecto, `npm uninstall basekit` en la carpeta que tiene ese `node_modules`. `--global` o `--project` fuerzan el modo (`--project` corre npm en el directorio actual); los dos juntos son un error de uso (exit 2): `Usa --global o --project, no los dos`. Si no es ninguno de los dos, es un error de uso que pide `--global` o `--project`. npm corre con argumentos fijos a través del `Runner`.
+- **`--skills`.** También borra las skills globales de `init --global` (basekit-go): cada ruta que lista `~/.agents/basekit.json` (`files`) bajo `~/.agents/skills`, las carpetas de esas skills que queden vacías, los enlaces de la carpeta global de skills de cada agente que apuntan a esas skills, y el manifest. Nunca borra lo que el manifest no lista. Sin manifest global: `= skills globales  (no hay instalación global)`.
+- **Confirmación.** Primero imprime el plan (`Se va a desinstalar:` y una línea `  - <ruta o comando>` por elemento) y pregunta `¿Desinstalar basekit?` (por defecto, no). Un no imprime `No se desinstaló nada.` y sale con 0. `-y`/`--yes` no pregunta; `--dry-run` imprime el plan y `(dry-run: no se borra nada)`. Sin terminal y sin `-y` ni `--dry-run`: error de uso (exit 2, sin borrar nada) `basekit uninstall necesita confirmación: usa -y (o --dry-run para ver qué borraría)`.
+- **Resultado.** Si npm falla: `! npm uninstall falló; reinténtalo con: <comando>` y exit 1, sin tocar las skills. Si no, avisa de cada otra copia de `basekit` en el `PATH` (por ruta real, sin repetir, sin la que borró; en Windows también `basekit.cmd` y `basekit.exe`) con `! otra copia de basekit en el PATH: <ruta> (no se borra)`, y termina con `basekit desinstalado. Los proyectos que ya creaste no cambian.` Los proyectos creados con basekit nunca se tocan.
 
 Flags de `init`:
 
