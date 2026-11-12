@@ -21,10 +21,13 @@ services:
     volumes:
       - db-data:/data/db
     healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      # Through the service host and with the root user: on a first start the image runs a temporary mongod
+      # bound only to localhost to create that user, and it must not count as healthy.
+      test: ["CMD-SHELL", "mongosh --quiet --host db -u \"$${MONGO_INITDB_ROOT_USERNAME}\" -p \"$${MONGO_INITDB_ROOT_PASSWORD}\" --authenticationDatabase admin --eval \"db.adminCommand('ping').ok\""]
       interval: 5s
       timeout: 3s
       retries: 20
+      start_period: 30s
     restart: unless-stopped
     # Sin "ports": la BD no se expone al host. Usa `make db-shell`.
   app:

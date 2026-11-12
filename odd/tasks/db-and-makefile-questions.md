@@ -45,6 +45,31 @@ User: "Divide las preguntas de DOCKERfILE y MakeFile." Decision (2026-11-12): "M
 - `doctor`: with Docker but without a Makefile, it skips the `make` tool check, the root `Makefile` and the `.make/` files, and logs `·     sin Makefile (manifest): se omiten make y el Makefile`. Docker checks stay.
 - Docs: README (both repos, Spanish), `docs/spec/02_especificacion_cli.md` (flag table, question steps, manifest example, sync, doctor).
 
+### S4 · Mongo healthcheck without the first-boot race (review R4)
+User decision Q1: "db + usuario real", Q8: "30s".
+- The `db` healthcheck in `compose.mongo.yaml` runs `mongosh` against the service host `db` (port 27017) authenticating with the root user (`MONGO_INITDB_ROOT_USERNAME`/`MONGO_INITDB_ROOT_PASSWORD`, `--authenticationDatabase admin`), so it only passes once the real mongod (not the init-time localhost one) is up and the user exists.
+- `start_period: 30s`.
+
+### S5 · One makefile rule; legacy manifests are not asked (review R3/R4)
+User decision Q2: "Asumir sí + 1 función".
+- With Docker and no `options.makefile` key in the manifest, `init` assumes `makefile = true` without asking (same as sync and doctor).
+- A single shared function resolves `makefile` for init, sync and doctor. The S3 order becomes:
+  1. No Docker → false.
+  2. Combined → true.
+  3. `--no-makefile` → false.
+  4. Manifest boolean → that value.
+  5. Manifest exists (legacy, no key) → true.
+  6. First run with a prompt → the answer.
+  7. Otherwise → true.
+
+### S6 · Engines per stack (review R2/R3)
+User decisions: Q3 "Campo dbs en stack.json"; Q4 "Sí, error de uso"; Q6 the error text below; Q7 "Respetarlo".
+- `stack.json` accepts an optional `dbs` array of engines (`postgres`, `mysql`, `sqlite`, `mongo`). When it is missing, all four are accepted. Spring: `"dbs": ["postgres", "mysql", "mongo"]`.
+- The database question only offers the stack's engines, in the S1 order. The default stays PostgreSQL.
+- An explicit `--db` with an engine the stack does not accept is a usage error (exit 2, before writing anything): `--db 'sqlite' no aplica a spring: motores admitidos: postgres, mysql, mongo (o auto, none)`.
+- An engine already saved in the manifest is kept as is and is not re-validated.
+- In a combined stack, the rule applies to the backend stack.
+
 ## Tasks
 | ID | Specs | Route | Status | Commit |
 |---|---|---|---|---|
@@ -52,6 +77,9 @@ User: "Divide las preguntas de DOCKERfILE y MakeFile." Decision (2026-11-12): "M
 | T2 | S1, S2 (CLI side), S3 in Node: cli.ts, options, init, prompt, manifest, sync, doctor, dist/src, tests, README, docs/spec | delegated (writer trigger a: parallel with T3) | done (RED→GREEN; verify.sh OK incl. 15 mongo compose tests; differential clean; parent spot check 29/29) | uncommitted |
 | T3 | S1, S2 (CLI side + Go template tests), S3 in Go, same strings | delegated (writer trigger a: parallel with T2) | done (RED 12 fail → GREEN; go vet/test/gofmt OK incl. 15 mongo compose tests; parent fixed doctor appMarker hint parity RED→GREEN and ported docs/guias/02) | uncommitted |
 | T4 | S1 (rerun no longer asks the database question) in Node and Go | inline | done | see Log L7 |
+| T5 | S4 + S6 template data (compose.mongo.yaml healthcheck; spring stack.json `dbs`), copied to basekit-go | inline | done (RED→GREEN infra.test; real Docker first boot healthy ~9s; Go copy identical) | see git log |
+| T6 | S5, S6 in Node (+ tests, docs) | delegated (writer trigger a: parallel with T7; context backstop) | pending | |
+| T7 | S5, S6 in Go (+ tests, parity tree, docs) | delegated (writer trigger a: parallel with T6) | pending | |
 
 ## Log
 - L1 (2026-11-12) user: "en los dos proyectos agrega una pregunta si se quiere integrar base de datos y si acepta de las opciones de Mysql, SQLlITE, PosgreSql y MongoDB. Tambien Divide las preguntas de DOCKERfILE y MakeFile."
@@ -61,3 +89,4 @@ User: "Divide las preguntas de DOCKERfILE y MakeFile." Decision (2026-11-12): "M
 - L5 (2026-11-12) user: "puede haber Docker sin base de datos y Docker puede tener frontend" → already covered: DB "no" → none; Docker/Makefile questions apply to every stack, DB question skipped for frontend.
 - L6 Seam check: Node verify.sh OK; Go go vet + go test ./... OK; feature strings byte-identical in both repos. Parity fix: Go doctor suggested `make new-app` without a Makefile; now uses `makefile` like Node. Go spec doc is docs/guias/02 (not docs/spec), ported by parent, including the missing --no-docker row. Next: user approval for commits.
 - L7 (2026-11-12) review finding R1/R3 (rerun with db auto re-asks; if the agent already ran infra.sh, infra fails with `compose.db.yaml ya existe con otro contenido`). User: "si, arreglá eso". S1 rewritten: the database question is asked only on the first run (no manifest). T4 reopened for this fix in both repos.
+- L8 (2026-11-12) Grill on review follow-ups 1-3: Q1 "db + usuario real", Q2 "Asumir sí + 1 función", Q3 "Campo dbs en stack.json", Q4 "Sí, error de uso", Q5 "Sumar a los PR #12", Q6 "Ese texto", Q7 "Respetarlo", Q8 "30s". User: "si, arrancá".

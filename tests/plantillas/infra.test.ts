@@ -66,6 +66,10 @@ describe("infra.sh", () => {
     assert.match(overlay, /MONGO_URL: mongodb:\/\//);
     assert.match(overlay, /DATABASE_URL: mongodb:\/\//);
     assert.doesNotMatch(overlay, /^\s*ports:/m, "the database publishes no ports");
+    // S4: healthy only once the real mongod answers on the service host with the root user (not the init-time
+    // localhost-only mongod), with a 30s start period.
+    assert.match(overlay, /test: \[.*mongosh.*--host db.*--authenticationDatabase admin/);
+    assert.match(overlay, /^\s*start_period: 30s$/m);
     assert.match(read(d, ".env.example"), /^# >>> db\nDB_NAME=app\nDB_USER=app\nDB_PASSWORD=__GENERATE__\n# <<< db$/m);
     assert.match(read(d, ".make/db.mk"), /^DB_SHELL_CMD = .*mongosh/);
     assert.match(r.stdout, /infra OK: db=mongo redis=0/);
