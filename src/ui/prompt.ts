@@ -106,10 +106,15 @@ export class Prompter {
     }
   }
 
-  /** A clack menu among `items`; returns the chosen index. Hints show next to the focused option. */
-  private select(question: string, items: Item[]): Promise<number> {
+  /** A clack menu among `items`, focused on `initial`; returns the chosen index. Hints show next to the focused option. */
+  private select(question: string, items: Item[], initial = 0): Promise<number> {
     return this.ask((streams) =>
-      clack.select<number>({ ...streams, message: question, options: items.map((it, i) => ({ value: i, label: it.label, ...(it.hint ? { hint: it.hint } : {}) })) }),
+      clack.select<number>({
+        ...streams,
+        message: question,
+        options: items.map((it, i) => ({ value: i, label: it.label, ...(it.hint ? { hint: it.hint } : {}) })),
+        initialValue: initial,
+      }),
     );
   }
 
@@ -265,19 +270,20 @@ export class Prompter {
   }
 
   /**
-   * Menu of options; returns the chosen option's `id`. In a terminal it is a clack menu;
-   * otherwise it is numbered: Enter takes the first option, an invalid answer asks again, and the
-   * end of the input fails.
+   * Menu of options; returns the chosen option's `id`. In a terminal it is a clack menu that starts on
+   * `byDefault`; otherwise it is numbered: Enter takes `byDefault` (the first option when omitted), an
+   * invalid answer asks again, and the end of the input fails.
    */
-  async choose(question: string, options: { id: string; label: string; hint: string }[]): Promise<string> {
-    if (this.arrows) return options[await this.select(question, options)]!.id;
+  async choose(question: string, options: { id: string; label: string; hint: string }[], byDefault?: string): Promise<string> {
+    const initial = Math.max(0, options.findIndex((o) => o.id === byDefault));
+    if (this.arrows) return options[await this.select(question, options, initial)]!.id;
     const width = Math.max(...options.map((o) => o.label.length));
     this.say(question);
     options.forEach((o, i) => this.say(`  ${i + 1}) ${o.label.padEnd(width)}  ${o.hint}`));
     for (;;) {
-      const answer = await this.line("Número [1]: ");
+      const answer = await this.line(`Número [${initial + 1}]: `);
       if (answer === undefined) throw new UsageError("No se eligió ninguna opción.");
-      if (answer === "") return options[0]!.id;
+      if (answer === "") return options[initial]!.id;
       const chosen = /^\d+$/.test(answer) ? options[Number(answer) - 1] : undefined;
       if (chosen) return chosen.id;
       this.say(`  «${answer}» no es una opción válida.`);

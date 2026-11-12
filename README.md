@@ -125,7 +125,7 @@ basekit init mi-proyecto --stack nextjs --context "Reservas de canchas de pádel
 basekit stacks        # stacks y agentes soportados
 ```
 
-Opciones de `init`: `--stack <id>` (o `<backend>+<frontend>`), `--agents a,b` (o `none`: sin adaptadores, solo `AGENTS.md` y `.agents/`), `--context`, `--db auto|postgres|mysql|sqlite|none`, `--redis`, `--no-docker` (sin Docker ni Makefile; no con `--db`, `--redis` ni un combinado), `--no-git`, `--external-skills a,b` (o `none`: reemplaza la elección guardada de skills externas sin preguntar), `--no-external-skills`, `--force`, `--dry-run`, `-y/--yes`. Detalle en `basekit help`.
+Opciones de `init`: `--stack <id>` (o `<backend>+<frontend>`), `--agents a,b` (o `none`: sin adaptadores, solo `AGENTS.md` y `.agents/`), `--context`, `--db auto|postgres|mysql|sqlite|mongo|none` (sin `--db`, `init` pregunta si integrar base de datos y cuál), `--redis`, `--no-docker` (sin Docker ni Makefile; no con `--db`, `--redis` ni un combinado), `--no-makefile` (Docker sin Makefile: usa `docker compose` directo; no con un combinado), `--no-git`, `--external-skills a,b` (o `none`: reemplaza la elección guardada de skills externas sin preguntar), `--no-external-skills`, `--force`, `--dry-run`, `-y/--yes`. Detalle en `basekit help`.
 
 ### Stacks
 

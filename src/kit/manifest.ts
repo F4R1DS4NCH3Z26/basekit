@@ -17,10 +17,11 @@ export interface Manifest {
   stack?: string;
   agents?: string[];
   /**
-   * `docker`: whether the project uses Docker + Makefile; missing means yes.
+   * `docker`: whether the project uses Docker; missing means yes.
+   * `makefile`: whether it also uses the Makefile (only with Docker); missing means yes.
    * `externalSkills`: the pinned external skills the user chose (S1); missing means all of them.
    */
-  options?: { db?: string; redis?: boolean; docker?: boolean; externalSkills?: string[]; [k: string]: unknown };
+  options?: { db?: string; redis?: boolean; docker?: boolean; makefile?: boolean; externalSkills?: string[]; [k: string]: unknown };
   files?: Record<string, string>;
   createdAt?: string;
   updatedAt?: string;
@@ -54,7 +55,7 @@ export function chosenExternal(manifest: Manifest | undefined): string[] {
 export function writeManifest(
   project: Project,
   prev: Manifest | undefined,
-  data: { stack: string; agents: string[]; db: string; redis: boolean; docker: boolean; externalSkills?: string[]; files: Record<string, string> },
+  data: { stack: string; agents: string[]; db: string; redis: boolean; docker: boolean; makefile: boolean; externalSkills?: string[]; files: Record<string, string> },
 ): void {
   const now = new Date().toISOString();
   const base = prev ?? {};
@@ -69,6 +70,7 @@ export function writeManifest(
       db: data.db,
       redis: data.redis,
       docker: data.docker,
+      makefile: data.makefile,
       ...(data.externalSkills ? { externalSkills: data.externalSkills } : {}),
     },
     externalSkills: EXTERNAL_SKILLS,

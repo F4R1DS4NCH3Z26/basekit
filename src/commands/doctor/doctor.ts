@@ -26,10 +26,12 @@ export function doctor(dir: string | undefined, ctx: Context): number {
   const manifest = readManifest(project);
   // Without Docker (manifest `options.docker: false`) the Docker tools, the Makefile and .env are not checked.
   const docker = manifest?.options?.docker !== false;
+  // With Docker but without the Makefile (`options.makefile: false`), make and the Makefile files are not checked.
+  const makefile = docker && manifest?.options?.makefile !== false;
   if (docker) {
     check(ctx.runner.works("docker", ["--version"]), "docker", "instala Docker");
     check(ctx.runner.works("docker", ["compose", "version"]), "docker compose (plugin v2 o superior)", "instala el plugin Compose v2");
-    check(ctx.runner.works("make", ["--version"]), "make", "instala GNU Make");
+    if (makefile) check(ctx.runner.works("make", ["--version"]), "make", "instala GNU Make");
     check(ctx.runner.works("openssl", ["version"]), "openssl", "instala OpenSSL (lo usa make env)");
   }
 
@@ -46,18 +48,19 @@ export function doctor(dir: string | undefined, ctx: Context): number {
     hasBlock ? "acórtalo: Hermes trunca a partir de 20.000" : "ejecuta `basekit sync`");
 
   // A combined project (S16): the root Makefile delegates, and each side is a complete project of its stack.
-  if (docker && isCombined(parts)) check(project.exists("Makefile"), "Makefile (raíz)", "ejecuta `basekit init`");
+  if (makefile && isCombined(parts)) check(project.exists("Makefile"), "Makefile (raíz)", "ejecuta `basekit init`");
   if (!docker) ctx.log("·     sin Docker (manifest): se omiten Docker, Makefile y .env");
+  else if (!makefile) ctx.log("·     sin Makefile (manifest): se omiten make y el Makefile");
   for (const part of parts) {
     if (docker) {
-      for (const f of ["Makefile", ".make/stack.mk", "Dockerfile", "compose.yaml", "compose.dev.yaml", "compose.prod.yaml", ".env.example"]) {
+      for (const f of [...(makefile ? ["Makefile", ".make/stack.mk"] : []), "Dockerfile", "compose.yaml", "compose.dev.yaml", "compose.prod.yaml", ".env.example"]) {
         check(project.exists(inPart(part, f)), inPart(part, f), "ejecuta `basekit init`");
       }
     }
     const marker = part.stack.appMarker;
     if (marker) {
       check(project.exists(inPart(part, marker)), `${inPart(part, marker)} (app del framework)`,
-        docker ? `ejecuta \`${newAppCommand(part)}\`` : "crea la app con las herramientas del framework");
+        makefile ? `ejecuta \`${newAppCommand(part)}\`` : "crea la app con las herramientas del framework");
     }
   }
 

@@ -64,6 +64,15 @@ describe("clack menus in a terminal", { timeout: 5000 }, () => {
     t.p.close();
   });
 
+  it("choose: with a default, the menu starts on it and Enter right away takes it", async () => {
+    for (const [keys, expected] of [[[ENTER], "project"], [[UP, ENTER], "global"]] as [string[], string][]) {
+      const t = terminal();
+      t.type(...keys);
+      assert.equal(await t.p.choose("¿Dónde?", OPTIONS, "project"), expected, JSON.stringify(keys));
+      t.p.close();
+    }
+  });
+
   it("choose: Enter right away keeps the first option, ↑ wraps to the last, j/k move", async () => {
     for (const [keys, expected] of [[[ENTER], "global"], [[UP, ENTER], "project"], [["j", ENTER], "project"], [["j", "k", ENTER], "global"]] as [string[], string][]) {
       const t = terminal();

@@ -19,6 +19,8 @@ export async function sync(o: SyncOptions, ctx: Context): Promise<number> {
   const saved = prev.agents ?? [];
   const agents = o.agents !== undefined ? parseAgents(o.agents) : (savedAgents(saved) ?? []);
   const added = agents.filter((a) => !saved.includes(a));
+  // Docker and the Makefile are init's choices: sync only keeps them (it never writes the Makefile nor .make/).
+  const docker = prev.options?.docker !== false;
   if (o.dryRun) ctx.log(`(dry-run: no se escribe nada en ${project.root})`);
 
   writeAgentsMd(project, parts, "");
@@ -30,7 +32,8 @@ export async function sync(o: SyncOptions, ctx: Context): Promise<number> {
     agents,
     db: prev.options?.db ?? "auto",
     redis: prev.options?.redis ?? false,
-    docker: prev.options?.docker !== false,
+    docker,
+    makefile: docker && prev.options?.makefile !== false,
     externalSkills: choice,
     files: prev.files ?? {},
   });
