@@ -37,7 +37,10 @@ export function findGlobalSkills(home) {
         present.push(...own);
         dirs.push({ path, keepsOwn: own.length < entries.length });
     }
-    const links = AGENTS.filter((a) => a.globalSkillsDir !== CANONICAL).flatMap((a) => names.map((n) => `${a.globalSkillsDir}/${n}`).filter((l) => home.linksTo(l, `${CANONICAL}/${l.split("/").at(-1)}`)));
+    // A link goes only with its folder: a folder that stays (untouched, or keeping the user's files) keeps its links,
+    // so no tool loses access to something that still exists.
+    const removed = dirs.filter((d) => !d.keepsOwn).map((d) => d.path.split("/").at(-1));
+    const links = AGENTS.filter((a) => a.globalSkillsDir !== CANONICAL).flatMap((a) => removed.map((n) => `${a.globalSkillsDir}/${n}`).filter((l) => home.linksTo(l, `${CANONICAL}/${l.split("/").at(-1)}`)));
     return { files: present, dirs, links, manifest: GLOBAL_MANIFEST };
 }
 /** Removes the links first, then the listed files, the skill folders left empty and the manifest. */

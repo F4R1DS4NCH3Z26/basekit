@@ -64,6 +64,9 @@ Decision: "Borra el que corre y avisa".
   - A skill folder that will be empty after its listed files are removed is shown as `  - <carpeta>`.
   - A folder that keeps files the manifest does not list is shown as `  - <carpeta>  (solo los archivos de basekit; se conservan los tuyos)`.
   - Listed files that no longer exist are not shown.
+- **S6f, Both, a link goes only with its folder** (user: "Si", 2026-11-12, after the commit review flagged R3-links-of-untouched-skill-removed and R4-links-removed-for-untouched-folder):
+  - A tool's link to a skill is planned and removed only when that skill folder is removed whole.
+  - A folder that stays, untouched (none of its listed files left) or keeping the user's files, keeps its links.
 
 ## Tasks
 | ID | Specs | Route | Status | Commit |

@@ -311,6 +311,25 @@ describe("uninstall --skills", () => {
     assert.ok(!existsSync(h(".agents/skills/zone-check")), "a folder with only listed files is removed");
   });
 
+  it("a link goes only with its folder: folders that stay (untouched or keeping the user's files) keep their links", async () => {
+    const m = machine();
+    globalSkills(m.home);
+    const h = (p: string) => join(m.home, p);
+    // cli-verify keeps the user's notes.md; zone-check has none of its listed files left, only the user's file.
+    touch(h(".agents/skills/cli-verify/notes.md"), "mine\n");
+    rmSync(h(".agents/skills/zone-check/SKILL.md"));
+    touch(h(".agents/skills/zone-check/notes.md"), "mine\n");
+    const r = await run({ yes: true, skills: true }, m.env(m.globalPkg), new FakeRunner(m.globalRoot));
+    assert.equal(r.code, 0);
+    for (const dir of [".claude/skills", ".config/opencode/skills"]) {
+      for (const sk of ["cli-verify", "zone-check"]) {
+        assert.ok(!r.lines.includes(`  - ${h(`${dir}/${sk}`)}`), `${dir}/${sk} is not in the plan`);
+        assert.ok(isLink(h(`${dir}/${sk}`)), `${dir}/${sk} stays: its folder stays`);
+      }
+    }
+    assert.ok(!existsSync(h(".agents/basekit.json")));
+  });
+
   it("a symlink the user put in a skill folder counts as the user's file", async () => {
     const m = machine();
     globalSkills(m.home);
