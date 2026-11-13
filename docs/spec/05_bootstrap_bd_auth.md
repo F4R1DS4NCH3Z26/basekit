@@ -50,7 +50,7 @@ En caso de duda: sí.
 | **PostgreSQL** (por defecto) | Casi siempre |
 | MySQL 8.4 | El hosting o el equipo ya lo usa |
 | SQLite | Prototipos y herramientas de una sola instancia (no con Spring: su `stack.json → dbs` no lo incluye) |
-| MongoDB | Datos de documentos sin esquema fijo. NestJS trae la integración con Mongoose (`@nestjs/mongoose`); los demás stacks ofrecen `mongo` solo cuando su `stack.json → dbs` lo lista (sin `dbs`, un stack no lo admite) |
+| MongoDB | Datos de documentos sin esquema fijo. NestJS trae la integración con Mongoose (`@nestjs/mongoose`) y FastAPI con Beanie; los demás stacks ofrecen `mongo` solo cuando su `stack.json → dbs` lo lista (sin `dbs`, un stack no lo admite) |
 | Ninguna | Los stacks frontend (React, Vue, TypeScript + Vite): no tienen base de datos; los datos y la auth viven en el backend |
 | + Redis | Caché, rate limit, colas o sesiones; nunca como BD principal |
 | Otros | Solo con ADR; no hay overlay incluido |

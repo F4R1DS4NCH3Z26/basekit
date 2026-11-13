@@ -6,7 +6,7 @@ Eres el dueño de la capa web del módulo.
 
 ## Reglas de tu capa
 - Cada endpoint: schema de entrada, `response_model` de salida, `status_code` explícito y dependencia de usuario actual si el contrato exige auth.
-- Solo llama a `services.py`; nunca a la sesión ni al ORM directamente.
+- Solo llama a `services.py`; nunca a la sesión ni al ORM directamente. Con MongoDB (Beanie) los endpoints son `async` y esperan (`await`) a los services.
 - Traduce las excepciones de dominio a HTTP. Recurso ajeno → 404 (no reveles que existe).
 - No registras el router en `src/main.py` (es del orquestador): indícalo en NOTAS.
 

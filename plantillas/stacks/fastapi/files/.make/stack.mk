@@ -7,6 +7,14 @@ TEST_CMD    := pytest -q
 LINT_CMD    := ruff check .
 MAKE_MIGRATION_CMD = alembic revision --autogenerate -m "$$NAME"
 VERIFY_CMD  = bash .agents/skills/py-verify/scripts/verify.sh "$${SCOPE:-src}"
+# MongoDB (compose.db.yaml with DB_DRIVER: mongodb) has no migrations: the indexes live in the models and `make migrate`
+# creates them (src/core/create_indexes.py). make migration only says so: no NAME check and no container.
+ifneq ($(shell grep -Eqs '^[[:space:]]*DB_DRIVER:[[:space:]]*mongodb' compose.db.yaml && echo mongo),)
+MONGO_MIGRATION_MSG := MongoDB no tiene migraciones: los índices se declaran en los modelos (src/modules/<m>/models.py) y make migrate los crea
+# Target-specific overrides, for make migration only: the Makefile's NAME check becomes `:` and DC just prints the message.
+migration: MIGRATION_NAME_CHECK = :
+migration: DC = @echo "$(MONGO_MIGRATION_MSG)"; :
+endif
 UV_IMAGE    ?= ghcr.io/astral-sh/uv:0.13.4-python3.12-trixie-slim
 
 # The guard and the work live in one shell decision: an `exit 0` on its own recipe line would only end that line.
@@ -15,7 +23,9 @@ new-app: ## Genera uv.lock en Docker (el esqueleto lo dejó basekit)
 	elif [ -f uv.lock ]; then echo "Ya existe uv.lock; nada que hacer"; \
 	else $(MAKE) --no-print-directory _new-app; fi
 
+# With the MongoDB overlay, mongo-setup.sh first swaps the starter's SQLAlchemy + Alembic for Beanie (silent otherwise).
 _new-app:
+	@bash .agents/skills/py-scaffold/scripts/mongo-setup.sh
 	docker run --rm --user "$$(id -u):$$(id -g)" -e HOME=/tmp -e UV_CACHE_DIR=/tmp/uv -v "$$PWD":/app -w /app $(UV_IMAGE) uv lock
 	@echo "uv.lock creado. Siguiente: make env && make dev"
 

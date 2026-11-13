@@ -72,6 +72,22 @@ User: "sigue con las advertencias".
 - S6.5 Readability (R2-mongo-migration-dc-override): the Mongo `make migration` message gets its own variable (`MONGO_MIGRATION_MSG`) and a one-line comment on the target-specific override. Output byte-identical.
 - Risk: item 1 is touched only by documentation (a manual procedure on existing data, proved with Docker); S6.2 removes an automatic drop, which reduces risk.
 
+### S7 · Phase 3: FastAPI with Beanie
+User: "Siguiente stack con Mongo", then "FastAPI + Beanie (Recommended)" (2026-11-13).
+- Same shape as S4. The starter stays SQL (SQLAlchemy + Alembic): basekit copies it before `infra.sh` sets the database. The Mongo variant is applied on `make new-app` (before `uv lock`), like NestJS's `app-setup.sh`, when the overlay that infra-setup activated is MongoDB (`DB_DRIVER=mongodb`). The CLI code does not change.
+- The Mongo variant:
+  - dependencies: `beanie` (exact version, at least 14 days old) instead of `sqlalchemy`, `alembic`, `psycopg` and `pymysql`; no `alembic/` nor `alembic.ini`;
+  - `src/core/config.py` reads `MONGO_URL` (required at startup with a clear message, like `DATABASE_URL`);
+  - `src/core/db.py` initializes Beanie in the FastAPI lifespan with the document models of `src/modules/*/models.py`. Index creation follows S6.2: create only, never drop. Indexes are created at startup in dev and by `make migrate` in prod;
+  - `conftest.py` and the tests stay deterministic under `make test` / `make verify`.
+- `scaffold.sh` (per module) writes, for Mongo, a Beanie `Document` in `models.py` instead of the SQLAlchemy model. The id is a UUID string, as in NestJS.
+- Migrations:
+  - `make migrate` (the `migrate` service) creates the declared indexes instead of `alembic upgrade head`;
+  - `make migration` prints that Mongo has no migrations, the same way as NestJS's `MONGO_MIGRATION_MSG`.
+- Agent docs: py-patterns, py-scaffold (`SKILL.md`, `contract.md`), py-verify, the roles, `AGENTS.section.md`, the zones and `docs/stacks/fastapi.md` describe the Beanie variant next to SQLAlchemy.
+- fastapi's `dbs` becomes `["postgres", "mysql", "sqlite", "mongo"]` **only after** `scripts/e2e.sh fastapi mongo` passes for real. It joins the CI matrix (S3), and the stack name says Beanie is available.
+- Risk: item 5 (new dependency versions). The SQL path must stay byte-identical.
+
 ## Tasks
 | ID | Specs | Route | Status | Commit |
 |---|---|---|---|---|
@@ -81,6 +97,7 @@ User: "sigue con las advertencias".
 | T4 | S4 NestJS (templates; real e2e with Docker), then the CI entry (S3) in both repos | delegated, after T1n/T1g/T2 | done. RED→GREEN in tests/plantillas/nestjs-mongo.test.ts and ci.test. Real Docker: `e2e.sh nestjs mongo` OK; a module writes and reads through the API; `make migrate` creates the indexes in dev and in prod (uid 1001); `e2e.sh nestjs postgres` OK. `e2e.sh --prod` hit the user's own server on port 3000, so it was reproduced by hand on 3999 and passed. @nestjs/mongoose 12.0.0, mongoose 9.11.4. | uncommitted |
 | T5 | Parent: copy plantillas to Go, regenerate the parity manifest, seam check, cross-implementation run | inline | done. 20 template files copied; parity manifest regenerated from the Node working tree (it must be regenerated from the commit). Go make verify OK, windows vet OK. Node verify OK. Same 6 scenarios on both CLIs: identical. Go real e2e: see L5. | uncommitted |
 | T6 | S6 (Node `plantillas/`, docs and tests; the parent ports the templates to Go) | delegated (review-advisory batch) | done. RED→GREEN: createIndexes test, fallback-message test, MONGO_MIGRATION_MSG test (byte part green before and after). The new-app failure test and both contract-marker tests already passed on 62922c3. verify OK. Real Docker: the upgrade procedure, run verbatim from SKILL.md in zsh, took an old-overlay volume from failing auth to healthy; manual dev flow on APP_PORT=3998 (3000 busy): `make migrate` recreated a declared index and kept a hand-made one. | uncommitted |
+| T7 | S7 FastAPI + Beanie (Node templates, tests, docs, real e2e, CI row); the parent ports to Go | delegated (context backstop: the parent session is past ~150k) | done. RED→GREEN: tests/plantillas/fastapi-mongo.test.ts (15 RED, then GREEN; the SQL guards passed before and after) and ci.test (fastapi lists mongo). verify OK. Real Docker: `e2e.sh fastapi mongo` OK (scratch copy with dbs, then the real repo); `e2e.sh fastapi postgres` OK; a module writes and reads through the API against MongoDB; `make test`/`make verify` OK with the in-memory DB; `make migrate` dev recreates a declared index and keeps a hand-made one; prod: migrate runs as uid 1001 and creates the index, prod startup does not; SQL `make migrate` still runs Alembic. Differential: SQL app code identical; only agent docs, stack name, stack.mk, compose.yaml and the new script change. beanie 2.2.0, pymongo 4.19.0, pymongo-async-mock 0.1.3, mongomock 4.3.0. | feat(fastapi): support MongoDB with Beanie |
 
 ## Log
 - L1 (2026-11-12) User: "si decido usar bd en un proyecto, estan son sus opciones, qu debo hacer con mongo para funcione?", then "cual es la mejor forma de implementarlo?", "y con flask?", and "arranquemos como ibamos y dame mas opcopnes par mantener con mongo segun el lenguaje y framer y preguntame antes de hacerlo". NestJS choice: "@nestjs/mongoose (Recommended)".
@@ -112,3 +129,13 @@ User: "sigue con las advertencias".
   - The procedure's bash block has no inline comments: zsh without `interactivecomments` would pass them as arguments.
   - `make migration` with Mongo overrides `MIGRATION_NAME_CHECK = :` for that target, since the core Makefile skips the NAME check only when `NO_DB_MSG` is set.
   - `e2e.sh nestjs mongo` was not run: the user's server holds port 3000. The dev flow was reproduced by hand on APP_PORT=3998.
+- L8 (2026-11-13) PR #16 merged to main in both repos; dev/farid fast-forwarded to it. User: "Siguiente stack con Mongo", then "FastAPI + Beanie (Recommended)".
+- L9 (2026-11-13) T7 decisions (writer):
+  - `py-scaffold/scripts/mongo-setup.sh` runs on the host as the first line of `_new-app` (silent unless `DB_DRIVER: mongodb`, so the SQL `make new-app` output is unchanged). It replaces a starter file only if it lacks the Beanie marker, removes `alembic/` and `alembic.ini`, and stops (exit 2, nothing touched) if `alembic/versions` has revisions.
+  - Versions: `beanie==2.2.0` (2026-08-07) and `pymongo==4.19.0` (2026-10-14), pinned because uv would otherwise resolve pymongo 4.20.0 (2026-11-12, one day old).
+  - Tests: mongomock-motor 0.0.36 does not work with Beanie 2 (it calls `list_collection_names(authorizedCollections=…)`). The dev group uses `pymongo-async-mock==0.1.3` (2026-03-05, MIT, small and audited: no network or exec) and `mongomock==4.3.0` (2024-11-16), plus a 4-line shim in conftest.py for that call. `make verify` runs with `--no-deps` and the app user can only write `DB_NAME`, so a real MongoDB for tests would clobber dev data. Open question for the user: a less known dev dependency vs. a separate test database (which needs an overlay change).
+  - `id: str` (UUID text `_id`, like NestJS). `Decimal` fields need `beanie.DecimalAnnotation` (Decimal128 round trip), documented in py-patterns and the stack doc.
+  - Indexes: `init_beanie(..., allow_index_dropping=False)`; dev creates them at startup, prod skips them (`skip_indexes`) and `make migrate` runs `python -m src.core.create_indexes`. An index whose options changed fails at startup and in migrate with `OperationFailure` (verified with mongo:8.0); the docs say to drop it by hand first.
+  - Stack name: "Python · FastAPI + SQLAlchemy 2 o Beanie (MongoDB) + Pydantic v2". Zones unchanged: `src/core/**` already covers `create_indexes.py`.
+- L10 (2026-11-13) User, on the in-memory test database: "Mantener el mock (Recommended)" (pymongo-async-mock 0.1.3, dev only).
+- L11 (2026-11-13) Parent Go port: templates copied (stack.mk keeps the Go CLI text `basekit init`), CI row added, docs/guias 04, 05 and stacks/fastapi.md synced, parity manifest regenerated from the Node working tree (regenerate from the commit). Two Go tests used fastapi as the stack without mongo; they now use flask (TestE2EDBPrecedence, TestDBQuestionYesChoosesEngine). Go `make verify`: OK. Go real e2e `BASEKIT_E2E_STACK=fastapi BASEKIT_E2E_DB=mongo`: PASS (21s). Node and Go `init fastapi --db mongo|postgres`: same output apart from the CLI text and a pre-existing `.gitattributes` line order (also on flask).

@@ -7,10 +7,18 @@ Estado: borrador   <!-- los agentes solo trabajan si dice "cerrado" -->
 - Prefijo HTTP: `/__NAME__`
 
 ## data-writer
+<!-- sql -->
 ### Tabla `__NAME__`
 | Columna | Tipo | Nulo | Índice / FK |
 |---|---|---|---|
 | id | UUID | no | PK |
+<!-- /sql -->
+<!-- mongo -->
+### Colección `__NAME__` (Beanie, `models.py`, clase `__PASCAL__`)
+| Campo | Tipo | Nulo | Índice |
+|---|---|---|---|
+| _id | str (UUID) | no | PK |
+<!-- /mongo -->
 
 ### Schemas
 | Schema | Campos (tipo, restricciones) |
@@ -20,7 +28,12 @@ Estado: borrador   <!-- los agentes solo trabajan si dice "cerrado" -->
 
 ## logic-writer
 - Excepciones: `__PASCAL__NotFound`, `__PASCAL__Forbidden`
+<!-- sql -->
 - `def create___NAME__(db: Session, data: __PASCAL__Create, owner_id: UUID) -> __PASCAL__:`
+<!-- /sql -->
+<!-- mongo -->
+- `async def create___NAME__(data: __PASCAL__Create, owner_id: str) -> __PASCAL__:`
+<!-- /mongo -->
 
 ## web-writer
 | Método | Path | Entrada | Salida | Código | Auth |

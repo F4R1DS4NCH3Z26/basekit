@@ -40,6 +40,7 @@ describe("CI e2e job (S8, S17)", () => {
   it("runs <stack> + mongo in dev for every stack that lists mongo in dbs, and for no other (mongo-support S3)", () => {
     const mongo = STACKS.filter((s) => dbEngines(s).includes("mongo")).map((s) => s.id);
     assert.ok(mongo.length > 0, "no stack lists mongo");
+    for (const id of ["nestjs", "fastapi"]) assert.ok(mongo.includes(id), `${id} does not list mongo (mongo-support S4, S7)`);
     for (const id of mongo) {
       assert.ok(rows.some((r) => r.stack === id && r.db === "mongo" && r.env === undefined), `${id}: no dev job with mongo`);
     }

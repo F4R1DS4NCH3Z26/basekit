@@ -26,7 +26,7 @@ Qué hace:
   - el de la app, `DB_USER`/`DB_PASSWORD`, con `readWrite` solo en `DB_NAME`. Es el de las URLs, el healthcheck y `make db-shell`.
   - El usuario de la app lo crea un script de inicio que va dentro del mismo overlay (`configs` de Compose; necesita Docker Compose 2.23.1 o posterior). Corre solo en el primer arranque de un volumen vacío: un volumen creado por el overlay anterior necesita el paso de [Volumen MongoDB anterior](#volumen-mongodb-anterior).
 - La base de datos **no publica puertos** al host. Para entrar, usa `make db-shell` (`mongosh` con MongoDB).
-- Solo deja la conexión: no crea tablas, colecciones ni datos. Con MongoDB, NestJS trae la integración con Mongoose (`@nestjs/mongoose`); los demás stacks ofrecen `mongo` solo cuando su `stack.json` lo lista en `dbs`.
+- Solo deja la conexión: no crea tablas, colecciones ni datos. Con MongoDB, NestJS trae la integración con Mongoose (`@nestjs/mongoose`) y FastAPI con Beanie (`make new-app` cambia el esqueleto SQL); los demás stacks ofrecen `mongo` solo cuando su `stack.json` lo lista en `dbs`.
 - Sin `Makefile` (proyecto solo con Docker) no escribe `.make/`: copia `.env.example` a `.env` y reemplaza los `__GENERATE__` a mano.
 
 Es idempotente y no reemplaza un overlay modificado a mano sin `--force`. Si `.env` ya existe, avisa qué variables agregar: nunca toca secretos.

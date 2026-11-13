@@ -88,7 +88,7 @@ services:
 | Stack | `migrate` |
 |---|---|
 | Next.js | Target `dev` (dev) o `build` (prod), con `prisma migrate deploy` |
-| FastAPI | Target `dev` o `prod`, con `alembic upgrade head` (Alembic es dependencia de runtime) |
+| FastAPI | Target `dev` o `prod`, con `alembic upgrade head` (Alembic es dependencia de runtime); con MongoDB (Beanie), `python -m src.core.create_indexes` (crea los índices declarados, nunca borra) |
 | Laravel | Target `dev` o `prod`, con `php artisan migrate --force` |
 | Spring | Imagen `flyway/flyway:11` sobre `src/main/resources/db/migration`, usando `SPRING_DATASOURCE_*`. La app también migra al arrancar |
 | Django, Django + HTMX | Target `dev` o `prod`, con `python manage.py migrate --noinput` |
