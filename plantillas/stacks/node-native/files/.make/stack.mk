@@ -8,34 +8,47 @@ LINT_CMD    := npx --no-install eslint .
 # Prisma 7's migrate dev no longer regenerates the client: generate runs right after, so tsc sees the new models.
 MAKE_MIGRATION_CMD = sh -c 'npx --no-install prisma migrate dev --name "$$NAME" && npx --no-install prisma generate'
 VERIFY_CMD  = bash .agents/skills/nodenative-verify/scripts/verify.sh "$${SCOPE:-src}"
+# MongoDB (compose.db.yaml with DB_DRIVER: mongodb, read with the same sed as app-setup.sh and scaffold.sh) has no
+# migrations: the indexes live in the models and `make migrate` creates them (src/mongo/sync-indexes.ts). make migration
+# only says so: no NAME check and no container.
+ifeq ($(shell sed -n 's/^[[:space:]]*DB_DRIVER:[[:space:]]*\([a-z]*\).*/\1/p' compose.db.yaml 2>/dev/null | head -1),mongodb)
+MONGO_MIGRATION_MSG := MongoDB no tiene migraciones: los índices se declaran en los modelos (src/modules/<m>/model.ts) y make migrate los crea
+# Target-specific overrides, for make migration only: the Makefile's NAME check becomes `:` and DC just prints the message.
+migration: MIGRATION_NAME_CHECK = :
+migration: DC = @echo "$(MONGO_MIGRATION_MSG)"; :
+endif
 NODE_IMAGE  ?= node:22-alpine
 # Exact versions: each one the newest release of its major that was at least 14 days old (2026-10-26). Bump them
 # only to releases at least 14 days old: npm_config_before (below) applies to exact versions too, so a newer one
 # makes `make new-app` fail with ETARGET until it is 14 days old. PRISMA_VERSION is the one of the express and
 # nestjs stacks; app-setup.sh installs it (with the driver adapter of the database) only when compose.db.yaml exists.
+# MONGOOSE_VERSION (9.11.4, 2026-10-23; the one of the nestjs stack): app-setup.sh installs it instead of Prisma when
+# the database is MongoDB.
 # No web framework: the HTTP layer is node:http (src/lib/router.ts, src/lib/http.ts). Zod is the only runtime dependency.
 # ESLint 10: ESLint 9 reached end of life on 2026-08-06 (https://eslint.org/version-support/); typescript-eslint 8.72 supports it.
 DEPS        ?= zod@4.6.7
 DEV_DEPS    ?= typescript@5.9.3 tsx@4.23.15 @types/node@22.20.5 vitest@3.2.7 supertest@7.3.1 \
                @types/supertest@6.0.3 eslint@10.13.0 @eslint/js@10.0.1 typescript-eslint@8.72.0
 PRISMA_VERSION ?= 7.10.1
+MONGOOSE_VERSION ?= 9.11.4
 # User data (PKGS) reaches the shell as an environment variable, never interpolated by make into the command.
 export PKGS
 
 # The guard and the work live in one shell decision: an `exit 0` on its own recipe line would only end that line.
-new-app: ## Crea package.json e instala Zod y TypeScript (+ Prisma si hay BD) en Docker (solo si no existe package.json)
+new-app: ## Crea package.json e instala Zod y TypeScript (+ Prisma o Mongoose si hay BD) en Docker (solo si no existe package.json)
 	@if [ -f package.json ]; then echo "Ya existe package.json; nada que hacer"; else $(MAKE) --no-print-directory _new-app; fi
 
 # The skeleton (src/, tests/, configs) comes from basekit init and package.json from the nodenative-scaffold template.
 # _new-app runs as root (it adds bash for app-setup.sh) and hands the files back to your uid at the end, also when a
 # step fails. npm_config_before resolves every dependency as of 14 days ago (guide 04 §8). app-setup.sh adds, when
-# compose.db.yaml exists, Prisma with the driver adapter of that database, and the build paths to .gitignore.
+# compose.db.yaml exists, Prisma with the driver adapter of that database (Mongoose for MongoDB) and the build paths
+# to .gitignore.
 # If a step fails, package.json is removed again so `make new-app` can be retried.
 _new-app:
 	@[ -f src/app.ts ] || { echo "Falta src/app.ts: ejecuta npx --no-install basekit init en un proyecto sin package.json"; exit 1; }
 	@cp .agents/skills/nodenative-scaffold/assets/package.json.tpl package.json && echo "  + package.json"
 	@docker run --rm -e UID_GID="$$(id -u):$$(id -g)" -e HOME=/tmp -e npm_config_cache=/tmp/.npm -e npm_config_update_notifier=false \
-	  -e PRISMA_VERSION="$(PRISMA_VERSION)" -v "$$PWD":/app -w /app $(NODE_IMAGE) sh -c '\
+	  -e PRISMA_VERSION="$(PRISMA_VERSION)" -e MONGOOSE_VERSION="$(MONGOOSE_VERSION)" -v "$$PWD":/app -w /app $(NODE_IMAGE) sh -c '\
 	  export npm_config_before="$$(node -p "new Date(Date.now() - 14 * 864e5).toISOString()")"; \
 	  ( apk add --no-cache bash >/dev/null && \
 	    npm install --no-audit --no-fund --save-exact $(DEPS) && \

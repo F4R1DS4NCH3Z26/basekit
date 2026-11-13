@@ -1,8 +1,8 @@
-# Stack: TypeScript · Nativo (node:http, sin framework) + Prisma
+# Stack: TypeScript · Nativo (node:http, sin framework) + Prisma o Mongoose (MongoDB)
 
 Plantillas: `plantillas/stacks/node-native/`. Tipo: **backend**. Auth por defecto: **JWT propio** (`jose`). Puerto: 3000. Healthcheck: `/health`.
 
-API REST sobre el módulo `node:http` de Node, sin framework web (ni Express, Fastify, Koa, Hono o NestJS). TypeScript strict (ESM, `module: NodeNext`) + Zod para validar + Prisma 7 para los datos (solo si hay BD). Tests con Vitest y Supertest. Es el stack `express` con la capa web cambiada: datos, migraciones, Docker, roles y zonas son los mismos.
+API REST sobre el módulo `node:http` de Node, sin framework web (ni Express, Fastify, Koa, Hono o NestJS). TypeScript strict (ESM, `module: NodeNext`) + Zod para validar + Prisma 7 para los datos (solo si hay BD SQL; con MongoDB, Mongoose). Tests con Vitest y Supertest. Es el stack `express` con la capa web cambiada: datos, migraciones, Docker, roles y zonas son los mismos.
 
 ## Elección (sin detección automática)
 
@@ -21,7 +21,7 @@ API REST sobre el módulo `node:http` de Node, sin framework web (ni Express, Fa
 - El cuerpo se lee antes de enrutar, como `express.json()`: el límite y los 400/413/415 valen para cualquier ruta. Lo que sobra de un cuerpo rechazado se descarta.
 - **CORS a mano** (`createHandler(router, { corsOrigins })` en `router.ts`): solo los orígenes de `CORS_ORIGINS` (separados por coma) reciben `Access-Control-Allow-Origin`, y su preflight (`OPTIONS` con `Access-Control-Request-Method`) se responde con 204 antes de enrutar. Vacía, el valor por defecto: ningún origen externo (un preflight ajeno sigue el camino normal: 404/405 sin cabeceras CORS). Siempre `Vary: Origin`. Un proyecto combinado la llena con el origen del frontend. ESLint 10 (ESLint 9 llegó a fin de vida el 2026-08-06, https://eslint.org/version-support/).
 - **Cabeceras de seguridad a mano** (no hay helmet, que es middleware de Express): `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, `Strict-Transport-Security`, `Cross-Origin-Opener-Policy` y `Cross-Origin-Resource-Policy: same-origin`, `Origin-Agent-Cluster`, `X-DNS-Prefetch-Control: off`, `X-Permitted-Cross-Domain-Policies: none`. `node:http` no envía `X-Powered-By`.
-- **`src/server.ts`**: `createServer` con `requestTimeout` 30 s y `headersTimeout` 15 s (acotan cuerpos lentos o enormes). Con SIGTERM (o SIGINT) deja de aceptar conexiones, cierra las inactivas, termina las peticiones en curso y sale con 0; a los 8 s corta las que sigan abiertas (antes del SIGKILL de `docker stop`).
+- **`src/server.ts`**: (con MongoDB, antes conecta con `connectMongo()`) `createServer` con `requestTimeout` 30 s y `headersTimeout` 15 s (acotan cuerpos lentos o enormes). Con SIGTERM (o SIGINT) deja de aceptar conexiones, cierra las inactivas, termina las peticiones en curso y sale con 0; a los 8 s corta las que sigan abiertas (antes del SIGKILL de `docker stop`).
 
 ## Base de datos: Prisma 7, igual que Express y NestJS
 
@@ -39,6 +39,16 @@ API REST sobre el módulo `node:http` de Node, sin framework web (ni Express, Fa
 - Prisma 7 ya no regenera el cliente en `migrate dev`: `make migration NAME=x` corre `prisma migrate dev` y después `prisma generate`.
 - `db()` es perezoso: la app y `/health` arrancan sin base de datos.
 
+### MongoDB: Mongoose
+
+Con `--db mongo` (`DB_DRIVER: mongodb`, leído con el mismo `sed` en `app-setup.sh`, `scaffold.sh` y `.make/stack.mk`) no hay Prisma. `app-setup.sh` instala `mongoose` en `MONGOOSE_VERSION ?= 9.11.4` (`.make/stack.mk`, la misma versión exacta que los stacks `express` y `nestjs`, publicada el 2026-10-23) y crea:
+
+- `src/mongo/connection.ts`: `connectMongo()` con `MONGO_URL` (sin ella falla al arrancar con un mensaje claro). El overlay conecta con el usuario de la app, que solo tiene `readWrite` en su base de datos. `autoIndex` encendido en dev y apagado con `NODE_ENV=production`: en prod los índices los crea `make migrate ENV=prod`, no el arranque.
+- `src/server.ts` conecta antes de escuchar, así un `/health` que responde prueba la conexión, y cierra la conexión en `SIGTERM`. El script solo reemplaza `src/server.ts` mientras sigue siendo el del kit (lo reconoce por su `cksum`); si lo cambiaste, se detiene antes de instalar o escribir nada y dice qué agregar (`await connectMongo()` antes de `listen`).
+- `src/mongo/sync-indexes.ts`: lo corre `make migrate`. Importa `src/app.ts` (así se registran los modelos de cada módulo) y llama a `createIndexes()` en cada modelo: crea los índices declarados y nunca borra uno. Un índice que quitas del modelo sigue en la BD hasta que lo borras a mano (`make db-shell` → `db.<colección>.dropIndex('<nombre>')`).
+
+Por módulo, `scaffold.sh` agrega `model.ts` (un `Schema` de Mongoose con `_id` UUID en texto, así `z.uuid()` y el contrato no cambian; colección `<m>`, `timestamps`) y el contrato trae la tabla del modelo Mongoose en vez de la de Prisma. `make migration` solo explica que MongoDB no tiene migraciones: los índices se declaran en los modelos.
+
 ## Arquitectura (por módulos, capas por rol)
 
 ```text
@@ -47,6 +57,7 @@ src/
 ├── app.ts                     # createApp(): Router, /health y router.mount() de cada módulo
 ├── lib/ router.ts · http.ts · env.ts (Zod) · db.ts (Prisma, si hay BD) · auth.ts (JWT)
 ├── generated/prisma/          # cliente de Prisma (prisma generate; ignorado por git)
+├── mongo/                     # connection.ts (MONGO_URL) y sync-indexes.ts (si la BD es MongoDB)
 └── modules/<m>/
     ├── schemas.ts             # Zod .strict() + tipos              (data-writer)
     ├── repository.ts          # Prisma con select                  (data-writer)
@@ -62,8 +73,8 @@ tests/ health.test.ts · router.test.ts · modules/<m>/*.test.ts       (qa-write
 
 | Rol | Zona |
 |---|---|
-| Orquestador | común + `package.json`, lockfiles, `tsconfig*.json`, `eslint.config.*`, `vitest.config.*`, `prisma/**`, `prisma.config.ts`, `src/generated/**`, `src/app.ts`, `src/server.ts`, `src/lib/**`, `src/types/**` |
-| data-writer | `src/modules/*/schemas.ts`, `src/modules/*/repository.ts` |
+| Orquestador | común + `package.json`, lockfiles, `tsconfig*.json`, `eslint.config.*`, `vitest.config.*`, `prisma/**`, `prisma.config.ts`, `src/generated/**`, `src/app.ts`, `src/server.ts`, `src/lib/**`, `src/mongo/**`, `src/types/**` |
+| data-writer | `src/modules/*/schemas.ts`, `src/modules/*/repository.ts`, `src/modules/*/model.ts` (solo MongoDB) |
 | logic-writer | `src/modules/*/services.ts`, `src/modules/*/errors.ts` |
 | web-writer | `src/modules/*/router.ts`, `src/modules/*/middleware.ts` |
 | qa-writer | `tests/**` |
@@ -83,14 +94,14 @@ Igual que `express`:
 
 - En dev, `node_modules` va en un volumen con nombre; `make install` vuelve a ejecutar `npm ci`.
 - En prod: `read_only`, `tmpfs: /tmp`, `cap_drop: [ALL]` y `no-new-privileges`. SQLite vive en el volumen `app-data` (`/app/data`).
-- `migrate` ejecuta `prisma migrate deploy` solo si existe `prisma/schema.prisma`: target `dev` en dev; en prod, el target `build` con el uid de la app (1001).
+- `migrate` ejecuta `prisma migrate deploy` solo si existe `prisma/schema.prisma`: target `dev` en dev; en prod, el target `build` con el uid de la app (1001). Con MongoDB crea los índices de los modelos: en dev `tsx src/mongo/sync-indexes.ts`; en prod `node dist/mongo/sync-indexes.js` (el target `build` ya lo compiló; `compose.prod.yaml` le fija `NODE_ENV=production`). Sin ninguno de los dos, falla: no hay nada que migrar.
 
 ## `make new-app` (si no hay `package.json`)
 
 `init` deja el esqueleto (`src/`, `tests/`, `tsconfig*.json`, `eslint.config.js`, `vitest.config.ts`). Luego `make new-app`:
 1. Copia `package.json` desde `.agents/skills/nodenative-scaffold/assets/package.json.tpl`.
 2. En `node:22-alpine` instala versiones exactas: `zod@4.6.7` (única dependencia de runtime sin BD) y, como desarrollo, `typescript@5.9.3`, `tsx@4.23.15`, `@types/node@22.20.5`, `vitest@3.2.7`, `supertest@7.3.1`, `@types/supertest@6.0.3`, `eslint@10.13.0`, `@eslint/js@10.0.1` y `typescript-eslint@8.72.0` (`DEPS` y `DEV_DEPS` en `.make/stack.mk`). `npm_config_before` = hace 14 días: también vale para versiones exactas.
-3. `app-setup.sh`: con `compose.db.yaml`, instala `@prisma/client`, el adaptador y `prisma` (desarrollo) en `PRISMA_VERSION`, crea `prisma/schema.prisma`, `prisma.config.ts` y `src/lib/db.ts` y genera el cliente. Siempre agrega `node_modules/`, `dist/`, `coverage/` y `src/generated/` a `.gitignore`.
+3. `app-setup.sh`: con `compose.db.yaml`, instala `@prisma/client`, el adaptador y `prisma` (desarrollo) en `PRISMA_VERSION`, crea `prisma/schema.prisma`, `prisma.config.ts` y `src/lib/db.ts` y genera el cliente. Con MongoDB, `mongoose` en `MONGOOSE_VERSION`, `src/mongo/` y `src/server.ts` que conecta antes de escuchar. Siempre agrega `node_modules/`, `dist/`, `coverage/` y `src/generated/` a `.gitignore`.
 4. Si un paso falla, quita `package.json` para poder reintentar.
 
 Con `package.json` presente no hace nada (ni llama a Docker). Para agregar dependencias: `make deps-add PKGS="jose@6" [DEV=1]` y luego `make install`.
@@ -109,8 +120,8 @@ make new-app        # una vez
 make env && make dev
 make test
 make verify SCOPE=src/modules/<m>
-make migration NAME=x
-make migrate
+make migration NAME=x   # Prisma; con MongoDB solo explica que no hay migraciones
+make migrate            # Prisma: migraciones; MongoDB: crea los índices de los modelos
 make sh
 ```
 
@@ -120,6 +131,7 @@ make sh
 - **Salida**: `select` con los campos del contrato; nunca la fila completa.
 - **Tamaño y tiempos**: cuerpo ≤ 100 KB (413), `requestTimeout` y `headersTimeout` en `server.ts`.
 - **Errores**: nunca el mensaje de un error inesperado al cliente (500 genérico; el detalle va al log). El mensaje de un `HttpError` sí llega al cliente.
+- **MongoDB**: filtros solo con valores validados por Zod; nunca un objeto del cliente dentro de un filtro (inyección NoSQL con `$ne`, `$gt`…) ni `$where`. Lecturas con proyección y `.lean()`.
 - **SQL**: solo la API de Prisma o `$queryRaw` con plantilla; nunca `$queryRawUnsafe` con datos del usuario.
 - **Detrás de un proxy**: `X-Forwarded-For` solo si el proxy es tuyo; si no, la IP del cliente es falsificable.
 

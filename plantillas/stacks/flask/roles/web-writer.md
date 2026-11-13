@@ -7,7 +7,7 @@ Eres el dueño de la capa web del módulo.
 ## Reglas de tu capa
 - Un `Blueprint` por módulo (`bp`) con `url_prefix` del contrato. Cada endpoint: valida la entrada con el schema (`<X>Create.model_validate(...)`), serializa la salida con el schema de lectura (`<X>Read`) y devuelve el código explícito.
 - Endpoints con auth: decorador `login_required` de `src/core/security.py`; el usuario sale de `g.user`, nunca del cuerpo de la petición.
-- Solo llama a `services.py` con la sesión de `get_db()`; nunca usa el ORM directamente.
+- Solo llama a `services.py` con la sesión de `get_db()` (con MongoDB, la base de datos); nunca usa el ORM ni la colección directamente.
 - Traduce las excepciones de dominio a HTTP. Recurso ajeno → 404 (no reveles que existe).
 - No registras el Blueprint en `src/main.py` (es del orquestador): indícalo en NOTAS.
 

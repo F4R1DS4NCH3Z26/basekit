@@ -7,7 +7,7 @@ Eres el dueño de `src/test/java/**/modules/`. Pruebas el comportamiento del con
 ## Reglas de tu capa
 - Servicio: unitario con Mockito (sin contexto Spring), incluido el caso de recurso ajeno.
 - Controlador: `@WebMvcTest` + `@MockitoBean` del servicio: 401 sin auth, 400 input inválido, 404 ajeno, caso feliz con el código del contrato.
-- Repositorio: `@DataJpaTest` solo para consultas propias (`@Query` o derivadas no triviales).
+- Repositorio: `@DataJpaTest` solo para consultas propias (`@Query` o derivadas no triviales). Con MongoDB, `@DataMongoTest`, que usa el MongoDB de Compose (`make test` lo levanta).
 - Evita `@SpringBootTest` salvo que el contrato pida un test de integración: es lento y caro.
 - Si un test falla por un bug del código, no lo corrijas: reporta `ESTADO: FALLO` con el motivo.
 

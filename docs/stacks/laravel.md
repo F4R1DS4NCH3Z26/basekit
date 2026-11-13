@@ -52,6 +52,22 @@ Skills: `php-scaffold`, `php-verify` (la usa `make verify`), `php-patterns` (+ `
 
 Composer descarga los paquetes desde la API de GitHub. Si las descargas fallan con `504` o por límite de peticiones, exporta un token antes de ejecutar `make new-app`: `export COMPOSER_AUTH='{"github-oauth":{"github.com":"<token>"}}'`. `make new-app` lo pasa al contenedor por nombre, así que el token no queda en la línea de comandos.
 
+## MongoDB (mongodb/laravel-mongodb)
+
+Con `--db mongo` (o el overlay MongoDB de infra-setup), `make new-app` crea la app como siempre y después ejecuta `php-scaffold/scripts/mongo-setup.sh`. Con otra BD, ese paso no se ejecuta y la app queda igual que antes.
+
+| Pieza | Qué deja |
+|---|---|
+| `Dockerfile` | La extensión PECL `mongodb-2.5.5` en la línea `install-php-extensions`. La imagen SQL no cambia: la extensión solo se agrega en proyectos MongoDB. |
+| `composer.json` | `mongodb/laravel-mongodb` 5.12.0 y `mongodb/mongodb` 2.5.0 exactos, y `config.platform.ext-mongodb` (la imagen `composer:2` que resuelve el lock no tiene la extensión) |
+| `config/database.php` | La conexión `mongodb` con `dsn` = `MONGO_URL` (el usuario de la app, con permisos solo sobre `DB_NAME`). El overlay pone `DB_CONNECTION=mongodb`, así que es la conexión por defecto. |
+| `stubs/migration*.stub` | `make migration` genera migraciones que solo crean índices (`Schema::table` + `index`), y `down()` quita solo esos índices |
+
+- El script es idempotente y nunca pisa un archivo cambiado: si el `Dockerfile` no tiene la línea del kit, `config/database.php` no tiene `'connections' => [` o un stub ya existe con otro contenido, se detiene sin cambiar nada y dice qué agregar a mano. Si falla, `make new-app` termina con error y dice cómo reintentarlo. Para pasar a MongoDB una app ya creada, activa la BD con infra-setup y ejecuta el script.
+- **Migraciones**: siguen existiendo. `make migrate` (también en prod, con el usuario `app`) corre `php artisan migrate --force`. Las migraciones de un módulo MongoDB crean los índices de su colección y nunca borran una colección. Quitar un índice de una migración ya aplicada no lo borra: hace falta una migración nueva con `dropIndex`, o hacerlo a mano con `make db-shell` y `db.<colección>.dropIndex('<nombre>')`. Las migraciones de Laravel (users, cache, jobs) también corren sobre MongoDB: crean sus colecciones y el índice único de `email`.
+- **php-scaffold** genera `Domain/Models/<M>.php`, un modelo de `MongoDB\Laravel\Eloquent\Model` con `HasUuids` (`_id` UUID en texto), `$connection = 'mongodb'` y `$table` = la colección. El contrato trae la colección en vez de la tabla.
+- **Tests**: `make test` corre contra el MongoDB de `make dev`. `RefreshDatabase`, `DatabaseMigrations` y `DatabaseTruncation` fallan porque borran la base de datos y el usuario de la app no tiene permiso. Cada test vacía sus colecciones en `setUp()` con `<Modelo>::truncate()`, que borra los documentos y conserva los índices.
+
 ## Auth: Sanctum (detalle en `php-patterns/references/auth.md`)
 
 1. Instalación, dentro de `make sh`: `php artisan install:api` (Sanctum, `routes/api.php` y la tabla de tokens), y opcionalmente `composer require laravel/fortify`. Después, `make migrate`.

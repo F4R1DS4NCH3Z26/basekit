@@ -83,6 +83,58 @@ export const toRead = ({ id, name, price }: { id: string; name: string; price: u
   ({ id, name, price: Number(price) });
 ```
 
+## MongoDB (Mongoose): model.ts y repository.ts — data-writer
+
+Solo si existe `src/mongo/` (la BD es MongoDB; no hay Prisma ni `src/lib/db.ts`). `src/server.ts` conecta con `connectMongo()` antes de escuchar; los módulos solo importan su modelo. El `_id` es un UUID en texto, así `productIdSchema` (`z.uuid()`) y el contrato no cambian.
+
+```ts
+// model.ts
+import { randomUUID } from "node:crypto";
+import { model, Schema } from "mongoose";
+
+const productSchema = new Schema(
+  {
+    _id: { type: String, default: () => randomUUID() },
+    name: { type: String, required: true, maxlength: 120 },
+    price: { type: Number, required: true },
+    ownerId: { type: String, required: true, index: true }, // índice: en dev lo crea la app; en prod, make migrate
+  },
+  { collection: "products", timestamps: true, versionKey: false },
+);
+
+export const ProductModel = model("Product", productSchema);
+```
+
+```ts
+// repository.ts
+import { ProductModel } from "./model.js";
+import type { CreateProductInput, ProductRead } from "./schemas.js";
+
+// Solo campos del contrato (+ dueño): proyección y .lean() (objetos planos, no documentos).
+const fields = { _id: 1, name: 1, price: 1, ownerId: 1 } as const;
+type Row = { _id: string; name: string; price: number; ownerId: string };
+
+export async function insertProduct(data: CreateProductInput, ownerId: string) {
+  const doc = await ProductModel.create({ ...data, ownerId });
+  return { _id: doc._id, name: doc.name, price: doc.price, ownerId: doc.ownerId } satisfies Row;
+}
+
+export function findProduct(id: string) {
+  return ProductModel.findById(id, fields).lean<Row>().exec(); // id ya validado con z.uuid()
+}
+
+export function listProducts(ownerId: string, take: number, skip: number) {
+  // Filtros solo con valores validados (strings, números): nunca un objeto del cliente (inyección NoSQL), ni $where.
+  return ProductModel.find({ ownerId }, fields).sort({ createdAt: -1 }).skip(skip).limit(Math.min(take, 100)).lean<Row[]>().exec();
+}
+
+export const toRead = ({ _id, name, price }: Row): ProductRead => ({ id: _id, name, price });
+```
+
+- Quitar un índice del modelo no lo borra: `make migrate` solo crea (`createIndexes`). Bórralo a mano: `make db-shell` → `db.products.dropIndex('<nombre>')`.
+- `services.ts` y `router.ts` no importan `mongoose` ni `model.ts` (ESLint solo bloquea Prisma y `src/lib/db`: respétalo igual).
+- Tests: igual que con Prisma, mockea `repository.js` con `vi.mock`; no hace falta MongoDB.
+
 ## errors.ts y services.ts — logic-writer
 
 ```ts

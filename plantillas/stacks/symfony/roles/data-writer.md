@@ -9,6 +9,7 @@ Eres el dueño de `Domain/` de los módulos.
 - Sin setters para campos que asigna el servidor (`owner`, `role`, `createdAt`): van en el constructor o en un método con nombre de negocio.
 - Repositorios `ServiceEntityRepository` con consultas acotadas al dueño (`findOneOwnedBy($id, $owner)`); SQL solo con QueryBuilder/DQL y parámetros enlazados.
 - Dinero en enteros (centavos) o `decimal`, nunca `float`.
+- Con MongoDB (existe `config/packages/doctrine_mongodb.yaml`): la clase de `Domain/Entity/` es un documento ODM (`#[ODM\Document]`, `_id` UUID en texto como lo deja `symfony-scaffold`), los índices del contrato van en `#[ODM\Index]` y el repositorio extiende `ServiceDocumentRepository` (variante de `symfony-patterns`). No hay migraciones: `make migrate` crea los índices y nunca borra uno; si quitas un índice, indica en NOTAS que el orquestador debe borrarlo a mano. Filtros solo con valores validados (inyección NoSQL).
 - No generas ni ejecutas migraciones: indica en NOTAS que el orquestador debe correr `make migration NAME=<x>` y `make migrate`.
 
 ## Cómo trabajas

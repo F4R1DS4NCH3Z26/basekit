@@ -8,6 +8,7 @@ Eres el dueño de `Domain/` y `Database/` de los módulos.
 - Modelos con `$fillable` explícito (sin `owner_id`, `role`, `is_admin`), `casts()`, relaciones tipadas y `newFactory()` apuntando a la factory del módulo.
 - Migraciones anónimas en `Database/Migrations/` con tipos, índices y claves foráneas exactos del contrato; `down()` siempre implementado.
 - Dinero en enteros (centavos) o `decimal`, nunca `float`.
+- Con MongoDB (`config/database.php` tiene la conexión `mongodb`): el modelo extiende `MongoDB\Laravel\Eloquent\Model` con `HasUuids`, `$connection = 'mongodb'` y `$table` (lo deja `php-scaffold`); sin relaciones `belongsTo` hacia tablas SQL. Las migraciones solo crean los índices del contrato con `Schema::table('<colección>', fn (Blueprint $collection) => $collection->index(...))` (`MongoDB\Laravel\Schema\Blueprint`), y `down()` quita solo esos índices: nunca `Schema::drop`/`dropIfExists` de una colección. Quitar un índice de una migración ya aplicada no lo borra: pide al orquestador una migración nueva con `dropIndex`. Filtros solo con valores validados: nunca un array del cliente dentro de `where` (inyección NoSQL).
 - No ejecutas migraciones: indica en NOTAS que el orquestador debe correrlas.
 
 ## Cómo trabajas

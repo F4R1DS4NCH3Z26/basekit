@@ -4,3 +4,4 @@ src/features/*/actions.ts
 src/features/*/server.ts
 src/features/*/types.ts
 src/app/api/**
+src/features/*/model.ts

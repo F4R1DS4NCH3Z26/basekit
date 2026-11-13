@@ -150,7 +150,7 @@ Opciones de `init`: `--stack <id>` (o `<backend>+<frontend>`), `--agents a,b` (o
 | Fullstack | Python | `django-htmx` |
 | Fullstack | TypeScript | `nextjs` |
 
-Los `*-native` (y `vanilla-ts`) no usan framework web. Cada stack se describe en `plantillas/stacks/<id>/stack.json` (`kind`, `language`, `name`…) y en su guía `docs/stacks/<id>.md`. Un stack frontend no tiene base de datos: `init` rechaza `--db` (salvo `auto` o `none`) y `--redis`. El campo opcional `dbs` limita los motores de un stack (Spring: `postgres`, `mysql`); sin él, admite `postgres`, `mysql` y `sqlite`. MongoDB es opcional: solo lo admite un stack que lista `mongo` en `dbs` (hoy `nestjs`, con Mongoose). `init` solo ofrece esos motores en la pregunta y rechaza otro `--db` con un error de uso. `express`, `django-htmx` y los nativos nunca se detectan solos: se eligen con `--stack` o en la pregunta.
+Los `*-native` (y `vanilla-ts`) no usan framework web. Cada stack se describe en `plantillas/stacks/<id>/stack.json` (`kind`, `language`, `name`…) y en su guía `docs/stacks/<id>.md`. Un stack frontend no tiene base de datos: `init` rechaza `--db` (salvo `auto` o `none`) y `--redis`. El campo opcional `dbs` limita los motores de un stack (Spring: `postgres`, `mysql`, `mongo`); sin él, admite `postgres`, `mysql` y `sqlite`. MongoDB es opcional: solo lo admite un stack que lista `mongo` en `dbs`: hoy todos los backend salvo `django` y `django-htmx`, cada uno con su librería (Mongoose en `nestjs`, `express`, `node-native` y `nextjs`; Beanie en `fastapi`; PyMongo en `flask` y `python-native`; Spring Data MongoDB en `spring`; mongo-driver v2 en `gin` y `go-native`; laravel-mongodb en `laravel`; Doctrine MongoDB ODM en `symfony`; mongodb/mongodb en `php-native`). `init` solo ofrece esos motores en la pregunta y rechaza otro `--db` con un error de uso. `express`, `django-htmx` y los nativos nunca se detectan solos: se eligen con `--stack` o en la pregunta.
 
 ### Fullstack combinado: backend + frontend
 
@@ -177,7 +177,7 @@ Cada acción se reporta con `+` (creado), `~` (actualizado), `=` (existía, se c
 | Adaptadores (Claude Code, OpenCode, Gemini CLI, Hermes) y enlaces de skills | Hecho |
 | Skills externas fijadas (`grill-me`, `grill-with-docs`, `grilling`, `domain-modeling`) | Hecho |
 | Prueba 9 (`docker compose config` con overlays) | Pasa en `npm test` si hay Docker |
-| Prueba 12 (`make new-app` + `make dev` reales) | `scripts/e2e.sh <stack> [postgres\|mysql\|sqlite\|mongo]`; el CI la corre en todos los stacks al pushear a `main` o a mano (`workflow_dispatch`), no en los PR (Spring con `postgres`; los frontend sin base de datos). Pasa en `fastapi`, `laravel`, `nestjs` (con `mongo` y con `postgres`), `nextjs` y `spring`; en los demás falta su primera corrida con Docker |
+| Prueba 12 (`make new-app` + `make dev` reales) | `scripts/e2e.sh <stack> [postgres\|mysql\|sqlite\|mongo]`; el CI la corre en todos los stacks al pushear a `main` o a mano (`workflow_dispatch`), no en los PR (Spring con `postgres`; los frontend sin base de datos). Pasa con `mongo` y con `postgres` en `express`, `fastapi`, `flask`, `gin`, `go-native`, `laravel`, `nestjs`, `nextjs`, `node-native`, `php-native`, `python-native`, `spring` y `symfony`; en los demás falta su primera corrida con Docker |
 
 ## Comandos
 
@@ -208,6 +208,7 @@ npm install
 npm test                    # compila con tsc y corre node --test (las pruebas de compose se ejecutan si hay Docker)
 npm run compile && bash scripts/e2e.sh nextjs            # prueba 12 real (necesita Docker; la usa el CI)
 bash scripts/e2e.sh spring postgres                     # con base de datos (Spring la necesita para arrancar)
+BASEKIT_E2E_PORT=3999 bash scripts/e2e.sh nestjs       # en otro puerto, si el del stack está ocupado
 ```
 
 `dist/src` se commitea: después de cambiar `src/`, ejecuta `npm run compile` y commitea `dist/src` junto con el cambio. El CI falla si no coinciden.

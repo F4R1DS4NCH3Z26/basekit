@@ -1,12 +1,13 @@
 {
   "id": "laravel",
-  "name": "PHP · Laravel (monolito modular)",
+  "name": "PHP · Laravel (monolito modular) + Eloquent o laravel-mongodb (MongoDB)",
   "language": "PHP",
   "kind": "fullstack",
   "port": 8000,
   "health": "/up",
   "detect": { "files": ["artisan"], "manifest": "composer.json", "contains": "laravel/framework", "priority": 10 },
   "appMarker": "composer.json",
+  "dbs": ["postgres", "mysql", "sqlite", "mongo"],
   "roles": ["data-writer", "app-writer", "http-writer", "qa-writer"],
   "skills": [
     ["php-scaffold", "Módulo nuevo: estructura + contrato"],

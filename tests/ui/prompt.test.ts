@@ -436,7 +436,7 @@ describe("init with interactive answers", () => {
   it("asks for the database after Docker and the Makefile: yes and an engine run infra-setup like --db (S1)", async () => {
     const d = join(scratch(), "app");
     const { p, output } = prompter("", "", "", "1", "", "");
-    assert.equal(await quietInit({ dir: d, stack: "flask", agents: "codex" }, p), 0);
+    assert.equal(await quietInit({ dir: d, stack: "django", agents: "codex" }, p), 0);
     p.close();
     const text = output();
     const ask = text.indexOf("¿Integrar base de datos? [S/n]");
@@ -461,8 +461,8 @@ describe("init with interactive answers", () => {
     const { p, output } = prompter("", "", "", "", "", "");
     assert.equal(await quietInit({ dir: d, stack: "spring", agents: "codex" }, p), 0);
     p.close();
-    assert.match(output(), /¿Qué base de datos\?\n {2}1\) MySQL {7}mysql\n {2}2\) PostgreSQL {2}postgres\nNúmero \[2\]: /);
-    assert.doesNotMatch(output(), /SQLite|MongoDB/);
+    assert.match(output(), /¿Qué base de datos\?\n {2}1\) MySQL {7}mysql\n {2}2\) PostgreSQL {2}postgres\n {2}3\) MongoDB {5}mongo\nNúmero \[2\]: /);
+    assert.doesNotMatch(output(), /SQLite/);
     assert.equal(manifest(d).options.db, "postgres", "Enter takes PostgreSQL");
     assert.match(readFileSync(join(d, "compose.db.yaml"), "utf8"), /postgres/);
   });

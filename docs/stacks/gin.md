@@ -1,6 +1,6 @@
 # Stack: Go · Gin (API REST) · v1
 
-Plantillas: `plantillas/stacks/gin/`. Etiqueta en `init`: «Go · Gin (API REST) + GORM». Lenguaje: Go. Tipo: `backend`. Auth por defecto: **JWT propio** (access + refresh rotado). Puerto: 8080. Healthcheck: `/health`.
+Plantillas: `plantillas/stacks/gin/`. Etiqueta en `init`: «Go · Gin (API REST) + GORM o mongo-driver (MongoDB)». Lenguaje: Go. Tipo: `backend`. Auth por defecto: **JWT propio** (access + refresh rotado). Puerto: 8080. Healthcheck: `/health`.
 
 Es el primer stack del lenguaje Go. Gin es el framework web de Go más usado.
 
@@ -57,6 +57,21 @@ Elección: **GORM** para las consultas y **goose** para las migraciones SQL vers
 - **AutoMigrate no se usa**: el esquema lo fija el SQL revisado.
 - El SQL de ejemplo es portable entre los tres motores: ids `VARCHAR(26)` generados en Go (`crypto/rand.Text()`), dinero en centavos y `TIMESTAMP`.
 
+### MongoDB: mongo-driver v2
+
+El esqueleto es SQL porque `init` lo copia antes de que infra-setup active la BD. Con `--db mongo` (`DB_DRIVER: mongodb` en `compose.db.yaml`), `make new-app` corre primero `gin-scaffold/scripts/mongo-setup.sh` (sin red; con otra BD no hace nada) y después `go mod tidy`. El script:
+- En `go.mod` quita GORM, sus drivers y goose y agrega el driver oficial `go.mongodb.org/mongo-driver/v2 v2.9.2`; el resto de las líneas se conserva y `go mod tidy` limpia las indirectas.
+- Copia `gin-scaffold/assets/mongo/` sobre el esqueleto y borra `internal/platform/db/migrate.go` y `migrations/`:
+  - `config.go`: `DB_DRIVER` vacío o `mongodb`; con `mongodb` exige `MONGO_URL` (`config: MONGO_URL no está definida …`), que el overlay inyecta con el usuario de la app.
+  - `db.go`: `Open` conecta y hace ping (si MongoDB no responde, la API no arranca) y devuelve la BD de la ruta de `MONGO_URL`; `NewID()` (UUID en texto, el `_id`) e `IsDuplicateKey`.
+  - `indexes.go`: `db.Collection` (colección + índices) y `EnsureIndexes`, que crea los índices declarados que faltan con `createIndexes`. Nunca borra uno: quitar un índice del modelo no lo quita de la BD. Para borrarlo, `make db-shell` (`ENV=prod` en producción), `db.<colección>.getIndexes()` y `db.<colección>.dropIndex('<nombre>')`.
+  - `main.go`: `collections()` lista los `Indexes` de los módulos (orquestador). `serve` crea los índices al arrancar solo en dev; en prod los crea `make migrate ENV=prod`. `api migrate` crea los índices (también en prod, con el binario y el usuario 1001); `down` y `status` no aplican.
+  - `db_test.go`: no toca ninguna BD, así que `make test` y `make verify` no necesitan MongoDB.
+- Solo reemplaza o borra un archivo que sigue siendo el esqueleto intacto de basekit (lo compara con su sha256) o que ya es la variante MongoDB. Si alguno cambió, o si `migrations/` tiene `.sql`, se detiene, nombra los archivos y no cambia nada. Sin la carpeta de skills, un proyecto SQL sigue con `go mod tidy` y uno MongoDB se detiene con un error.
+- Es idempotente. Para pasar a MongoDB después de `make new-app`: activa la BD con infra-setup, borra `go.sum` y vuelve a correr `make new-app`.
+
+Por módulo, `scaffold.sh` escribe en `model.go` `CollectionName`, el struct con `ID string \`bson:"_id"\`` y `var Indexes = db.Collection{…}`, y deja en el contrato la sección de la colección (sin la tabla SQL). `make migration` solo explica que MongoDB no tiene migraciones, y `make lint` no revisa `migrations/`.
+
 ## Roles y zonas
 
 | Rol | Zona |
@@ -78,7 +93,7 @@ Skills: `gin-scaffold`, `gin-verify` (la usa `make verify`; gofmt, go vet, stati
 
 - **`scratch` no tiene shell ni curl**: el `HEALTHCHECK` es el propio binario (`/app/api healthcheck`), que hace GET a `/health` y sale con 0 o 1.
 - **`/app/data`** (volumen de SQLite) toma el dueño 1001 de la imagen.
-- **`migrate`** usa `go run ./cmd/api migrate` en dev y el binario (`command: ["migrate"]`) en prod, también `read_only`.
+- **`migrate`** usa `go run ./cmd/api migrate` en dev y el binario (`command: ["migrate"]`) en prod, también `read_only`. Con MongoDB ese mismo comando crea los índices declarados.
 - **`make deps-add PKGS="modulo@vX.Y.Z"`** exige versión exacta, ejecuta `go get` + `go mod tidy` en Docker y reconstruye.
 - **`make lint`**: gofmt, go vet y staticcheck.
 
@@ -100,8 +115,8 @@ make new-app                  # go mod tidy → go.sum (una vez)
 make dev
 make test
 make verify SCOPE=internal/<m>
-make migration NAME=x         # goose, SQL
-make migrate
+make migration NAME=x         # goose, SQL (con MongoDB solo lo explica)
+make migrate                  # goose; con MongoDB, los índices declarados
 make deps-add PKGS="modulo@vX.Y.Z"
 ```
 

@@ -11,10 +11,11 @@ src/
 │   ├── api/health/route.ts          # lo crea make new-app
 │   └── layout.tsx                   # orquestador
 ├── features/<f>/
-│   ├── schemas.ts   services.ts ("server-only")   actions.ts ("use server")   server.ts
+│   ├── schemas.ts   model.ts (solo MongoDB)   services.ts ("server-only")   actions.ts ("use server")   server.ts
 │   ├── hooks/   stores.ts   components/
 │   └── index.ts                     # API pública: solo componentes, tipos y schemas
-├── components/  lib/ (db, env, auth, auth-client)  types/
+├── components/  lib/ (db, env, auth, auth-client; con MongoDB, sync-indexes)  types/
+├── instrumentation.ts             # solo MongoDB: conecta al arrancar el servidor
 prisma/  tests/features/<f>/
 ```
 
@@ -25,13 +26,23 @@ prisma/  tests/features/<f>/
 
 | Rol | Zona |
 |---|---|
-| Orquestador | común + `package.json`, configs, `prisma/`, `src/lib/`, `src/types/`, root layout, `middleware.ts`/`proxy.ts` |
-| data-writer | `schemas.ts`, `services.ts`, `actions.ts`, `server.ts`, `types.ts`, `src/app/api/**` |
+| Orquestador | común + `package.json`, configs, `prisma/`, `src/lib/`, `src/instrumentation.ts`, `src/types/`, root layout, `middleware.ts`/`proxy.ts` |
+| data-writer | `schemas.ts`, `model.ts` (solo MongoDB), `services.ts`, `actions.ts`, `server.ts`, `types.ts`, `src/app/api/**` |
 | logic-writer | `stores.ts`, `hooks/**` |
 | ui-writer | `components/**`, `index.ts`, `src/components/**`, `page`/`layout`/`loading`/`error`/`not-found` |
 | qa-writer | `tests/**`, `e2e/**` |
 
 Skills: `nextjs-scaffold`, `nextjs-verify` (la usa `make verify`), `nextjs-patterns` (+ `references/auth.md`).
+
+## MongoDB: Mongoose
+
+Con `--db mongo` (`DB_DRIVER: mongodb`, leído con el mismo `sed` en `app-setup.sh`, `scaffold.sh` y `.make/stack.mk`), `make new-app` corre además `.agents/skills/nextjs-scaffold/scripts/app-setup.sh` (con cualquier otra BD, o sin BD, `make new-app` es el de siempre y no lo llama). El script instala en versión exacta `mongoose` (`MONGOOSE_VERSION ?= 9.11.4`, publicada el 2026-10-23, la misma que nestjs, express y node-native) y `tsx` (`TSX_VERSION ?= 4.23.15`, desarrollo, la misma que express) y crea:
+
+- `src/lib/db.ts`: `connectDb()` con `MONGO_URL` (sin ella falla con un mensaje claro). Una sola conexión por proceso, guardada en `globalThis` para que la recarga de `next dev` no abra otra. El overlay conecta con el usuario de la app, que solo tiene `readWrite` en su base de datos. `autoIndex` encendido en dev y apagado con `NODE_ENV=production`: en prod los índices los crea `make migrate ENV=prod`, no el arranque. Sin `"server-only"`, porque también lo importa `make migrate`.
+- `src/instrumentation.ts`: `register()` conecta al arrancar el servidor (runtime `nodejs`), antes de atender peticiones. Si ya tienes uno, el script lo conserva y avisa qué agregar.
+- `src/lib/sync-indexes.ts`: lo corre `make migrate` con `tsx`, en dev (target `dev`) y en prod (target `build`, uid 1001). Carga el `model.ts` de cada feature y llama a `createIndexes()`: crea los índices declarados y nunca borra uno. Un índice que quitas del modelo sigue en la BD hasta que lo borras a mano (`make db-shell` → `db.<colección>.dropIndex('<nombre>')`).
+
+Por feature, `scaffold.sh` agrega `model.ts` (un `Schema` de Mongoose con `_id` UUID en texto, colección `<f>`, `timestamps` y `overwriteModels: true`) y el contrato trae la tabla del modelo Mongoose. Cada función de `services.ts` hace `await connectDb()` antes de usar el modelo. `make migration` solo explica que MongoDB no tiene migraciones: los índices se declaran en los modelos.
 
 ## Docker
 
@@ -39,8 +50,10 @@ Skills: `nextjs-scaffold`, `nextjs-verify` (la usa `make verify`), `nextjs-patte
 |---|---|
 | `deps` | `npm ci` (o `pnpm install --frozen-lockfile`) con caché |
 | `dev` | `prisma generate` (si hay `prisma/`) + `next dev` en `0.0.0.0` |
-| `build` | `prisma generate` + `next build`. También lo usa `migrate` en prod |
+| `build` | `prisma generate` (si hay `prisma/`) + `next build`. También lo usa `migrate` en prod (uid 1001) |
 | `prod` | `output: "standalone"`, usuario `nextjs` (1001), healthcheck con `fetch` |
+
+`migrate` ejecuta `prisma migrate deploy`; con MongoDB (existe `src/lib/sync-indexes.ts`), `tsx src/lib/sync-indexes.ts`. Sin Prisma ni MongoDB falla: no hay nada que migrar.
 
 En dev, `node_modules` y `.next` van en **volúmenes con nombre**, para que el bind mount no los oculte; `make install` vuelve a ejecutar `npm ci` en el volumen. Se activa `WATCHPACK_POLLING` para que el hot reload funcione en Docker Desktop y WSL.
 
@@ -52,6 +65,7 @@ En dev, `node_modules` y `.next` van en **volúmenes con nombre**, para que el b
 3. Instala `zod`, `server-only` y Vitest + Testing Library.
 4. Añade `output: "standalone"` a `next.config`.
 5. Crea `/api/health`.
+6. Solo con MongoDB, antes de devolver los archivos a tu uid: `app-setup.sh` (ver «MongoDB: Mongoose»).
 
 **ESLint sigue en 9** aunque ESLint 9 llegó a fin de vida el 2026-08-06 (https://eslint.org/version-support/): `create-next-app@16.4.3` escribe `eslint: "^9"` y `eslint-config-next` depende de `eslint-plugin-react` 7.37.5, `eslint-plugin-import` 2.32.0 y `eslint-plugin-jsx-a11y` 6.10.2, que solo aceptan ESLint hasta 9 (`peerDependencies`). Pasar a ESLint 10 espera a que Next.js publique una configuración compatible. Los demás stacks TypeScript ya usan ESLint 10 (express y node-native fijado; react, vue y vanilla-ts lo resuelven al crear la app); nestjs usa oxlint.
 
@@ -73,8 +87,8 @@ En dev, `node_modules` y `.next` van en **volúmenes con nombre**, para que el b
 make dev
 make test
 make verify SCOPE=src/features/<f>
-make migration NAME=x
-make migrate
+make migration NAME=x   # Prisma; con MongoDB solo explica que no hay migraciones
+make migrate            # Prisma: migraciones; MongoDB: crea los índices de los modelos
 make sh
 ```
 
@@ -85,6 +99,7 @@ make sh
 - **Variables públicas**: nunca un secreto con prefijo `NEXT_PUBLIC_`. El entorno se valida en `src/lib/env.ts`.
 - **Datos hacia el cliente**: usa `select` con los campos del contrato; no pases filas completas a Client Components.
 - **HTML**: prohibido `dangerouslySetInnerHTML`.
+- **MongoDB**: filtros solo con valores validados por Zod; nunca un objeto del cliente dentro de un filtro (inyección NoSQL con `$ne`, `$gt`…) ni `$where`. Lecturas con proyección y `.lean()`.
 
 ## Errores comunes
 
@@ -94,3 +109,4 @@ make sh
 - Auth solo en el middleware.
 - `npx tsc` sin `--no-install`.
 - Olvidar `output: "standalone"`: la imagen de prod no arranca.
+- Con MongoDB, `import "server-only"` en `model.ts` o `src/lib/db.ts`: `make migrate` los carga fuera de Next.js y falla.

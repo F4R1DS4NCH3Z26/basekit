@@ -1,9 +1,11 @@
 ---
 name: pynative-patterns
-description: "Código de referencia seguro para un módulo de la API Python nativa (WSGI de la stdlib, sin framework): modelo SQLAlchemy 2, schemas Pydantic v2, excepciones de dominio, service sin HTTP, router propio con auth y salida serializada por schema, y tests con pytest y el TestClient de src/core/testing.py. Úsala SIEMPRE antes de escribir models, schemas, services, routes o tests de un módulo."
+description: "Código de referencia seguro para un módulo de la API Python nativa (WSGI de la stdlib, sin framework): modelo SQLAlchemy 2 (o colección PyMongo si la BD es MongoDB), schemas Pydantic v2, excepciones de dominio, service sin HTTP, router propio con auth y salida serializada por schema, y tests con pytest y el TestClient de src/core/testing.py. Úsala SIEMPRE antes de escribir models, schemas, services, routes o tests de un módulo."
 ---
 
 # pynative-patterns
+
+**¿SQLAlchemy o PyMongo?** Si existe `src/core/create_indexes.py` (BD MongoDB), el modelo, los schemas de lectura, los services y los tests son los de [Variante MongoDB](#variante-mongodb-pymongo); excepciones y la forma de las routes no cambian.
 
 Ejemplo con el módulo `products`. Copia la forma y cambia los nombres. Busca con Grep lo que ya existe en `src/core/` (`Base`, `get_db`, `Router`, `HTTPError`, `json_response`, `require_user`) antes de asumir sus nombres. Auth: `references/auth.md`.
 
@@ -227,9 +229,133 @@ def test_create_ok(client: TestClient, auth_as: AuthAs, user: User) -> None:
     assert set(r.json()) == {"id", "name", "price"}  # no filtra campos internos
 ```
 
+## Variante MongoDB (PyMongo)
+
+Con MongoDB no hay SQLAlchemy ni Alembic. `src/core/db.py` crea el cliente de `MONGO_URL` en el primer uso (no al importar) y `get_db(request)` devuelve la base de datos (`Database`), no una sesión. Cada `models.py` declara su colección (`COLLECTION`), sus índices (`INDEXES`) y el tipo del documento; el `_id` es un UUID en texto, así el contrato no cambia.
+
+```python
+# models.py — data-writer
+from datetime import datetime
+from typing import Any, TypedDict
+
+from bson.decimal128 import Decimal128
+from pymongo import ASCENDING, DESCENDING, IndexModel
+from pymongo.collection import Collection
+from pymongo.database import Database
+
+COLLECTION = "products"
+INDEXES: list[IndexModel] = [IndexModel([("owner_id", ASCENDING), ("created_at", DESCENDING)])]
+
+
+class ProductDocument(TypedDict):
+    _id: str
+    name: str
+    price: Decimal128  # PyMongo no guarda Decimal: Decimal128 (exacto); el schema lo convierte al leer
+    owner_id: str
+    created_at: datetime
+
+
+def collection(db: Database[Any]) -> Collection[ProductDocument]:
+    return db[COLLECTION]
+```
+
+```python
+# schemas.py — data-writer: la entrada no cambia; la lectura toma `_id` y convierte Decimal128
+from decimal import Decimal
+
+from bson.decimal128 import Decimal128
+from pydantic import BaseModel, Field, field_validator
+
+
+class ProductRead(BaseModel):
+    id: str = Field(validation_alias="_id")
+    name: str
+    price: Decimal
+
+    @field_validator("price", mode="before")
+    @classmethod
+    def _decimal128(cls, v: object) -> object:
+        return v.to_decimal() if isinstance(v, Decimal128) else v
+```
+
+```python
+# services.py — logic-writer: reciben la base de datos; filtros armados aquí, nunca un dict del cliente
+from datetime import UTC, datetime
+from typing import Any
+from uuid import uuid4
+
+from bson.decimal128 import Decimal128
+from pymongo.database import Database
+
+from .exceptions import ProductForbidden, ProductNotFound
+from .models import ProductDocument, collection
+from .schemas import ProductCreate
+
+MAX_PAGE = 100
+
+
+def create_product(db: Database[Any], data: ProductCreate, owner_id: str) -> ProductDocument:
+    doc: ProductDocument = {
+        "_id": str(uuid4()),
+        "name": data.name,
+        "price": Decimal128(data.price),
+        "owner_id": owner_id,  # viene del usuario autenticado
+        "created_at": datetime.now(UTC),
+    }
+    collection(db).insert_one(doc)
+    return doc
+
+
+def get_product(db: Database[Any], product_id: str, user_id: str) -> ProductDocument:
+    product = collection(db).find_one({"_id": product_id})
+    if product is None:
+        raise ProductNotFound(product_id)
+    if product["owner_id"] != user_id:
+        raise ProductForbidden(product_id)
+    return product
+
+
+def list_products(
+    db: Database[Any], owner_id: str, limit: int = 20, offset: int = 0
+) -> list[ProductDocument]:
+    cursor = (
+        collection(db)
+        .find({"owner_id": owner_id})  # valores validados, nunca un dict armado con input del cliente
+        .sort("created_at", -1)
+        .skip(max(offset, 0))
+        .limit(min(limit, MAX_PAGE))
+    )
+    return list(cursor)
+```
+
+Routes: iguales que arriba, con dos cambios. `_out()` recibe el documento (`ProductRead.model_validate(product)`), y los ids van como texto a los services: `services.get_product(get_db(request), str(product_id), user.id)`.
+
+Tests: los fixtures del `conftest.py` de la raíz usan una MongoDB en memoria (mongomock), nueva en cada test y con los índices declarados ya creados, sin red ni BD real: `client` igual que con SQL y `db` (la base de datos) para probar services:
+
+```python
+from typing import Any
+
+import pytest
+from pymongo.database import Database
+
+from src.modules.products import services
+from src.modules.products.exceptions import ProductForbidden
+from src.modules.products.schemas import ProductCreate
+
+
+def test_get_other_users_product_is_forbidden(db: Database[Any]) -> None:
+    p = services.create_product(db, ProductCreate(name="A", price="1.00"), owner_id="u1")
+    with pytest.raises(ProductForbidden):
+        services.get_product(db, p["_id"], "u2")
+```
+
+Índices: en dev se crean en el primer uso de la BD (la primera petición que llama a `get_db(request)`); en prod no, los crea `make migrate ENV=prod` (`src/core/create_indexes.py`). Ninguno de los dos borra: quitar un índice de `INDEXES` no lo quita de la BD. Bórralo a mano en `make db-shell` (`ENV=prod` en producción): `db.products.getIndexes()` para ver su nombre y `db.products.dropIndex('<nombre>')`. Cambiar las opciones de un índice que ya existe (por ejemplo `unique`) hace fallar `make migrate` y, en dev, el primer uso de la BD: bórralo a mano primero. `make migration` no aplica: no hay migraciones.
+
+Auth con MongoDB: `references/auth.md` no cambia en tokens, `require_user` ni endpoints; `User` y `RefreshToken` son colecciones con su `TypedDict` y las funciones que reciben `db: Session` reciben la base de datos y usan `find_one`, `insert_one` y `update_one`/`update_many` con filtros como los de arriba.
+
 ## Reglas que no cambian
 
-- SQL solo con el ORM o `text(":param")`; nunca f-strings.
+- SQL solo con el ORM o `text(":param")`; nunca f-strings. MongoDB: filtros con valores ya validados; nunca un dict del cliente dentro de un filtro (inyección NoSQL con `$ne`, `$gt`…) ni `$where`.
 - La sesión sale de `get_db(request)` en routes y se pasa a services; services nunca recibe `Request`.
 - El usuario sale de `require_user(request)`, nunca del cuerpo de la petición.
 - Prohibidos sobre datos de entrada: `eval`, `pickle.loads`, `yaml.load`, `string.Template` o `str.format` con plantillas del cliente y `subprocess` con `shell=True`.

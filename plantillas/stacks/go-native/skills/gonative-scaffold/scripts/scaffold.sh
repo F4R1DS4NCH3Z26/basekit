@@ -13,14 +13,48 @@ dir="internal/$name"
 [ -e "$dir" ] && { echo "ERROR: $dir ya existe; no se sobrescribe"; exit 1; }
 pascal="$(printf '%s' "${name:0:1}" | tr '[:lower:]' '[:upper:]')${name:1}"
 
+# One exact match, shared with mongo-setup.sh and .make/stack.mk: the DB_DRIVER of the overlay infra-setup activated.
+mongo=0
+grep -Eqs '^[[:space:]]*DB_DRIVER:[[:space:]]*mongodb[[:space:]]*$' compose.db.yaml && mongo=1
+
 mkdir -p "$dir" docs/specs
 c="Contrato: docs/specs/${name}_contract.md"
 put() { # archivo, comentario (el paquete compila vacío)
   printf '%s\npackage %s\n' "$2" "$name" > "$1"; echo "  + $1"
 }
-put "$dir/model.go"      "// Modelo de $name (struct plano; el esquema lo fija la migración). $c § data-writer."
+if [ $mongo = 1 ]; then
+  cat > "$dir/model.go" <<GO
+// Modelo MongoDB de $name (documentos con tags bson). $c § data-writer.
+package $name
+
+import (
+	"go.mongodb.org/mongo-driver/v2/mongo"
+
+	"app/internal/platform/db"
+)
+
+// CollectionName is the MongoDB collection of this module.
+const CollectionName = "$name"
+
+// $pascal is one document of the collection. Each field carries its bson tag.
+type $pascal struct {
+	ID string \`bson:"_id"\` // db.NewID(): UUID string
+}
+
+// Indexes declares the collection's indexes, e.g. {Keys: bson.D{{Key: "owner_id", Value: 1}}}. make migrate creates
+// them (make dev too, at startup); removing one from here does not drop it from the database.
+var Indexes = db.Collection{Name: CollectionName, Indexes: []mongo.IndexModel{}}
+GO
+  echo "  + $dir/model.go"
+  repo="// Repositorio MongoDB de $name (*mongo.Collection, implementa Repository de service.go). $c § data-writer."
+  keep=mongo; drop=sql
+else
+  put "$dir/model.go"      "// Modelo de $name (struct plano; el esquema lo fija la migración). $c § data-writer."
+  repo="// Repositorio SQL de $name (database/sql, implementa Repository de service.go). $c § data-writer."
+  keep=sql; drop=mongo
+fi
 put "$dir/dto.go"        "// DTO de entrada/salida de $name. $c § data-writer."
-put "$dir/repository.go" "// Repositorio SQL de $name (database/sql, implementa Repository de service.go). $c § data-writer."
+put "$dir/repository.go" "$repo"
 put "$dir/errors.go"     "// Errores de dominio de $name. $c § logic-writer."
 put "$dir/service.go"    "// Package $name: casos de uso (sin HTTP). $c § logic-writer."
 put "$dir/handler.go"    "// Handlers net/http de $name. $c § web-writer."
@@ -28,10 +62,17 @@ contract="docs/specs/${name}_contract.md"
 if [ -e "$contract" ]; then echo "  = $contract (existe)"
 else
   tmp=$(mktemp "$contract.XXXXXX")
-  sed -e "s/__NAME__/$name/g" -e "s/__PASCAL__/$pascal/g" "$assets/contract.md" > "$tmp" && mv "$tmp" "$contract"
+  # The template carries both data models between <!-- sql --> and <!-- mongo --> markers: keep this project's.
+  sed -e "/<!-- $drop -->/,/<!-- \/$drop -->/d" -e "/<!-- \/*$keep -->/d" -e "s/__NAME__/$name/g" -e "s/__PASCAL__/$pascal/g" \
+    "$assets/contract.md" > "$tmp" && mv "$tmp" "$contract"
   echo "  + $contract"
 fi
 echo "scaffold OK: $name"
-echo "Migración (orquestador): make migration NAME=create_$name"
+if [ $mongo = 1 ]; then
+  echo "Índices (orquestador, cmd/api/main.go, lista collections):"
+  echo "  $name.Indexes,"
+else
+  echo "Migración (orquestador): make migration NAME=create_$name"
+fi
 echo "Registro (orquestador, cmd/api/main.go, lista modules):"
 echo "  $name.NewHandler($name.NewService($name.NewRepository(database)), auth.Required(authCfg)),"

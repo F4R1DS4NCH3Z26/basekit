@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Completa la app Express de `make new-app`: si existe compose.db.yaml, Prisma 7 con el adaptador de esa BD
-# (prisma/schema.prisma, prisma.config.ts y src/lib/db.ts) y el cliente generado. Lo ejecuta `make new-app` dentro
-# de Docker; también sirve después de activar la BD con infra-setup (`make sh` y, dentro, este script).
-# Idempotente: nunca sobrescribe código tuyo.
+# (prisma/schema.prisma, prisma.config.ts y src/lib/db.ts) y el cliente generado; con MongoDB, Mongoose (src/mongo/ y
+# src/server.ts, que conecta antes de escuchar). Lo ejecuta `make new-app` dentro de Docker; también sirve después de
+# activar la BD con infra-setup (`make sh` y, dentro, este script). Idempotente: nunca sobrescribe código tuyo.
 set -euo pipefail
 # The project is four levels above this script (<project>/.agents/skills/<skill>/scripts/), also in backend/ or frontend/.
 root=$(cd "$(dirname "$0")/../../../.." && pwd); cd "$root"
@@ -10,6 +10,8 @@ root=$(cd "$(dirname "$0")/../../../.." && pwd); cd "$root"
 command -v npm >/dev/null || { echo "ERROR: falta npm (ejecútalo dentro del contenedor: make sh)"; exit 2; }
 PRISMA_VERSION="${PRISMA_VERSION:-7.10.1}"
 [[ $PRISMA_VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "ERROR: PRISMA_VERSION debe ser una versión exacta (x.y.z)"; exit 2; }
+MONGOOSE_VERSION="${MONGOOSE_VERSION:-9.11.4}"
+[[ $MONGOOSE_VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "ERROR: MONGOOSE_VERSION debe ser una versión exacta (x.y.z)"; exit 2; }
 # Same rule as make new-app: every dependency as it was 14 days ago (guide 04 §8).
 npm_config_before="${npm_config_before:-$(node -p 'new Date(Date.now() - 14 * 864e5).toISOString()')}"
 export npm_config_before PRISMA_HIDE_UPDATE_MESSAGE=1
@@ -21,16 +23,33 @@ put() {
   mkdir -p "$(dirname "$1")"; local tmp; tmp=$(mktemp "$1.XXXXXX"); cat > "$tmp"; mv "$tmp" "$1"; echo "  + $1"
 }
 
-# DB_DRIVER sale del overlay que activó infra-setup (postgres | mysql | sqlite); sin overlay, sin BD ni Prisma.
-driver=""
+# DB_DRIVER sale del overlay que activó infra-setup (postgres | mysql | sqlite | mongodb); sin overlay, sin BD ni Prisma.
+# The same sed is used by scaffold.sh and .make/stack.mk: one exact match for every Mongo check.
+driver=""; mongo=0
 [ -f compose.db.yaml ] && driver=$(sed -n 's/^[[:space:]]*DB_DRIVER:[[:space:]]*\([a-z]*\).*/\1/p' compose.db.yaml | head -1)
 case "$driver" in
   postgres) provider=postgresql; adapter=@prisma/adapter-pg ;;
   mysql)    provider=mysql;      adapter=@prisma/adapter-mariadb ;;
   sqlite)   provider=sqlite;     adapter=@prisma/adapter-better-sqlite3 ;;
+  mongodb)  provider=""; mongo=1 ;;
   "")       provider="" ;;
   *) echo "ERROR: DB_DRIVER desconocido en compose.db.yaml: $driver"; exit 2 ;;
 esac
+
+# MongoDB: src/server.ts must connect before it listens. It is replaced only while it is still the kit's starter
+# (cksum of plantillas/stacks/express/starter/src/server.ts; a test pins it); one you changed stops the script here,
+# before anything is installed or written.
+STARTER_SERVER="905593909 451"
+server_mongo=keep
+if [ $mongo -eq 1 ] && ! grep -q 'connectMongo' src/server.ts 2>/dev/null; then
+  if [ -f src/server.ts ] && [ "$(cksum < src/server.ts)" = "$STARTER_SERVER" ]; then server_mongo=replace
+  else
+    echo "ERROR: src/server.ts no es el del kit (lo cambiaste); no se toca ni se instala nada."
+    echo "  Agrega al arranque, antes de listen: import { connectMongo } from \"./mongo/connection.js\"; await connectMongo();"
+    echo "  y vuelve a ejecutar este script (o quita tus cambios de src/server.ts)."
+    exit 2
+  fi
+fi
 
 if [ -n "$provider" ]; then
   grep -q '"@prisma/client"' package.json || npm_add "@prisma/client@$PRISMA_VERSION"
@@ -110,6 +129,69 @@ export function db(): PrismaClient {
 TS
 fi
 
+if [ $mongo -eq 1 ]; then
+  grep -q '"mongoose"' package.json || npm_add "mongoose@$MONGOOSE_VERSION"
+  put src/mongo/connection.ts <<'TS'
+// Conexión a MongoDB con Mongoose (zona del orquestador). MONGO_URL la inyecta el overlay de BD (compose.db.yaml,
+// mongodb) en app y migrate, con el usuario de la app (readWrite solo en su base de datos).
+import mongoose from "mongoose";
+import { env } from "../lib/env.js";
+
+// autoIndex: en desarrollo Mongoose crea al conectar los índices declarados en los modelos (src/modules/<m>/model.ts).
+// En producción no (construir un índice sobre una colección grande la carga): los crea `make migrate ENV=prod`.
+export async function connectMongo(autoIndex = env.NODE_ENV !== "production"): Promise<void> {
+  const uri = process.env.MONGO_URL;
+  if (!uri) throw new Error("Falta MONGO_URL: activa la BD con la skill infra-setup y ejecuta make env");
+  await mongoose.connect(uri, { autoIndex });
+}
+
+export async function disconnectMongo(): Promise<void> {
+  await mongoose.disconnect();
+}
+TS
+  put src/mongo/sync-indexes.ts <<'TS'
+// `make migrate`: MongoDB no tiene migraciones. Crea los índices que declaran los modelos (Model.createIndexes) y nunca
+// borra ninguno: un índice que quitas del modelo sigue en la BD hasta que lo borras a mano
+// (make db-shell → db.<colección>.dropIndex('<nombre>')). En dev corre con tsx; en prod, compilado (dist/mongo/sync-indexes.js).
+import mongoose from "mongoose";
+import "../app.js"; // registra los modelos: app.ts importa los routers, y estos los services, repositories y modelos
+import { connectMongo } from "./connection.js";
+
+await connectMongo(false);
+try {
+  const models = Object.values(mongoose.models);
+  for (const model of models) {
+    await model.createIndexes();
+    console.log(`  ${model.modelName}: índices declarados creados`);
+  }
+  console.log(models.length ? `sync-indexes OK: ${models.length} modelos` : "sync-indexes: ningún modelo registrado");
+} finally {
+  await mongoose.disconnect();
+}
+TS
+  if [ $server_mongo = replace ]; then
+    tmp=$(mktemp src/server.ts.XXXXXX)
+    cat > "$tmp" <<'TS'
+// Arranque del servidor (zona del orquestador). Conecta a MongoDB antes de escuchar: un /health que responde prueba
+// la conexión, y sin MONGO_URL la app no arranca.
+import { createApp } from "./app.js";
+import { env } from "./lib/env.js";
+import { connectMongo, disconnectMongo } from "./mongo/connection.js";
+
+await connectMongo();
+const server = createApp().listen(env.PORT, "0.0.0.0", () => {
+  console.log(`API escuchando en el puerto ${env.PORT}`);
+});
+
+// docker stop envía SIGTERM: termina las peticiones en curso y cierra la conexión a MongoDB antes de salir.
+for (const signal of ["SIGTERM", "SIGINT"] as const) {
+  process.on(signal, () => server.close(() => void disconnectMongo().finally(() => process.exit(0))));
+}
+TS
+    chmod 644 "$tmp"; mv "$tmp" src/server.ts; echo "  ~ src/server.ts (conecta a MongoDB antes de escuchar)"
+  else echo "  = src/server.ts"; fi
+fi
+
 # Rutas de build fuera del bloque de basekit (src/generated/ es el cliente de Prisma, se genera en cada build).
 touch .gitignore
 for p in node_modules/ dist/ coverage/ src/generated/; do
@@ -117,4 +199,5 @@ for p in node_modules/ dist/ coverage/ src/generated/; do
 done
 
 if [ -n "$provider" ]; then npx --no-install prisma generate; fi
-echo "app-setup OK${provider:+: Prisma $PRISMA_VERSION ($provider, $adapter)}"
+if [ $mongo -eq 1 ]; then echo "app-setup OK: MongoDB (Mongoose $MONGOOSE_VERSION)"
+else echo "app-setup OK${provider:+: Prisma $PRISMA_VERSION ($provider, $adapter)}"; fi

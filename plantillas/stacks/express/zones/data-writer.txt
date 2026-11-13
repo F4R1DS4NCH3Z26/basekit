@@ -1,2 +1,3 @@
 src/modules/*/schemas.ts
 src/modules/*/repository.ts
+src/modules/*/model.ts

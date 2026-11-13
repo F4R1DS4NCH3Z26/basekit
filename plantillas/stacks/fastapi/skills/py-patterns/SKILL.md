@@ -1,9 +1,11 @@
 ---
 name: py-patterns
-description: Código de referencia seguro para un módulo de backend Python - modelo SQLAlchemy 2, schemas Pydantic v2, excepciones de dominio, service sin HTTP, router FastAPI con auth y response_model, y tests con pytest. Incluye equivalencias para Django y Flask. Úsala SIEMPRE antes de escribir models, schemas, services, routers o tests de un módulo Python.
+description: Código de referencia seguro para un módulo de backend Python - modelo SQLAlchemy 2 (o Document de Beanie si la BD es MongoDB), schemas Pydantic v2, excepciones de dominio, service sin HTTP, router FastAPI con auth y response_model, y tests con pytest. Incluye equivalencias para Django y Flask. Úsala SIEMPRE antes de escribir models, schemas, services, routers o tests de un módulo Python.
 ---
 
 # py-patterns
+
+**¿SQLAlchemy o Beanie?** Si existe `src/core/create_indexes.py` (BD MongoDB), el modelo, los services, el router y los tests son los de [Variante MongoDB](#variante-mongodb-beanie); schemas y excepciones no cambian.
 
 Ejemplo con el módulo `products`. Copia la forma y cambia los nombres. Busca con Grep lo que ya existe en `src/core/` (`Base`, `get_db`, `load_models` en `db.py`; `get_current_user` cuando exista auth) antes de asumir sus nombres. Una FK a la tabla de otro módulo (`ForeignKey("users.id")`) funciona porque `load_models()` importa todos los `models.py` antes de usar el ORM.
 
@@ -189,6 +191,105 @@ def test_create_ok(client: TestClient, auth_as: AuthAs, user: User) -> None:
     assert r.status_code == 201
     assert set(r.json()) == {"id", "name", "price"}  # no filtra campos internos
 ```
+
+## Variante MongoDB (Beanie)
+
+Con MongoDB no hay SQLAlchemy ni Alembic: `src/core/db.py` inicializa Beanie en el lifespan con todos los `Document` de `src/modules/*/models.py` (no hay `get_db` ni sesión). El `_id` es un UUID en texto, así el contrato y el `id: UUID` de `ProductRead` no cambian.
+
+```python
+# models.py — data-writer
+from datetime import UTC, datetime
+from uuid import uuid4
+
+from beanie import DecimalAnnotation, Document
+from pydantic import Field
+from pymongo import ASCENDING, DESCENDING, IndexModel
+
+
+class Product(Document):
+    id: str = Field(default_factory=lambda: str(uuid4()))  # type: ignore[assignment]
+    name: str = Field(max_length=120)
+    price: DecimalAnnotation  # Decimal se guarda como Decimal128: sin la anotación, leerlo falla
+    owner_id: str
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+    class Settings:
+        name = "products"
+        indexes = [IndexModel([("owner_id", ASCENDING), ("created_at", DESCENDING)])]
+```
+
+```python
+# services.py — logic-writer: async y sin sesión; filtros con campos del modelo
+from .exceptions import ProductForbidden, ProductNotFound
+from .models import Product
+from .schemas import ProductCreate
+
+MAX_PAGE = 100
+
+
+async def create_product(data: ProductCreate, owner_id: str) -> Product:
+    product = Product(**data.model_dump(), owner_id=owner_id)  # owner_id viene del usuario autenticado
+    await product.insert()
+    return product
+
+
+async def get_product(product_id: str, user_id: str) -> Product:
+    product = await Product.get(product_id)
+    if product is None:
+        raise ProductNotFound(product_id)
+    if product.owner_id != user_id:
+        raise ProductForbidden(product_id)
+    return product
+
+
+async def list_products(owner_id: str, limit: int = 20, offset: int = 0) -> list[Product]:
+    return (
+        await Product.find(Product.owner_id == owner_id)  # nunca un dict armado con input del cliente
+        .sort("-created_at")
+        .skip(max(offset, 0))
+        .limit(min(limit, MAX_PAGE))
+        .to_list()
+    )
+```
+
+```python
+# router.py — web-writer: endpoints async, sin DB; los ids van como texto a los services
+@router.post("", response_model=ProductRead, status_code=status.HTTP_201_CREATED)
+async def create_product(data: ProductCreate, user: User) -> Product:
+    return await services.create_product(data, owner_id=str(user.id))
+
+
+@router.get("/{product_id}", response_model=ProductRead)
+async def get_product(product_id: UUID, user: User) -> Product:
+    try:
+        return await services.get_product(str(product_id), str(user.id))
+    except (ProductNotFound, ProductForbidden):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No encontrado") from None
+```
+
+Tests: los fixtures del `conftest.py` de la raíz usan una MongoDB en memoria (mongomock), nueva en cada test, sin red ni BD real: `client` igual que con SQL y `db` (la base de datos, con Beanie ya inicializado) para probar services, que son async:
+
+```python
+from typing import Any
+
+import pytest
+from pymongo.asynchronous.database import AsyncDatabase
+
+from src.modules.products import services
+from src.modules.products.exceptions import ProductForbidden
+from src.modules.products.schemas import ProductCreate
+
+
+@pytest.mark.anyio
+async def test_get_other_users_product_is_forbidden(db: AsyncDatabase[Any]) -> None:
+    p = await services.create_product(ProductCreate(name="A", price="1.00"), owner_id="u1")
+    with pytest.raises(ProductForbidden):
+        await services.get_product(p.id, "u2")
+```
+
+Índices: en dev se crean al arrancar la app; en prod no, los crea `make migrate ENV=prod` (`src/core/create_indexes.py`). Ninguno de los dos borra: quitar un índice del modelo no lo quita de la BD. Bórralo a mano en `make db-shell` (`ENV=prod` en producción): `db.products.getIndexes()` para ver su nombre y `db.products.dropIndex('<nombre>')`. Cambiar las opciones de un índice que ya existe (por ejemplo `unique`) hace fallar el arranque y `make migrate`: bórralo a mano primero. `make migration` no aplica: no hay migraciones.
+
+Auth con MongoDB: `references/auth.md` no cambia en tokens, `CurrentUser` ni endpoints; `User` y `RefreshToken` son `Document` de Beanie y las funciones que reciben `db: Session` pasan a ser `async` sin sesión, como los services de arriba.
 
 ## Equivalencias por framework
 

@@ -10,6 +10,7 @@ Eres el dueño de `Domain/` y `Migrations/` de los módulos.
 - Migraciones en `src/Modules/<M>/Migrations/<YYYYMMDDHHMMSS>_<nombre>.sql` con SQL portable (PostgreSQL, MySQL y SQLite). Si un motor necesita otra sintaxis, agrega la variante `<versión>.pgsql.sql`, `.mysql.sql` o `.sqlite.sql`. Los tests corren sobre SQLite: la versión portable o la de SQLite debe existir.
 - Una migración aplicada no se edita: los cambios van en una migración nueva. Tipos de columna exactos del contrato, índices y claves foráneas explícitos.
 - Dinero en enteros (centavos), nunca `float`. Ids `CHAR(36)` con `App\Core\Uuid::v7()`.
+- Con MongoDB (existe `src/Core/Database/Mongo.php`): sin SQL ni migraciones. El repositorio recibe `App\Core\Database\Mongo` y usa su colección (lo deja `phpnative-scaffold`), con filtros de escalares validados (nunca un array del cliente: inyección NoSQL), y los índices del contrato van en `src/Modules/<M>/Migrations/indexes.php` (variante de `phpnative-patterns`). Quitar un índice de `indexes.php` no lo borra de la BD: indícalo en NOTAS.
 - No ejecutas migraciones: indica en NOTAS que el orquestador debe correr `make migrate`.
 
 ## Cómo trabajas

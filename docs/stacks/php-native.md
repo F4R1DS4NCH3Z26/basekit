@@ -93,6 +93,22 @@ El overlay inyecta `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD` y `REDIS_URL`. L
 
 `init` deja el esqueleto completo (`starter/`): `composer.json`, `public/`, `bin/`, `src/Core/`, tests y configs. `make new-app` solo ejecuta `composer update --no-install` dentro de `composer:2.10.2` con tu uid para crear `composer.lock`, y agrega `/vendor/`, `/data/` y las cachés de herramientas a `.gitignore`. Con `composer.lock` presente no hace nada (ni llama a Docker). `make deps-add PKGS="vendor/paquete:1.2.3" [DEV=1]` agrega dependencias con versión exacta. Si las descargas fallan por límite de peticiones, exporta `COMPOSER_AUTH`; se pasa al contenedor por nombre.
 
+### MongoDB (mongodb/mongodb)
+
+Con `--db mongo` (o el overlay MongoDB de infra-setup), `make new-app` ejecuta antes `phpnative-scaffold/scripts/mongo-setup.sh`, sin red. Con otra BD, ese paso no se ejecuta y el esqueleto queda igual que antes.
+
+| Pieza | Qué deja |
+|---|---|
+| `Dockerfile` | La extensión PECL `mongodb-2.5.5` en la línea `install-php-extensions`. La imagen SQL no cambia. |
+| `composer.json` | `mongodb/mongodb` 2.5.0 (exacta) y `ext-mongodb` en `require` |
+| `src/Core/Database/Mongo.php` | El servicio `Mongo`, autowireado (solo necesita `Env`). Lee `MONGO_URL`, la URL del usuario de la app con permisos solo sobre `DB_NAME`, y `DB_DATABASE`. Conecta en la primera operación, así que `/health` no toca la BD. Los documentos llegan como arrays. |
+| `bin/mongo-indexes.php` | `make migrate` (también en prod, con el usuario `app`) crea los índices que declaran los módulos en `src/Modules/<M>/Migrations/indexes.php` (colección => specs de `createIndexes`). Nunca borra uno. |
+
+- El script es idempotente y nunca pisa un archivo cambiado: si no reconoce la línea del `Dockerfile` o la sección `require` de `composer.json`, o `Mongo.php` o `mongo-indexes.php` ya existen con otro contenido, se detiene antes de que composer corra, sin cambiar nada, y dice qué hacer. Para pasar a MongoDB después de `make new-app`, activa la BD con infra-setup, borra `composer.lock` y vuelve a ejecutar `make new-app`.
+- **`make migration` y `make module-migration`** solo dicen que MongoDB no tiene migraciones. Quitar un índice de `indexes.php` no lo borra: se borra a mano con `make db-shell` y `db.<colección>.dropIndex('<nombre>')`.
+- **phpnative-scaffold** genera `Migrations/indexes.php` y un repositorio sobre la colección del módulo (`findOwnedBy` con filtros escalares). El contrato trae la colección en vez de la tabla.
+- **Tests**: los del esqueleto (`tests/Core`) siguen sin BD. Los de un módulo MongoDB corren contra el MongoDB de `make dev` y vacían sus colecciones en `setUp()` con `deleteMany([])`.
+
 ## Auth: tokens opacos (detalle en `phpnative-patterns/references/auth.md`)
 
 1. Módulo `Auth`: tablas `users`, `access_tokens` (sha256 del token, `expires_at`) y `login_attempts`.

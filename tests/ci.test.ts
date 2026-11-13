@@ -40,6 +40,7 @@ describe("CI e2e job (S8, S17)", () => {
   it("runs <stack> + mongo in dev for every stack that lists mongo in dbs, and for no other (mongo-support S3)", () => {
     const mongo = STACKS.filter((s) => dbEngines(s).includes("mongo")).map((s) => s.id);
     assert.ok(mongo.length > 0, "no stack lists mongo");
+    for (const id of ["nestjs", "fastapi", "spring", "gin", "go-native", "flask", "python-native", "express", "node-native", "nextjs", "laravel", "symfony", "php-native"]) assert.ok(mongo.includes(id), `${id} does not list mongo (mongo-support S4, S7, S9)`);
     for (const id of mongo) {
       assert.ok(rows.some((r) => r.stack === id && r.db === "mongo" && r.env === undefined), `${id}: no dev job with mongo`);
     }
@@ -79,5 +80,16 @@ describe("scripts/e2e.sh arguments (mongo-support S3)", () => {
     assert.equal(r.code, 2);
     assert.equal(r.stderr, USAGE);
     assert.equal(r.stdout, "");
+  });
+  // mongo-support S9: BASEKIT_E2E_PORT moves the app to another host port (parallel runs, a busy default port).
+  it("takes BASEKIT_E2E_PORT only as a port number", () => {
+    const withPort = (port: string) => sh("env", [`BASEKIT_E2E_PORT=${port}`, "bash", "scripts/e2e.sh", "no-such-stack"], REPO);
+    const bad = withPort("80a");
+    assert.equal(bad.code, 2);
+    assert.equal(bad.stderr, "BASEKIT_E2E_PORT debe ser un número de puerto\n");
+    assert.equal(bad.stdout, "");
+    const good = withPort("8101");
+    assert.equal(good.code, 2);
+    assert.equal(good.stderr, "Stack desconocido: no-such-stack\n");
   });
 });

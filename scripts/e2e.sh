@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Acceptance test 12 (spec 02 §13): after `basekit init` and `make new-app`, a real `make dev`
 # must answer on the stack healthcheck. Needs Docker; meant for CI.
-# Usage: scripts/e2e.sh <stack> [db] [--prod]
+# Usage: [BASEKIT_E2E_PORT=<port>] scripts/e2e.sh <stack> [db] [--prod]
 #   db: postgres | mysql | sqlite | mongo (default: no database; the stack must accept it). --prod: production images (make prod-up) instead of make dev.
 set -euo pipefail
 
@@ -18,6 +18,12 @@ for arg in "$@"; do
   esac
 done
 case "$stack" in "" | *[!a-z0-9-]*) usage ;; esac
+# BASEKIT_E2E_PORT (same as basekit-go's): the app answers on that host port instead of the stack's, for when the
+# default one is busy. Compose prefers an exported APP_PORT over the one in --env-file.
+if [ -n "${BASEKIT_E2E_PORT:-}" ]; then
+  case "$BASEKIT_E2E_PORT" in *[!0-9]*) echo "BASEKIT_E2E_PORT debe ser un número de puerto" >&2; exit 2 ;; esac
+  export APP_PORT="$BASEKIT_E2E_PORT"
+fi
 repo="$(cd "$(dirname "$0")/.." && pwd)"
 tpl="$repo/plantillas/stacks/$stack"
 [ -f "$tpl/stack.json" ] || { echo "Stack desconocido: $stack" >&2; exit 2; }
@@ -64,7 +70,7 @@ fi
 # HEALTHCHECK without a URL (a `scratch` binary checking itself) falls back to stack.json's health; `|| true` because
 # under pipefail a grep that matches nothing would end the script without a message.
 path="$(grep -oE 'http://127\.0\.0\.1:[0-9]+/[A-Za-z0-9/_.-]*' "$tpl/files/Dockerfile" | head -1 | sed -E 's#^http://127\.0\.0\.1:[0-9]+##' || true)"
-port="$(sed -n 's/^APP_PORT=//p' .env.example | head -1)"
+port="${APP_PORT:-$(sed -n 's/^APP_PORT=//p' .env.example | head -1)}"
 url="http://127.0.0.1:${port:-$(port_of_stack)}${path:-$(health_of_stack)}"
 
 # With the SQLite overlay the app (non-root in prod) must be able to write its database directory. The check runs as

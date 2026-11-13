@@ -6,10 +6,11 @@ Plantillas: `plantillas/stacks/fastapi/`. Auth por defecto: **JWT propio** (acce
 
 ```text
 pyproject.toml  uv.lock            # orquestador; dependencias con uv dentro de Docker
-alembic/  alembic.ini              # orquestador
+alembic/  alembic.ini              # orquestador (no existen con MongoDB)
 src/
 ├── main.py                        # create_app(): CORS, /health, registro de routers (orquestador)
-├── core/  config.py  db.py  security.py   # db.py: Base, get_db, load_models
+├── core/  config.py  db.py  security.py   # db.py: Base, get_db, load_models (MongoDB: init_db, lifespan)
+│          create_indexes.py       # solo MongoDB: lo corre make migrate
 └── modules/<m>/
     ├── models.py  schemas.py      # data-writer
     ├── exceptions.py  services.py # logic-writer (sin HTTP)
@@ -26,6 +27,21 @@ tests/test_*.py                    # qa-writer
 - `src/core/db.py`: `Base`, `get_db()` (engine perezoso: la app arranca sin BD) y `load_models()`, que importa todos los `src/modules/*/models.py`. Una FK entre módulos (`products.owner_id → users.id`) solo resuelve si las dos tablas están en `Base.metadata`, así que `create_app()`, el `conftest.py` y `alembic/env.py` la llaman antes de usar el ORM.
 - `alembic.ini` y `alembic/` (URL desde `DATABASE_URL`, autogenerate con todos los modelos, `render_as_batch` en SQLite).
 - `conftest.py` en la raíz, para que lo vean `tests/` y `src/modules/*/tests/` (un `tests/conftest.py` no lo ven los tests de los módulos): `app`, `client` (TestClient con `app.dependency_overrides[get_db]` sobre SQLite en memoria) y `db`. `tests/test_health.py` prueba `/health` y CORS.
+
+### MongoDB: Beanie
+
+El esqueleto es SQL porque `init` lo copia antes de que infra-setup active la BD. Con `--db mongo` (`DB_DRIVER: mongodb` en `compose.db.yaml`), `make new-app` corre primero `py-scaffold/scripts/mongo-setup.sh` (sin red; con otra BD no hace nada) y después `uv lock`. La detección es una sola: `.make/stack.mk`, `mongo-setup.sh` y `scaffold.sh` comparan la línea `DB_DRIVER:` de `compose.db.yaml` con la misma expresión exacta (`mongodb`, nada más). Si falta `mongo-setup.sh` (por ejemplo, sin `.agents/skills`), un proyecto SQL sigue directo a `uv lock` y uno MongoDB se detiene con un error antes de `uv lock`.
+
+El script **no pisa archivos tuyos**. Antes de escribir nada compara cada archivo que reemplaza o borra (`pyproject.toml`, `src/core/config.py`, `src/core/db.py`, `src/main.py`, `conftest.py`, `alembic.ini` y lo de `alembic/`) con el esqueleto tal como lo copió `init` (su `cksum`). Uno que ya no es el esqueleto ni tiene la variante Beanie, o un archivo de más en `alembic/`, lo detiene: lista esos archivos, sale con código 2 y no cambia nada. Si `alembic/versions` tiene migraciones, también se detiene sin tocar nada. Si todo está intacto:
+- Escribe un `pyproject.toml` nuevo derivado del esqueleto: quita SQLAlchemy, Alembic, `psycopg`, `pymysql` y los ajustes de Alembic de ruff y mypy; agrega `beanie==2.2.0` y `pymongo==4.19.0` (fijado para que `uv lock` no tome un driver con menos de 14 días) y, para los tests, `pymongo-async-mock==0.1.3` y `mongomock==4.3.0`. El resto (FastAPI, pydantic-settings, las herramientas de desarrollo y su configuración) queda igual.
+- Reemplaza enteros `src/core/config.py`, `src/core/db.py`, `src/main.py` y `conftest.py`, crea `src/core/create_indexes.py` y borra `alembic/` y `alembic.ini`.
+- `src/core/config.py`: `mongo_url` (de `MONGO_URL`, que el overlay inyecta con el usuario de la app).
+- `src/core/db.py`: `document_models()` (los `Document` de todos los `src/modules/*/models.py`), `init_db()` (`init_beanie` con `allow_index_dropping=False`) y `lifespan()`. La app inicializa Beanie antes de escuchar: sin `MONGO_URL` no arranca (`MONGO_URL no está definida …`), y un `/health` que responde prueba que la BD conectó. En dev crea al arrancar los índices declarados; en prod no.
+- `src/core/create_indexes.py`: lo corre `make migrate` (también `ENV=prod`). Crea los índices declarados que falten e imprime cuántos modelos procesó. Nunca borra uno: quitar un índice del modelo no lo quita de la BD. Para borrarlo, `make db-shell` (`ENV=prod` en producción), `db.<colección>.getIndexes()` y `db.<colección>.dropIndex('<nombre>')`.
+- `conftest.py`: `db` es una base de datos en memoria (mongomock detrás de la API async de PyMongo) con Beanie inicializado, nueva en cada test; `app` y `client` la usan. `make test` y `make verify` no necesitan MongoDB. Los tests async llevan `@pytest.mark.anyio`.
+- Es idempotente: un archivo que ya tiene la variante Beanie se conserva. Para pasar a MongoDB después de `make new-app`: activa la BD con infra-setup, borra `uv.lock` y vuelve a correr `make new-app`. Solo funciona mientras esos archivos sigan siendo el esqueleto; si ya los cambiaste (un router registrado en `src/main.py`, por ejemplo), el script los lista y no hace nada: pásalos a Beanie a mano siguiendo `py-patterns`.
+
+Por módulo, `scaffold.sh` escribe en `models.py` un `Document` de Beanie con `id` UUID en texto (el `_id`, generado por el servidor) y `Settings.name` = el módulo, y deja en el contrato la sección de la colección (sin la tabla SQL). Los services son `async` y usan el modelo directamente (sin sesión). `make migration` solo explica que MongoDB no tiene migraciones.
 
 ## Roles y zonas
 
@@ -49,7 +65,7 @@ Skills: `py-scaffold`, `py-verify` (la usa `make verify`), `py-patterns` (+ `ref
 - **El venv vive en `/opt/venv`**, fuera del bind mount: `make install` reconstruye la imagen.
 - **`make new-app`** genera `uv.lock` con `ghcr.io/astral-sh/uv:0.13.4-python3.12-trixie-slim`.
 - **`make deps-add PKGS="…" [DEV=1]`** ejecuta `uv add` dentro de Docker y reconstruye.
-- **`migrate`** ejecuta `alembic upgrade head` con el target del entorno. Por eso **Alembic es una dependencia de runtime**, no de desarrollo.
+- **`migrate`** ejecuta `alembic upgrade head` con el target del entorno. Por eso **Alembic es una dependencia de runtime**, no de desarrollo. Con MongoDB ejecuta `python -m src.core.create_indexes`. Sin `alembic.ini` ni `src/core/create_indexes.py` falla (código 1) con `ERROR: falta alembic.ini (SQLAlchemy) y src/core/create_indexes.py (MongoDB): no hay migraciones que aplicar`.
 
 ## Auth: JWT (detalle en `py-patterns/references/auth.md`)
 
@@ -74,8 +90,8 @@ Skills: `py-scaffold`, `py-verify` (la usa `make verify`), `py-patterns` (+ `ref
 make dev
 make test
 make verify SCOPE=src/modules/<m>
-make migration NAME=x        # autogenerate de Alembic
-make migrate
+make migration NAME=x        # autogenerate de Alembic; con MongoDB solo explica que no hay migraciones
+make migrate                 # Alembic: migraciones; MongoDB: crea los índices declarados (nunca borra)
 make deps-add PKGS="…"
 ```
 
@@ -83,6 +99,7 @@ make deps-add PKGS="…"
 
 - **Entrada y salida**: `extra="forbid"` en la entrada y `response_model` siempre en la salida.
 - **SQL**: solo con ORM o `text(":param")`.
+- **MongoDB**: filtros con campos del modelo (`Product.owner_id == owner_id`) y valores validados por Pydantic; nunca un dict del cliente dentro de un filtro (inyección NoSQL con `$ne`, `$gt`…) ni `$where`.
 - **Autorización por recurso**: en services; un recurso ajeno responde 404.
 - **Paginación**: `le=100`.
 - **Funciones prohibidas**: `eval`, `pickle.loads` y `yaml.load` sobre datos de entrada, y `shell=True`.
@@ -97,3 +114,4 @@ make deps-add PKGS="…"
 - Instalar paquetes con `pip` en el host.
 - Fixtures en `tests/conftest.py`: los tests de `src/modules/*/tests/` no los ven (van en el `conftest.py` de la raíz).
 - Importar un modelo sin pasar por `load_models()`: una FK a la tabla de otro módulo falla con `NoReferencedTableError`.
+- Con MongoDB, `Decimal` en un modelo de Beanie: se guarda como `Decimal128` y al leer falla la validación. Usa `DecimalAnnotation` de `beanie`.

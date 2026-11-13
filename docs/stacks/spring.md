@@ -1,6 +1,6 @@
 # Stack: Java · Spring Boot (DDD modular) · v3
 
-Plantillas: `plantillas/stacks/spring/`. Auth por defecto: **Spring Security + JWT** (resource server con emisor propio). Puerto: 8080. Healthcheck: `/actuator/health`. Bases de datos: `postgres` y `mysql` (`stack.json → dbs`); `init` no ofrece SQLite ni MongoDB y rechaza `--db sqlite` y `--db mongo` (usa JPA y Flyway).
+Plantillas: `plantillas/stacks/spring/`. Auth por defecto: **Spring Security + JWT** (resource server con emisor propio). Puerto: 8080. Healthcheck: `/actuator/health`. Bases de datos: `postgres`, `mysql` (JPA + Flyway) y `mongo` (Spring Data MongoDB) (`stack.json → dbs`); `init` no ofrece SQLite y rechaza `--db sqlite`.
 
 ## Arquitectura (bounded contexts)
 
@@ -13,7 +13,7 @@ src/main/java/<pkg>/
     ├── application/                                # app-writer
     └── presentation/                               # web-writer
 src/main/resources/application.yml                  # orquestador
-src/main/resources/db/migration/V<n>__*.sql         # domain-writer (versión fijada en el contrato)
+src/main/resources/db/migration/V<n>__*.sql         # domain-writer (versión fijada en el contrato; no existe con MongoDB)
 src/test/java/<pkg>/ArchitectureTest.java           # orquestador (ArchUnit)
 src/test/java/<pkg>/modules/<dominio>/              # qa-writer
 ```
@@ -39,7 +39,7 @@ Skills: `java-scaffold` (detecta el paquete base), `java-verify` (la usa `make v
 | `build` | `dependency:go-offline` + `package -DskipTests` con caché de BuildKit |
 | `prod` | `eclipse-temurin:21-jre`, usuario `app` (1001), `MaxRAMPercentage=75`, `read_only` + `tmpfs`, healthcheck de actuator, sin stacktrace en los errores, actuator limitado a `health` e `info` |
 
-- **`migrate`** usa la imagen `flyway/flyway:11` sobre `src/main/resources/db/migration`, con `SPRING_DATASOURCE_*` del overlay. La app también migra al arrancar; las dos vías son idempotentes.
+- **`migrate`** usa la imagen `flyway/flyway:11` sobre `src/main/resources/db/migration`, con `SPRING_DATASOURCE_*` del overlay. La app también migra al arrancar; las dos vías son idempotentes. Con MongoDB, ver [Variante MongoDB](#variante-mongodb-spring-data-mongodb).
 - **`make migration NAME=x`** crea `V<n+1>__x.sql` con el siguiente número.
 - **`make verify`** usa `VERIFY_ENV=-e OFFLINE=0`, porque dentro del contenedor Maven sí puede descargar.
 
@@ -48,9 +48,28 @@ Skills: `java-scaffold` (detecta el paquete base), `java-verify` (la usa `make v
 | Parámetro | Valores | Por defecto |
 |---|---|---|
 | `SPRING_PKG` | paquete base (validado) | `com.app` |
-| `SPRING_DB` | `postgresql`, `mysql`, `none` | Según `compose.db.yaml` (`none` si no hay base de datos) |
+| `SPRING_DB` | `postgresql`, `mysql`, `mongodb`, `none` | Según `compose.db.yaml` (`mongodb` si su `DB_DRIVER` es `mongodb`; `none` si no hay base de datos) |
 
-Con base de datos, las dependencias son `web`, `validation`, `security`, `oauth2-resource-server`, `actuator`, `devtools`, `data-jpa`, `flyway` y el driver. Con `none`, se omiten las tres últimas.
+Con base de datos, las dependencias son `web`, `validation`, `security`, `oauth2-resource-server`, `actuator`, `devtools`, `data-jpa`, `flyway` y el driver. Con `mongodb`, `data-mongodb` en lugar de las tres últimas (y `SPRING_DB=mongodb` sin el overlay de MongoDB es un error de uso). Con `none`, se omiten las tres últimas.
+
+Initializr fija la versión de Spring Boot (la que ofrece por defecto ese día) y su BOM fija la de Spring Data MongoDB y el driver.
+
+## Variante MongoDB (Spring Data MongoDB)
+
+Con `--db mongo`, `make new-app` pide `data-mongodb` a Initializr (sin JPA, Flyway ni driver SQL) y después ejecuta `java-scaffold/scripts/mongo-setup.sh`. El script no hace nada con otra BD; se detiene sin cambiar nada si `pom.xml` usa JPA o no tiene `spring-boot-starter-data-mongodb`, y si `application-dev.properties` ya existe sin la línea de índices. Solo crea archivos que faltan y agrega un bloque a `application.properties`:
+
+| Archivo | Qué hace |
+|---|---|
+| `application.properties` | `spring.mongodb.uri=${SPRING_DATA_MONGODB_URI}` (la URI del overlay, con el usuario de la app y `authSource=DB_NAME`; sin ella la app no arranca) y `spring.data.mongodb.auto-index-creation=false` |
+| `application-dev.properties` | `spring.data.mongodb.auto-index-creation=true`: en dev la app crea los índices declarados al arrancar |
+| `core/mongo/CreateIndexes.java` | Solo con `--app.mongo.create-indexes=true`: crea los índices de cada `@Document` (`IndexOperations.createIndex`), escribe `create-indexes OK: <n> colecciones, <m> índices` y termina |
+| `compose.mongo-migrate.yaml` | El servicio `migrate` de MongoDB: la imagen `prod` de la app (construida en cada `make migrate`, uid 1001) con ese argumento, en lugar de Flyway. Necesita Docker Compose 2.24 o posterior (`!reset`) |
+
+- **`make migrate`** (y `make prod-migrate`) agrega `compose.mongo-migrate.yaml` a Compose (si falta, Compose falla; nunca termina en 0 sin hacer nada) y crea los índices declarados. Ni `make migrate` ni el arranque en dev borran un índice: quitar un `@Indexed` no lo quita de la BD. Bórralo a mano en `make db-shell` (`ENV=prod` en producción) con `db.<colección>.getIndexes()` y `db.<colección>.dropIndex('<nombre>')`.
+- **`make migration`** solo imprime `MongoDB no tiene migraciones: los índices se declaran en las entidades (@Indexed en modules/<m>/domain) y make migrate los crea`, sin pedir `NAME` ni levantar contenedores.
+- **`java-scaffold`** crea la entidad `@Document` (id `String` con un UUID, `ownerId` con `@Indexed`), la interfaz del repositorio en `domain/` y `Mongo<Pascal>Repository` (`MongoRepository`) en `infrastructure/`; no crea `db/migration/`. El contrato trae la colección en lugar de la tabla.
+- **Servicios sin `@Transactional`**: el MongoDB del overlay no tiene réplica (sin transacciones) y no hay `TransactionManager`; cada `save` de un documento es atómico.
+- **Tests**: los de servicio (Mockito) y `@WebMvcTest` no tocan la BD; `@DataMongoTest` y el `contextLoads` de Initializr usan el MongoDB de Compose (`make test` lo levanta). `ArchitectureTest` usa `@Document` en lugar de `jakarta.persistence.Entity`.
 
 ## Auth: Spring Security + JWT (detalle en `java-patterns/references/auth.md`)
 
@@ -95,5 +114,6 @@ make migrate
 - `@Autowired` en campos.
 - `@SpringBootTest` para todo (usa slices).
 - Dos dominios con la misma versión de Flyway.
+- Con MongoDB: `@Transactional` en los servicios, o esperar que quitar un `@Indexed` borre el índice.
 - `clean` en cada verificación.
 - Confiar en el `ownerId` del body.

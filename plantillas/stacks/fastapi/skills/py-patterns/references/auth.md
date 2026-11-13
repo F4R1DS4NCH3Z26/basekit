@@ -1,5 +1,7 @@
 # Auth en FastAPI: JWT de acceso + refresh rotado
 
+Con MongoDB (Beanie) cambian solo los modelos y el acceso a datos (ver «Variante MongoDB» en `py-patterns`); tokens, `CurrentUser` y endpoints son los mismos.
+
 Dependencias (con aprobación del usuario). SQLAlchemy, Alembic y los drivers ya vienen en el esqueleto:
 
 ```bash

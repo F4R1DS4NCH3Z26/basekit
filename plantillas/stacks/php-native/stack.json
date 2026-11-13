@@ -1,12 +1,13 @@
 {
   "id": "php-native",
-  "name": "PHP · Nativo (PDO, sin framework)",
+  "name": "PHP · Nativo (PDO o mongodb/mongodb, sin framework)",
   "language": "PHP",
   "kind": "backend",
   "port": 8000,
   "health": "/health",
   "detect": {},
   "appMarker": "composer.lock",
+  "dbs": ["postgres", "mysql", "sqlite", "mongo"],
   "roles": ["data-writer", "app-writer", "http-writer", "qa-writer"],
   "skills": [
     ["phpnative-scaffold", "Módulo nuevo: estructura + contrato"],

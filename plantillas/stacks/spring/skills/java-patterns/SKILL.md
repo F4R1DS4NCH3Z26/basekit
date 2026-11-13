@@ -1,11 +1,13 @@
 ---
 name: java-patterns
-description: Código de referencia seguro para un bounded context Spring Boot con DDD - entidad JPA con fábrica, interfaz de repositorio en domain con implementación Spring Data, migración Flyway, DTOs record con Bean Validation, servicio transaccional con verificación de propiedad, controlador REST delgado, manejo de errores con ProblemDetail, tests (Mockito, WebMvcTest) y ArchitectureTest con ArchUnit. Úsala SIEMPRE antes de escribir entidades, repositorios, migraciones, servicios, DTOs, controladores o tests Java.
+description: Código de referencia seguro para un bounded context Spring Boot con DDD - entidad JPA con fábrica (o @Document de Spring Data MongoDB si la BD es MongoDB), interfaz de repositorio en domain con implementación Spring Data, migración Flyway, DTOs record con Bean Validation, servicio transaccional con verificación de propiedad, controlador REST delgado, manejo de errores con ProblemDetail, tests (Mockito, WebMvcTest) y ArchitectureTest con ArchUnit. Úsala SIEMPRE antes de escribir entidades, repositorios, migraciones, servicios, DTOs, controladores o tests Java.
 ---
 
 # java-patterns
 
 Ejemplo: dominio `products`, paquete base `com.app`. Copia la forma y cambia los nombres. Busca en `core/` con Grep el tipo del usuario autenticado (`CurrentUser` abajo) antes de asumirlo.
+
+**¿JPA o MongoDB?** Si existe `core/mongo/CreateIndexes.java` (BD MongoDB), la entidad, el repositorio y los índices son los de [Variante MongoDB](#variante-mongodb-spring-data-mongodb); DTOs, controlador, errores y tests de servicio y web no cambian, salvo el id en texto.
 
 ## domain — domain-writer
 
@@ -206,3 +208,50 @@ class ProductControllerTest {
 ```
 
 El tipo del principal en los tests (`user(...)`, `jwt()`) depende de `core/security`; usa el helper que defina el orquestador.
+
+## Variante MongoDB (Spring Data MongoDB)
+
+Con MongoDB no hay JPA ni Flyway: `application.properties` toma `spring.mongodb.uri` de `SPRING_DATA_MONGODB_URI` (la define el overlay, con el usuario de la app) y `java-scaffold` crea la entidad y los dos repositorios. El `_id` es un UUID en texto (`String`), así no depende de la representación de UUID del driver.
+
+```java
+// domain/Product.java — @Document en domain es la misma concesión pragmática que @Entity
+@Document(collection = "products")
+public class Product {
+    @Id private String id;
+    private String name;
+    private long priceCents;
+    @Indexed private String ownerId;                       // índice declarado: en prod lo crea make migrate
+
+    protected Product() {} // requerido por Spring Data
+
+    public static Product create(String name, long priceCents, UUID ownerId) {
+        if (priceCents <= 0) throw new IllegalArgumentException("price must be positive");
+        var p = new Product();
+        p.id = UUID.randomUUID().toString();
+        p.name = name;
+        p.priceCents = priceCents;
+        p.ownerId = ownerId.toString();
+        return p;
+    }
+
+    public boolean isOwnedBy(UUID userId) { return ownerId.equals(userId.toString()); }
+    public String getId() { return id; }
+    // getters, equals/hashCode por id como en la versión JPA
+}
+
+// domain/ProductRepository.java — igual que con JPA, con ids en texto
+public interface ProductRepository {
+    Product save(Product product);
+    Optional<Product> findByIdAndOwnerId(String id, String ownerId);
+}
+
+// infrastructure/MongoProductRepository.java
+interface MongoProductRepository extends MongoRepository<Product, String>, ProductRepository {}
+```
+
+- **Servicio**: sin `@Transactional`. El overlay es un MongoDB sin réplica (sin transacciones) y no hay `TransactionManager`; cada `save` de un documento es atómico. Para consultar, `products.findByIdAndOwnerId(id, userId.toString())`.
+- **DTOs**: `record ProductResponse(String id, String name, long priceCents)`. En el controlador, `@PathVariable String id`.
+- **Consultas**: derivadas o `@Query` con parámetros `?0`; nunca un `Document`/JSON armado con texto del cliente.
+- **Índices**: `@Indexed` o `@CompoundIndex` en la entidad. En dev Spring Data los crea al arrancar (`application-dev.properties`); en prod no, los crea `make migrate ENV=prod` (`core/mongo/CreateIndexes`, que solo usa `createIndex`). Ninguno de los dos borra: quitar un índice de la entidad no lo quita de la BD. Bórralo a mano en `make db-shell` (`ENV=prod` en producción): `db.products.getIndexes()` para ver su nombre y `db.products.dropIndex('<nombre>')`. Cambiar las opciones de un índice que ya existe (por ejemplo `unique`) hace fallar `make migrate` (`IndexKeySpecsConflict` o `IndexOptionsConflict`): bórralo a mano primero. `make migration` no aplica: no hay migraciones.
+- **ArchitectureTest**: la regla de entidades usa `org.springframework.data.mongodb.core.mapping.Document` en lugar de `jakarta.persistence.Entity` (con MongoDB no existe JPA).
+- **Tests**: los de servicio (Mockito) y `@WebMvcTest` no tocan la BD. `@DataMongoTest` usa el MongoDB de Compose (`make test` lo levanta); úsalo solo para consultas propias.

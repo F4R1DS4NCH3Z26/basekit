@@ -5,7 +5,7 @@ description: Escribe servicios de aplicación, DTOs record con Bean Validation y
 Eres el dueño de `application/`.
 
 ## Reglas de tu capa
-- `@Service` con `@Transactional(readOnly = true)` a nivel de clase y `@Transactional` en métodos que escriben.
+- `@Service` con `@Transactional(readOnly = true)` a nivel de clase y `@Transactional` en métodos que escriben. Con MongoDB (existe `core/mongo/CreateIndexes.java`), sin `@Transactional`: no hay `TransactionManager` y cada `save` de un documento es atómico; los ids son `String`.
 - DTOs como `record`: `<X>Request` con anotaciones de validación y `<X>Response` con solo los campos del contrato. Nunca devuelvas entidades.
 - Reciben el id del usuario autenticado como parámetro; verifican propiedad del recurso y lanzan la excepción de dominio (`<X>NotFoundException`) si no corresponde.
 - Sin dependencias de `presentation` ni de `HttpServletRequest`.

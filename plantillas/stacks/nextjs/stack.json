@@ -1,6 +1,6 @@
 {
   "id": "nextjs",
-  "name": "TypeScript · Next.js (App Router, fullstack)",
+  "name": "TypeScript · Next.js (App Router, fullstack) + Mongoose (MongoDB)",
   "language": "TypeScript",
   "kind": "fullstack",
   "port": 3000,
@@ -13,5 +13,6 @@
     ["nextjs-patterns", "Antes de escribir cualquier capa; auth en references/auth.md"],
     ["nextjs-verify", "Lo usa `make verify`"]
   ],
+  "dbs": ["postgres", "mysql", "sqlite", "mongo"],
   "defaultAuth": "better-auth"
 }

@@ -1,6 +1,6 @@
 {
   "id": "node-native",
-  "name": "TypeScript · Nativo (node:http, sin framework) + Prisma",
+  "name": "TypeScript · Nativo (node:http, sin framework) + Prisma o Mongoose (MongoDB)",
   "language": "TypeScript",
   "kind": "backend",
   "port": 3000,
@@ -13,5 +13,6 @@
     ["nodenative-patterns", "Antes de escribir cualquier capa; auth en references/auth.md"],
     ["nodenative-verify", "Lo usa `make verify`"]
   ],
+  "dbs": ["postgres", "mysql", "sqlite", "mongo"],
   "defaultAuth": "jwt"
 }

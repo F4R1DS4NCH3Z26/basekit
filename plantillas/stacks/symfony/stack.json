@@ -1,12 +1,13 @@
 {
   "id": "symfony",
-  "name": "PHP · Symfony (API REST) + Doctrine",
+  "name": "PHP · Symfony (API REST) + Doctrine ORM o MongoDB ODM",
   "language": "PHP",
   "kind": "backend",
   "port": 8000,
   "health": "/health",
   "detect": { "files": ["symfony.lock"], "priority": 20 },
   "appMarker": "composer.json",
+  "dbs": ["postgres", "mysql", "sqlite", "mongo"],
   "roles": ["data-writer", "app-writer", "http-writer", "qa-writer"],
   "skills": [
     ["symfony-scaffold", "Módulo nuevo: estructura + contrato"],

@@ -13,8 +13,11 @@ bash .agents/skills/symfony-scaffold/scripts/scaffold.sh <Modulo>   # PascalCase
 - Crea las carpetas de capa (`Domain/{Entity,Repository,Enum}`, `Application/{DTO,Handler,Security}`, `Http/{Controller,Request,Resource}`) y `tests/Modules/<Modulo>/`, más `docs/specs/<modulo>_contract.md` desde `assets/contract.md`.
 - No hay provider ni registro: `config/services.yaml` registra `src/` con autowiring, `config/routes.yaml` carga los `#[Route]` de `src/Modules/` y Doctrine mapea las entidades de `src/Modules/`.
 - Las rutas bajo `/api` ya exigen autenticación (`config/packages/security.yaml`): seguro por omisión.
+- Con MongoDB (`compose.db.yaml` con `DB_DRIVER: mongodb`) también genera `Domain/Entity/<Modulo>.php`, un documento de Doctrine MongoDB ODM con `_id` UUID en texto, y el contrato trae el documento en vez de la tabla.
 - No sobrescribe nada.
+
+`scripts/mongo-setup.sh` lo ejecuta `make new-app` antes de crear la app cuando el overlay es MongoDB: agrega la extensión PECL `mongodb` fijada a la línea `install-php-extensions` del `Dockerfile`. Es idempotente y nunca pisa un `Dockerfile` cambiado: si no tiene la línea del kit, se detiene sin cambiar nada y dice qué agregar.
 
 Después del scaffold (orquestador):
 1. Llena el contrato con el usuario y márcalo `Estado: cerrado`.
-2. Tras el data-writer: `make migration NAME=<x>` (Doctrine diff), revisa la migración en `migrations/` y `make migrate`.
+2. Tras el data-writer: `make migration NAME=<x>` (Doctrine diff), revisa la migración en `migrations/` y `make migrate`. Con MongoDB no hay migraciones: `make migrate` crea los índices declarados.

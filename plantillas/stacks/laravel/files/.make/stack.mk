@@ -11,6 +11,10 @@ LARAVEL_VERSION ?= ^12.0
 # Must match the PHP of the runtime image (dunglas/frankenphp:1-php8.3): the composer:2 image runs a newer
 # PHP, and without this the lock would pick packages that require it.
 PHP_PLATFORM    ?= 8.3.0
+# MongoDB (compose.db.yaml with DB_DRIVER: mongodb): after creating the app, new-app runs php-scaffold's mongo-setup.sh
+# (mongodb/laravel-mongodb, the extension in the Dockerfile, the connection and the migration stubs). Same exact match
+# as that script and scaffold.sh. Migrations stay: in MongoDB they create the indexes (make migrate).
+MONGO := $(shell [ "$$(sed -n 's/^[[:space:]]*DB_DRIVER:[[:space:]]*\([a-z]*\).*/\1/p' compose.db.yaml 2>/dev/null | head -1)" = mongodb ] && echo 1)
 
 # The guard and the work live in one shell decision: an `exit 0` on its own recipe line would only end that line.
 new-app: ## Crea la app Laravel en Docker (solo si no existe composer.json) y mapea src/Modules
@@ -27,4 +31,5 @@ _new-app:
 	  php /work/.make/laravel-autoload.php composer.json && \
 	  composer update --no-interaction --no-scripts'
 	@mkdir -p src/Modules
+	$(if $(MONGO),@bash .agents/skills/php-scaffold/scripts/mongo-setup.sh || { echo "ERROR: falló el paso de MongoDB; corrige y vuelve a ejecutar: bash .agents/skills/php-scaffold/scripts/mongo-setup.sh"; exit 1; })
 	@echo "App creada. Siguiente: make env && make dev && make sh → php artisan install:api (Sanctum)"

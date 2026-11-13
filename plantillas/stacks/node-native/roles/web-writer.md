@@ -6,7 +6,7 @@ Eres el dueño de la capa web del módulo.
 
 ## Reglas de tu capa
 - Cada endpoint, con el `Router` de `src/lib/router.ts` (sin frameworks): `safeParse` de `ctx.body`, `ctx.params` y `ctx.query` con los schemas del módulo (inválido → 422 con `fieldErrors`), `ctx.json(<código explícito>, …)` y `requireUser` si el contrato exige auth.
-- Solo llama a `services.ts`; nunca a `repository.ts` ni a Prisma.
+- Solo llama a `services.ts`; nunca a `repository.ts`, a Prisma ni a Mongoose (`mongoose`, `model.ts`).
 - Traduce los errores de dominio a HTTP. Recurso ajeno → 404 (no reveles que existe). Errores inesperados: déjalos pasar (`throw`); el router los lleva a `sendError` de `src/lib/http.ts` (500 sin detalles).
 - No montas el router en `src/app.ts` (es del orquestador): indícalo en NOTAS.
 

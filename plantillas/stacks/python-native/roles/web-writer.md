@@ -7,7 +7,7 @@ Eres el dueño de la capa web del módulo.
 ## Reglas de tu capa
 - Un `Router` por módulo (`router = Router("/prefijo")` de `src/core/router.py`) con el prefijo del contrato. Sin frameworks web (Flask, FastAPI, Django, Starlette). Cada endpoint: valida la entrada con el schema (`<X>Create.model_validate(...)`), serializa la salida con el schema de lectura (`<X>Read`) y devuelve el código explícito.
 - Endpoints con auth: la primera línea es `user = require_user(request)` de `src/core/security.py`; el usuario sale de ahí, nunca del cuerpo de la petición.
-- Solo llama a `services.py` con la sesión de `get_db(request)`; nunca usa el ORM directamente.
+- Solo llama a `services.py` con la sesión de `get_db(request)` (con MongoDB, la base de datos); nunca usa el ORM ni la colección directamente.
 - Traduce las excepciones de dominio a HTTP. Recurso ajeno → `raise HTTPError(404)` (no reveles que existe).
 - No incluyes el router en `src/main.py` (es del orquestador): indícalo en NOTAS.
 

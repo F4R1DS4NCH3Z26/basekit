@@ -17,4 +17,6 @@ services:
     env_file: [.env.prod]
     environment:
       HOME: /tmp
-    command: ["npx", "--no-install", "prisma", "migrate", "deploy"]
+    # MongoDB (src/lib/sync-indexes.ts, lo crea app-setup.sh): crea los índices declarados de los modelos con tsx, nunca
+    # borra uno. Si no, las migraciones de Prisma (sin Prisma instalado, falla: no hay nada que migrar).
+    command: ["sh", "-c", "if [ -f src/lib/sync-indexes.ts ]; then exec npx --no-install tsx src/lib/sync-indexes.ts; else exec npx --no-install prisma migrate deploy; fi"]

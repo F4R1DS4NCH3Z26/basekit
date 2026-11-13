@@ -5,11 +5,20 @@ Estado: borrador   <!-- los agentes solo trabajan si dice "cerrado" -->
 - Propósito (1 línea):
 - Permisos: <rol> puede <acción>; anónimo puede <acción>
 - Prefijo HTTP: `/__NAME__`
+<!-- prisma -->
 - Modelo Prisma `__PASCAL__` (lo agrega el orquestador en `prisma/schema.prisma` antes de delegar):
 
 | Campo | Tipo | Nulo | Índice / relación |
 |---|---|---|---|
 | id | String @id @default(uuid()) | no | PK |
+<!-- /prisma -->
+<!-- mongo -->
+- Modelo Mongoose `__PASCAL__Model` (`model.ts`, lo escribe el data-writer; colección `__NAME__`; los índices los crea `make migrate`):
+
+| Campo | Tipo (Schema) | Nulo | Índice |
+|---|---|---|---|
+| _id | String, default randomUUID() | no | PK |
+<!-- /mongo -->
 
 ## data-writer
 ### Schemas (`schemas.ts`, Zod `.strict()`)
@@ -18,7 +27,12 @@ Estado: borrador   <!-- los agentes solo trabajan si dice "cerrado" -->
 | create__PASCAL__Schema | | body de POST |
 | __PASCAL__Read (tipo) | | respuesta |
 
+<!-- prisma -->
 ### Repositorio (`repository.ts`, Prisma con `select`)
+<!-- /prisma -->
+<!-- mongo -->
+### Repositorio (`repository.ts`, Mongoose con proyección y `.lean()`; `_id` se devuelve como `id`)
+<!-- /mongo -->
 - `insert__PASCAL__(data: Create__PASCAL__Input, ownerId: string): Promise<__PASCAL__Read>`
 
 ## logic-writer

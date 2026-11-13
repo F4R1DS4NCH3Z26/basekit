@@ -1,6 +1,6 @@
 ---
 name: gonative-patterns
-description: "Código de referencia seguro para un módulo Go nativo (net/http + database/sql, sin framework): migración SQL (goose) portable, modelo, DTO con Validate, repositorio con SQL a mano y placeholders ?, service con interfaz definida por el consumidor, handler con patrones de ServeMux, auth y errores traducidos, y tests con httptest y SQLite en memoria. Úsala SIEMPRE antes de escribir model, dto, repository, service, handler o tests de un módulo Go."
+description: "Código de referencia seguro para un módulo Go nativo (net/http + database/sql, sin framework): migración SQL (goose) portable, modelo (o MongoDB con mongo-driver v2: modelo con tags bson e índices declarados), DTO con Validate, repositorio con SQL a mano y placeholders ?, service con interfaz definida por el consumidor, handler con patrones de ServeMux, auth y errores traducidos, y tests con httptest y SQLite en memoria. Úsala SIEMPRE antes de escribir model, dto, repository, service, handler o tests de un módulo Go."
 ---
 
 # gonative-patterns
@@ -41,6 +41,109 @@ CREATE INDEX ix_products_owner_id ON products (owner_id);
 -- +goose Down
 DROP TABLE products;
 ```
+
+## Variante MongoDB (`DB_DRIVER: mongodb` en `compose.db.yaml`)
+
+Con MongoDB, `make new-app` cambió el esqueleto (`gonative-scaffold/scripts/mongo-setup.sh`): no hay `database/sql`, goose ni `migrations/`; `internal/platform/db` abre `*mongo.Database` desde `MONGO_URL` (driver oficial `go.mongodb.org/mongo-driver/v2`). Cambia solo la capa de datos; DTO, service, handler y tests siguen igual, salvo el id:
+- **Migraciones: no hay.** Cada módulo declara sus índices en `model.go` (`var Indexes = db.Collection{…}`) y el orquestador los lista en `collections()` de `cmd/api/main.go`. `make migrate` (`api migrate`) los crea en dev y en prod; `make dev` también al arrancar (en prod no: construir un índice sobre una colección grande la carga). `make migration` solo explica esto.
+- **Nunca se borra un índice solo**: quitarlo de `Indexes` no lo quita de la BD. Para borrarlo: `make db-shell` (`ENV=prod` en producción), `db.<colección>.getIndexes()` y `db.<colección>.dropIndex('<nombre>')`.
+- **Id**: `_id` es un UUID en texto; el service lo asigna con `db.NewID()` en lugar de `rand.Text()`.
+- **Clave duplicada** (índice único): `db.IsUniqueViolation(err)` (ahora sobre `mongo.IsDuplicateKeyError`) → el error del contrato (por ejemplo `ErrNameTaken`).
+
+`model.go`:
+
+```go
+package products
+
+import (
+	"time"
+
+	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
+
+	"app/internal/platform/db"
+)
+
+// CollectionName is the MongoDB collection of this module.
+const CollectionName = "products"
+
+// Product is one document. ID is a UUID string (db.NewID()) stored as _id.
+type Product struct {
+	ID         string    `bson:"_id"`
+	OwnerID    string    `bson:"owner_id"`
+	Name       string    `bson:"name"`
+	PriceCents int64     `bson:"price_cents"`
+	CreatedAt  time.Time `bson:"created_at"`
+}
+
+// Indexes: make migrate creates them (make dev too, at startup). Removing one here does not drop it.
+var Indexes = db.Collection{Name: CollectionName, Indexes: []mongo.IndexModel{
+	{Keys: bson.D{{Key: "owner_id", Value: 1}, {Key: "created_at", Value: -1}}},
+	{Keys: bson.D{{Key: "owner_id", Value: 1}, {Key: "name", Value: 1}}, Options: options.Index().SetUnique(true)},
+}}
+```
+
+`repository.go`:
+
+```go
+package products
+
+import (
+	"context"
+	"errors"
+	"fmt"
+
+	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
+)
+
+// MongoRepository implements the Repository that service.go declares.
+type MongoRepository struct {
+	c *mongo.Collection
+}
+
+func NewRepository(database *mongo.Database) *MongoRepository {
+	return &MongoRepository{c: database.Collection(CollectionName)}
+}
+
+func (r *MongoRepository) Create(ctx context.Context, p *Product) error {
+	if _, err := r.c.InsertOne(ctx, p); err != nil {
+		return fmt.Errorf("products: create: %w", err)
+	}
+	return nil
+}
+
+func (r *MongoRepository) Get(ctx context.Context, id string) (Product, error) {
+	var p Product
+	err := r.c.FindOne(ctx, bson.D{{Key: "_id", Value: id}}).Decode(&p) // typed filter, never a map built from the body
+	if errors.Is(err, mongo.ErrNoDocuments) {
+		return Product{}, ErrNotFound
+	}
+	if err != nil {
+		return Product{}, fmt.Errorf("products: get: %w", err)
+	}
+	return p, nil
+}
+
+func (r *MongoRepository) ListByOwner(ctx context.Context, ownerID string, limit, offset int) ([]Product, error) {
+	opts := options.Find().SetSort(bson.D{{Key: "created_at", Value: -1}}).SetLimit(int64(limit)).SetSkip(int64(offset))
+	cur, err := r.c.Find(ctx, bson.D{{Key: "owner_id", Value: ownerID}}, opts)
+	if err != nil {
+		return nil, fmt.Errorf("products: list: %w", err)
+	}
+	out := []Product{}
+	if err := cur.All(ctx, &out); err != nil {
+		return nil, fmt.Errorf("products: list: %w", err)
+	}
+	return out, nil
+}
+```
+
+Registro (orquestador, `cmd/api/main.go`): `products.Indexes,` en `collections()` y `products.NewHandler(products.NewService(products.NewRepository(database)), auth.Required(authCfg)),` en `modules`.
+
+Tests con MongoDB: no hay MongoDB en memoria, así que `make test` y `make verify` no tocan la BD. El service y el handler se prueban con fakes (igual que con SQL); el repositorio no lleva test unitario.
 
 ## model.go — data-writer
 
@@ -450,7 +553,7 @@ func TestHandler(t *testing.T) {
 }
 ```
 
-`repository_test.go`: SQLite en memoria (driver Go puro, sin CGO) con el SQL de la migración.
+`repository_test.go`: SQLite en memoria (driver Go puro, sin CGO) con el SQL de la migración. Con MongoDB no se escribe (ver la variante MongoDB arriba).
 
 ```go
 package products

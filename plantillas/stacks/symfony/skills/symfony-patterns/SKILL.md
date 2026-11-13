@@ -94,6 +94,61 @@ final class ProductRepository extends ServiceEntityRepository
 
 Migraciones: no las escribe el data-writer. El orquestador corre `make migration NAME=create_products` (Doctrine diff), revisa `migrations/Version*.php` y `make migrate`.
 
+### Variante MongoDB (Doctrine MongoDB ODM)
+
+Con MongoDB (existe `config/packages/doctrine_mongodb.yaml`; conexión `MONGO_URL`, base de datos `DB_DATABASE`) la clase de `Domain/Entity/` es un documento ODM y no hay migraciones: los índices se declaran en el documento y `make migrate` los crea (`doctrine:mongodb:schema:create --index`: nunca borra uno).
+
+```php
+// Domain/Entity/Product.php
+namespace App\Modules\Products\Domain\Entity;
+
+use App\Modules\Products\Domain\Repository\ProductRepository;
+use Doctrine\ODM\MongoDB\Mapping\Attribute as ODM;
+use Symfony\Component\Uid\Uuid;
+
+#[ODM\Document(collection: 'products', repositoryClass: ProductRepository::class)]
+#[ODM\Index(keys: ['ownerId' => 'asc'])]
+class Product
+{
+    #[ODM\Id(type: 'string', strategy: 'NONE')]               // UUID en texto (como lo deja symfony-scaffold)
+    private string $id;
+
+    public function __construct(
+        #[ODM\Field(type: 'string')] private string $name,
+        #[ODM\Field(type: 'int')] private int $priceCents,       // dinero en enteros, nunca float
+        #[ODM\Field(type: 'string')] private string $ownerId,    // lo asigna el servidor: sin setter
+    ) {
+        $this->id = Uuid::v7()->toRfc4122();
+    }
+
+    public function getId(): string { return $this->id; }
+    public function isOwnedBy(string $userId): bool { return $this->ownerId === $userId; }
+}
+```
+
+```php
+// Domain/Repository/ProductRepository.php
+use Doctrine\Bundle\MongoDBBundle\ManagerRegistry;
+use Doctrine\Bundle\MongoDBBundle\Repository\ServiceDocumentRepository;
+
+/** @extends ServiceDocumentRepository<Product> */
+final class ProductRepository extends ServiceDocumentRepository
+{
+    public function __construct(ManagerRegistry $registry)
+    {
+        parent::__construct($registry, Product::class);
+    }
+
+    public function findOneOwnedBy(string $id, string $ownerId): ?Product
+    {
+        return Uuid::isValid($id) ? $this->findOneBy(['id' => $id, 'ownerId' => $ownerId]) : null;
+    }
+}
+```
+
+- Se escribe con `DocumentManager` (`persist` + `flush`). Filtros solo con valores validados: nunca un array del cliente dentro de `findBy` (inyección NoSQL).
+- Quitar un `#[ODM\Index]` no borra el índice de la BD: el orquestador lo borra a mano (`make db-shell` → `db.<colección>.dropIndex('<nombre>')`). Nunca `doctrine:mongodb:schema:update` (borra los índices no declarados) ni `schema:drop`.
+
 ## Application — app-writer
 
 ```php
@@ -269,6 +324,8 @@ Límite de peticiones en endpoints sensibles: un limiter en `config/packages/rat
 ## Tests — qa-writer (`tests/Modules/Products/CreateProductTest.php`)
 
 El firewall es *stateless*: autentica con un access token real (`Authorization: Bearer …`), no con `loginUser()`. La BD de test es la del overlay con sufijo `_test` (`when@test` en `doctrine.yaml`); el orquestador la crea una vez (ver `docs/stacks/symfony.md`).
+
+Con MongoDB no hay BD `_test` ni transacciones (el usuario de la app solo usa `DB_NAME` y el servidor no es un replica set): los tests corren contra el MongoDB de `make dev` y vacían sus colecciones en `setUp()` con `$dm->getDocumentCollection(Product::class)->deleteMany([])` (borra los documentos y conserva los índices), con `DocumentManager` en lugar de `EntityManagerInterface`.
 
 ```php
 namespace App\Tests\Modules\Products;

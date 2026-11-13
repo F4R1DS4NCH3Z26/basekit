@@ -42,6 +42,58 @@ export async function insertProduct(input: CreateProductInput, ownerId: string) 
 }
 ```
 
+## MongoDB (Mongoose): model.ts y services.ts — data-writer
+
+Solo si existe `src/lib/sync-indexes.ts` (la BD es MongoDB). `src/lib/db.ts` exporta `connectDb()` (una conexión por proceso); `src/instrumentation.ts` ya conecta al arrancar, pero cada service la llama igual (devuelve la misma). El `_id` es un UUID en texto.
+
+```ts
+// model.ts
+import { randomUUID } from "node:crypto";
+import { model, Schema } from "mongoose";
+
+const productSchema = new Schema(
+  {
+    _id: { type: String, default: () => randomUUID() },
+    name: { type: String, required: true, maxlength: 120 },
+    price: { type: Number, required: true },
+    ownerId: { type: String, required: true, index: true }, // índice: en dev lo crea la app; en prod, make migrate
+  },
+  { collection: "products", timestamps: true, versionKey: false },
+);
+
+// overwriteModels: next dev vuelve a evaluar el módulo al recargar.
+export const ProductModel = model("Product", productSchema, undefined, { overwriteModels: true });
+```
+
+```ts
+// services.ts
+import "server-only";
+import { connectDb } from "@/lib/db";
+import { ProductModel } from "./model";
+import type { CreateProductInput } from "./schemas";
+
+// Solo campos del contrato: proyección y .lean() (objetos planos); _id se devuelve como id.
+const fields = { _id: 1, name: 1, price: 1 } as const;
+type Row = { _id: string; name: string; price: number };
+const toRead = ({ _id, name, price }: Row) => ({ id: _id, name, price });
+
+export async function insertProduct(input: CreateProductInput, ownerId: string) {
+  await connectDb();
+  const doc = await ProductModel.create({ ...input, ownerId }); // ownerId viene de la sesión, nunca del form
+  return toRead({ _id: doc._id, name: doc.name, price: doc.price });
+}
+
+export async function listProducts(ownerId: string) {
+  await connectDb();
+  // Filtros solo con valores validados (strings, números): nunca un objeto del cliente (inyección NoSQL), ni $where.
+  return (await ProductModel.find({ ownerId }, fields).sort({ createdAt: -1 }).limit(100).lean<Row[]>().exec()).map(toRead);
+}
+```
+
+- Quitar un índice del modelo no lo borra: `make migrate` solo crea (`createIndexes`). Bórralo a mano: `make db-shell` → `db.products.dropIndex('<nombre>')`.
+- `model.ts` no lleva `"server-only"`: `make migrate` lo carga fuera de Next.js. Solo lo importa `services.ts`.
+- Tests: mockea los services (o `@/lib/db` y el modelo) con `vi.mock`; no hace falta MongoDB.
+
 ## actions.ts — data-writer
 
 ```ts

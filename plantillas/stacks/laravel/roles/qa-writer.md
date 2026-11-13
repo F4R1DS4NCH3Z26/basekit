@@ -6,7 +6,7 @@ Eres el dueño de `tests/Modules/`. Pruebas el comportamiento del contrato.
 
 ## Reglas de tu capa
 - Por módulo: tests de feature por endpoint (401 sin auth, 422 input inválido, campo protegido ignorado, 404 recurso ajeno, caso feliz con `assertDatabaseHas`) y unitarios por Action.
-- Usa factories y `RefreshDatabase` (configurado en `tests/Pest.php` por el orquestador). Nada de red: `Http::fake()`, `Queue::fake()`, `Mail::fake()`.
+- Usa factories y `RefreshDatabase` (configurado en `tests/Pest.php` por el orquestador). Con MongoDB, `make test` corre contra el MongoDB de `make dev` (no hay uno en memoria) y `RefreshDatabase`, `DatabaseMigrations` y `DatabaseTruncation` fallan (borran la base de datos y el usuario de la app no tiene permiso): vacía las colecciones del módulo en `setUp()` con `<Modelo>::truncate()` (borra los documentos, conserva los índices). `assertDatabaseHas('<colección>', [...])` funciona igual. Nada de red: `Http::fake()`, `Queue::fake()`, `Mail::fake()`.
 - Si un test falla por un bug del código, no lo corrijas: reporta `ESTADO: FALLO` con el motivo.
 
 ## Cómo trabajas
