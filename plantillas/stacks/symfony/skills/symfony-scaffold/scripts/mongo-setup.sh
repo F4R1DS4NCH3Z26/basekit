@@ -22,7 +22,9 @@ if grep -Eq '^RUN install-php-extensions .*[[:space:]]mongodb(-[0-9.]+)?([[:spac
 elif [ -f Dockerfile ] && grep -qxF "$starter_ext" Dockerfile; then
   # mktemp + mv: never half written; chmod 644 because mktemp creates 0600 files.
   tmp=$(mktemp Dockerfile.XXXXXX)
-  awk -v s="$starter_ext" -v m="$mongo_ext" '$0 == s { print m; next } { print }' Dockerfile > "$tmp"
+  # ENVIRON, not awk -v: -v processes escapes, and gawk drops the line's trailing backslash, so nothing would match.
+  S="$starter_ext" M="$mongo_ext" awk '$0 == ENVIRON["S"] { print ENVIRON["M"]; next } { print }' Dockerfile > "$tmp"
+  grep -qxF "$mongo_ext" "$tmp" || { rm -f "$tmp"; echo "ERROR: no se pudo agregar mongodb-$EXT_MONGODB_VERSION al Dockerfile"; exit 1; }
   chmod 644 "$tmp"; mv "$tmp" Dockerfile
   echo "  ~ Dockerfile (extensión mongodb-$EXT_MONGODB_VERSION)"
 else
