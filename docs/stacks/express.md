@@ -20,7 +20,7 @@ Prisma 7 (`PRISMA_VERSION ?= 7.10.1` en `.make/stack.mk`, la misma versión exac
 
 - `prisma.config.ts` toma `process.env.DATABASE_URL ?? ''` para las migraciones (los tres formatos del overlay son los de Prisma). No usa `env()`, que falla si la variable falta: `prisma generate` corre en el build de la imagen, sin BD.
 - El cliente se genera en `src/generated/prisma/` (generator `prisma-client`, ESM, imports con `.js`; ignorado por git) y `tsc` lo compila a `dist/` con la app. `src/lib/env.ts` valida `DATABASE_URL` y `DB_*` como opcionales.
-- **Sin `compose.db.yaml` no hay Prisma**: ni dependencias, ni `prisma/`, ni `src/lib/db.ts`; la app arranca solo con `/health` y `make migrate` falla con `Sin prisma/schema.prisma ni src/mongo/sync-indexes.ts: nada que migrar`. Si activas la BD después, ejecuta `bash .agents/skills/express-scaffold/scripts/app-setup.sh` dentro de `make sh` (instala en el volumen `node_modules` de dev).
+- **Sin `compose.db.yaml` no hay Prisma**: ni dependencias, ni `prisma/`, ni `src/lib/db.ts`; la app arranca solo con `/health` y `make migrate` informa que no hay nada que migrar. Si activas la BD después, ejecuta `bash .agents/skills/express-scaffold/scripts/app-setup.sh` dentro de `make sh` (instala en el volumen `node_modules` de dev).
 - Prisma 7 ya no regenera el cliente en `migrate dev`: `make migration NAME=x` corre `prisma migrate dev` y después `prisma generate`.
 - Si cambias de BD, cambia el `provider` y el adaptador de `src/lib/db.ts` (o bórralos y vuelve a correr `app-setup.sh`) y vuelve a crear las migraciones.
 

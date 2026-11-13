@@ -231,13 +231,15 @@ describe("make migration and make migrate on Express (mongo-support S9)", () => 
     assert.match(tpl("files/compose.prod.yaml").slice(tpl("files/compose.prod.yaml").indexOf("  migrate:")), /NODE_ENV: production/);
   });
 
-  it("make migrate keeps prisma migrate deploy with a Prisma schema, and fails when there is nothing it can run", () => {
+  // A project without a database has nothing to migrate: the baseline's message and exit 0 stay (review of the port).
+  it("make migrate keeps prisma migrate deploy with a Prisma schema, and still succeeds with nothing to migrate", () => {
     const prisma = migrate(["prisma/schema.prisma"]);
     assert.equal(prisma.code, 0, prisma.stdout + prisma.stderr);
     assert.equal(prisma.calls, "npx --no-install prisma migrate deploy\n");
     const none = migrate([]);
-    assert.notEqual(none.code, 0, "nothing to run must not be a success");
+    assert.equal(none.code, 0, none.stdout + none.stderr);
     assert.equal(none.calls, "");
-    assert.equal(none.stderr, "Sin prisma/schema.prisma ni src/mongo/sync-indexes.ts: nada que migrar\n");
+    assert.equal(none.stdout, "Sin prisma/schema.prisma: nada que migrar\n");
+    assert.equal(none.stderr, "");
   });
 });

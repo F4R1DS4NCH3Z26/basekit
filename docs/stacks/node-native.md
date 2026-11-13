@@ -35,7 +35,7 @@ API REST sobre el módulo `node:http` de Node, sin framework web (ni Express, Fa
 
 - `prisma.config.ts` toma `process.env.DATABASE_URL ?? ''` (no `env()`, que falla si falta: `prisma generate` corre en el build, sin BD).
 - El cliente se genera en `src/generated/prisma/` (ESM, imports con `.js`; ignorado por git) y `tsc` lo compila a `dist/`.
-- **Sin `compose.db.yaml` no hay Prisma**: ni dependencias, ni `prisma/`, ni `src/lib/db.ts`; `make migrate` falla con `Sin prisma/schema.prisma ni src/mongo/sync-indexes.ts: nada que migrar`. Si activas la BD después, ejecuta `bash .agents/skills/nodenative-scaffold/scripts/app-setup.sh` dentro de `make sh`.
+- **Sin `compose.db.yaml` no hay Prisma**: ni dependencias, ni `prisma/`, ni `src/lib/db.ts`; `make migrate` informa que no hay nada que migrar. Si activas la BD después, ejecuta `bash .agents/skills/nodenative-scaffold/scripts/app-setup.sh` dentro de `make sh`.
 - Prisma 7 ya no regenera el cliente en `migrate dev`: `make migration NAME=x` corre `prisma migrate dev` y después `prisma generate`.
 - `db()` es perezoso: la app y `/health` arrancan sin base de datos.
 
