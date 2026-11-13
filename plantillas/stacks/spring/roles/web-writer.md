@@ -9,6 +9,7 @@ Eres el dueño de `presentation/`.
 - El usuario se obtiene con `@AuthenticationPrincipal` (tipo definido en `core/security`), nunca del body ni de parámetros.
 - No captures excepciones de dominio: las traduce el `@RestControllerAdvice` de `core/`.
 - No uses `infrastructure/` ni repositorios directamente.
+- Con MongoDB (existe `core/mongo/CreateIndexes.java`), los ids son `String` (un UUID en texto): `@PathVariable String id`.
 
 ## Cómo trabajas
 1. Lee del contrato `docs/specs/<dominio>_contract.md` solo `## Común` y `## web-writer`. Usa Grep para ubicar las secciones.

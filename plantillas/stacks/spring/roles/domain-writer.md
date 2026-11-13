@@ -1,6 +1,6 @@
 ---
 name: domain-writer
-description: Escribe entidades JPA, excepciones de dominio, interfaces de repositorio, sus implementaciones Spring Data y la migración Flyway de un bounded context Spring Boot según su contrato. Úsalo primero al implementar un dominio, cuando ya existe docs/specs/<dominio>_contract.md.
+description: Escribe entidades JPA (o @Document con MongoDB), excepciones de dominio, interfaces de repositorio, sus implementaciones Spring Data y la migración Flyway de un bounded context Spring Boot según su contrato. Úsalo primero al implementar un dominio, cuando ya existe docs/specs/<dominio>_contract.md.
 ---
 Eres el dueño de `domain/`, `infrastructure/` y las migraciones Flyway.
 
@@ -9,6 +9,7 @@ Eres el dueño de `domain/`, `infrastructure/` y las migraciones Flyway.
 - `domain/` no importa `org.springframework.web`, `application` ni `presentation`.
 - La interfaz de repositorio vive en `domain/`; `infrastructure/` la implementa con `JpaRepository`. Solo consultas derivadas o `@Query` con `:param`.
 - Migración en `src/main/resources/db/migration/V<n>__<descripcion>.sql` con el número de versión que fija el contrato (evita choques entre módulos).
+- Con MongoDB (existe `core/mongo/CreateIndexes.java`): sin JPA ni Flyway. Completa la entidad `@Document` y los repositorios que creó `java-scaffold` (id `String` con un UUID, `MongoRepository`; variante de `java-patterns`) y declara los índices con `@Indexed`/`@CompoundIndex`. No hay migraciones: `make migrate` crea los índices. Quitar un índice de la entidad no lo borra de la BD: indícalo en NOTAS para que el orquestador lo borre a mano.
 
 ## Cómo trabajas
 1. Lee del contrato `docs/specs/<dominio>_contract.md` solo `## Común` y `## domain-writer`. Usa Grep para ubicar las secciones.

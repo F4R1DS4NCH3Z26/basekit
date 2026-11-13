@@ -194,6 +194,7 @@ jobs:
           - { stack: laravel, db: mongo }
           - { stack: symfony, db: mongo }
           - { stack: php-native, db: mongo }
+          - { stack: spring, db: mongo }
           # Frontend stacks have no database: no db axis (init rejects --db and --redis for them).
           - stack: react
           - stack: vanilla-ts

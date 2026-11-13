@@ -68,8 +68,8 @@ describe("stack.json", () => {
     assert.deepEqual(dbEngines(loadStacks(stacksDir({ dbs: ["postgres", "mongo"] }))[0]!), ["postgres", "mongo"]);
   });
 
-  it("spring accepts postgres and mysql only: no sqlite, no mongo (mongo-support S1)", () => {
-    assert.deepEqual(dbEngines(loadStacks().find((s) => s.id === "spring")!), ["postgres", "mysql"]);
+  it("spring accepts postgres, mysql and mongo: no sqlite (mongo-support S1, S9)", () => {
+    assert.deepEqual(dbEngines(loadStacks().find((s) => s.id === "spring")!), ["postgres", "mysql", "mongo"]);
   });
 
   it("rejects an empty or missing language and a missing health", () => {

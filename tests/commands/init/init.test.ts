@@ -979,7 +979,7 @@ describe("--db mongo (S2; opt-in per stack, mongo-support S1)", () => {
 });
 
 describe("engines per stack (S6)", () => {
-  const SPRING_SQLITE = "ERROR: --db 'sqlite' no aplica a spring: motores admitidos: postgres, mysql (o auto, none)\n";
+  const SPRING_SQLITE = "ERROR: --db 'sqlite' no aplica a spring: motores admitidos: postgres, mysql, mongo (o auto, none)\n";
 
   it("rejects an explicit engine the stack does not accept, with exit 2 and before writing anything", () => {
     const d = scratch();
@@ -990,12 +990,12 @@ describe("engines per stack (S6)", () => {
     assert.deepEqual(readdirSync(d), []);
   });
 
-  it("spring rejects mongo (mongo-support S1)", () => {
+  it("spring accepts mongo (mongo-support S9)", () => {
     const d = scratch();
     const r = init(d, "--stack", "spring", "--db", "mongo");
-    assert.equal(r.code, 2, r.stdout);
-    assert.equal(r.stderr, "ERROR: --db 'mongo' no aplica a spring: motores admitidos: postgres, mysql (o auto, none)\n");
-    assert.deepEqual(readdirSync(d), []);
+    assert.equal(r.code, 0, r.stderr);
+    assert.match(r.stdout, /infra OK: db=mongo/);
+    assert.equal(JSON.parse(read(d, ".agents/manifest.json")).options.db, "mongo");
   });
 
   it("applies to the backend of a combined project", () => {

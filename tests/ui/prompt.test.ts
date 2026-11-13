@@ -461,8 +461,8 @@ describe("init with interactive answers", () => {
     const { p, output } = prompter("", "", "", "", "", "");
     assert.equal(await quietInit({ dir: d, stack: "spring", agents: "codex" }, p), 0);
     p.close();
-    assert.match(output(), /¿Qué base de datos\?\n {2}1\) MySQL {7}mysql\n {2}2\) PostgreSQL {2}postgres\nNúmero \[2\]: /);
-    assert.doesNotMatch(output(), /SQLite|MongoDB/);
+    assert.match(output(), /¿Qué base de datos\?\n {2}1\) MySQL {7}mysql\n {2}2\) PostgreSQL {2}postgres\n {2}3\) MongoDB {5}mongo\nNúmero \[2\]: /);
+    assert.doesNotMatch(output(), /SQLite/);
     assert.equal(manifest(d).options.db, "postgres", "Enter takes PostgreSQL");
     assert.match(readFileSync(join(d, "compose.db.yaml"), "utf8"), /postgres/);
   });

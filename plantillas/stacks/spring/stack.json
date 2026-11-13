@@ -1,9 +1,9 @@
 {
   "id": "spring",
-  "name": "Java · Spring Boot (DDD modular)",
+  "name": "Java · Spring Boot (DDD modular) + JPA o Spring Data MongoDB (MongoDB)",
   "language": "Java",
   "kind": "backend",
-  "dbs": ["postgres", "mysql"],
+  "dbs": ["postgres", "mysql", "mongo"],
   "port": 8080,
   "health": "/actuator/health",
   "detect": { "files": [], "manifest": "pom.xml", "contains": "spring-boot", "priority": 10 },
