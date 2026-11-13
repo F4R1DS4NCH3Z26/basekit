@@ -18,7 +18,7 @@ export const DEFAULT_DB_ENGINES = ["postgres", "mysql", "sqlite"];
 export interface Stack {
   id: string;
   /**
-   * Human name, "<language> · <framework> …" ("Python · Flask + SQLAlchemy 2 (API REST ligera)"): the label of the
+   * Human name, "<language> · <framework> …" ("Python · Django + Django REST Framework (API REST + admin)"): the label of the
    * framework question, and how the stack reads in AGENTS.md, the README, init's summary and `basekit stacks`.
    */
   name: string;

@@ -87,16 +87,16 @@ services:
 
 | Stack | `migrate` |
 |---|---|
-| Next.js | Target `dev` (dev) o `build` (prod), con `prisma migrate deploy` |
+| Next.js | Target `dev` (dev) o `build` (prod), con `prisma migrate deploy`; con MongoDB (Mongoose), `tsx src/lib/sync-indexes.ts` (crea los índices declarados, nunca borra) |
 | FastAPI | Target `dev` o `prod`, con `alembic upgrade head` (Alembic es dependencia de runtime); con MongoDB (Beanie), `python -m src.core.create_indexes` (crea los índices declarados, nunca borra) |
-| Laravel | Target `dev` o `prod`, con `php artisan migrate --force` |
-| Spring | Imagen `flyway/flyway:11` sobre `src/main/resources/db/migration`, usando `SPRING_DATASOURCE_*`. La app también migra al arrancar |
+| Laravel | Target `dev` o `prod`, con `php artisan migrate --force` (con MongoDB, las migraciones solo crean índices; su `down()` quita solo esos índices) |
+| Spring | Imagen `flyway/flyway:11` sobre `src/main/resources/db/migration`, usando `SPRING_DATASOURCE_*`. La app también migra al arrancar. Con MongoDB (Spring Data MongoDB), la imagen prod de la app con `--app.mongo.create-indexes=true` (crea los índices declarados, nunca borra) |
 | Django, Django + HTMX | Target `dev` o `prod`, con `python manage.py migrate --noinput` |
-| Flask, Python nativo | Target `dev` o `prod`, con `alembic upgrade head` |
-| NestJS, Express, Node nativo | Target `dev` o `prod`, con `prisma migrate deploy` (solo si existe `prisma/schema.prisma`) |
-| Symfony | Target `dev` o `prod`, con `php bin/console doctrine:migrations:migrate --no-interaction --allow-no-migration` |
-| PHP nativo | Target `dev` o `prod`, con su propio migrador: `php bin/migrate.php up` |
-| Gin, Go nativo | Dev: `go run ./cmd/api migrate`. Prod: el binario estático de la imagen `scratch` con `api migrate` (goose embebido) |
+| Flask, Python nativo | Target `dev` o `prod`, con `alembic upgrade head`; con MongoDB (PyMongo), `python -m src.core.create_indexes` (crea los índices declarados, nunca borra); sin ninguno de los dos, falla |
+| NestJS, Express, Node nativo | Target `dev` o `prod`, con `prisma migrate deploy` (solo si existe `prisma/schema.prisma`); con MongoDB (Mongoose), `src/mongo/sync-indexes.ts` (tsx en dev, compilado en prod; crea los índices declarados, nunca borra) |
+| Symfony | Target `dev` o `prod`, con `php bin/console doctrine:migrations:migrate --no-interaction --allow-no-migration`; con MongoDB (Doctrine ODM), `doctrine:mongodb:schema:create --index` (crea los índices declarados, nunca borra) |
+| PHP nativo | Target `dev` o `prod`, con su propio migrador: `php bin/migrate.php up`; con MongoDB, `php bin/mongo-indexes.php` (crea los índices declarados, nunca borra) |
+| Gin, Go nativo | Dev: `go run ./cmd/api migrate`. Prod: el binario estático de la imagen `scratch` con `api migrate` (goose embebido). Con MongoDB (mongo-driver v2), el mismo `api migrate` crea los índices declarados (nunca borra) |
 | React, Vue, TypeScript + Vite (frontend) | Sin servicio `migrate`: un stack frontend no tiene base de datos (`init` rechaza `--db` y `--redis`). `make migrate`, `migration` y `db-shell` solo avisan |
 
 **Requisito**: `environment` siempre como **mapa** (no lista) en todos los archivos compose; si no, Compose no los fusiona.
