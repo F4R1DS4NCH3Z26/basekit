@@ -92,8 +92,8 @@ if ! grep -qF '"beanie==' pyproject.toml; then
       print "# picks a driver release younger than 14 days."
       next
     }
-    /^# the prod `migrate` service/ || /^ {4}"(sqlalchemy|alembic|psycopg|pymysql)/ { next }
-    /^ {4}"pydantic-settings==/ { print; print "    \"beanie==2.2.0\","; print "    \"pymongo==4.19.0\","; next }
+    /^# the prod `migrate` service/ || /^    "(sqlalchemy|alembic|psycopg|pymysql)/ { next }
+    /^    "pydantic-settings==/ { print; print "    \"beanie==2.2.0\","; print "    \"pymongo==4.19.0\","; next }
     /^dev = \[.*\]$/ {
       print "# pymongo-async-mock + mongomock: the in-memory MongoDB of the tests (conftest.py), with no network or real database."
       print "dev = ["
