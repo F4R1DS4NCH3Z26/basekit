@@ -60,10 +60,16 @@ describe("stack.json", () => {
     }
   });
 
-  it("dbEngines: the stack's dbs, or the four engines when it has none (S6)", () => {
-    const spring = loadStacks().find((s) => s.id === "spring")!;
-    assert.deepEqual(dbEngines(spring), ["postgres", "mysql", "mongo"]);
-    assert.deepEqual(dbEngines(loadStacks().find((s) => s.id === "flask")!), ["postgres", "mysql", "sqlite", "mongo"]);
+  it("dbEngines: a stack without dbs accepts postgres, mysql and sqlite, never mongo (mongo-support S1)", () => {
+    assert.deepEqual(dbEngines(loadStacks().find((s) => s.id === "flask")!), ["postgres", "mysql", "sqlite"]);
+  });
+
+  it("dbEngines: a stack that lists mongo in dbs accepts it (mongo-support S1)", () => {
+    assert.deepEqual(dbEngines(loadStacks(stacksDir({ dbs: ["postgres", "mongo"] }))[0]!), ["postgres", "mongo"]);
+  });
+
+  it("spring accepts postgres and mysql only: no sqlite, no mongo (mongo-support S1)", () => {
+    assert.deepEqual(dbEngines(loadStacks().find((s) => s.id === "spring")!), ["postgres", "mysql"]);
   });
 
   it("rejects an empty or missing language and a missing health", () => {

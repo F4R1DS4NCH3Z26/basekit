@@ -435,17 +435,18 @@ describe("init with interactive answers", () => {
 
   it("asks for the database after Docker and the Makefile: yes and an engine run infra-setup like --db (S1)", async () => {
     const d = join(scratch(), "app");
-    const { p, output } = prompter("", "", "", "4", "", "");
+    const { p, output } = prompter("", "", "", "1", "", "");
     assert.equal(await quietInit({ dir: d, stack: "flask", agents: "codex" }, p), 0);
     p.close();
     const text = output();
     const ask = text.indexOf("¿Integrar base de datos? [S/n]");
     assert.ok(ask > text.indexOf("¿Usar Makefile?"), "after the Makefile question");
     assert.ok(text.indexOf("¿Qué base de datos?") > ask && text.indexOf("¿Qué base de datos?") < text.indexOf("¿Inicializar git"));
-    assert.match(text, /¿Qué base de datos\?\n {2}1\) MySQL {7}mysql\n {2}2\) SQLite {6}sqlite\n {2}3\) PostgreSQL {2}postgres\n {2}4\) MongoDB {5}mongo\nNúmero \[3\]: /);
-    assert.equal(manifest(d).options.db, "mongo");
-    assert.match(readFileSync(join(d, "compose.db.yaml"), "utf8"), /mongo/);
-    assert.match(readFileSync(join(d, ".make/db.mk"), "utf8"), /mongosh/);
+    // mongo-support S1: a stack without dbs offers no MongoDB.
+    assert.match(text, /¿Qué base de datos\?\n {2}1\) MySQL {7}mysql\n {2}2\) SQLite {6}sqlite\n {2}3\) PostgreSQL {2}postgres\nNúmero \[3\]: /);
+    assert.doesNotMatch(text, /MongoDB/);
+    assert.equal(manifest(d).options.db, "mysql");
+    assert.match(readFileSync(join(d, "compose.db.yaml"), "utf8"), /mysql/);
 
     const byDefault = join(scratch(), "app");
     const q = prompter("", "", "", "", "", "");
@@ -460,8 +461,8 @@ describe("init with interactive answers", () => {
     const { p, output } = prompter("", "", "", "", "", "");
     assert.equal(await quietInit({ dir: d, stack: "spring", agents: "codex" }, p), 0);
     p.close();
-    assert.match(output(), /¿Qué base de datos\?\n {2}1\) MySQL {7}mysql\n {2}2\) PostgreSQL {2}postgres\n {2}3\) MongoDB {5}mongo\nNúmero \[2\]: /);
-    assert.doesNotMatch(output(), /SQLite/);
+    assert.match(output(), /¿Qué base de datos\?\n {2}1\) MySQL {7}mysql\n {2}2\) PostgreSQL {2}postgres\nNúmero \[2\]: /);
+    assert.doesNotMatch(output(), /SQLite|MongoDB/);
     assert.equal(manifest(d).options.db, "postgres", "Enter takes PostgreSQL");
     assert.match(readFileSync(join(d, "compose.db.yaml"), "utf8"), /postgres/);
   });

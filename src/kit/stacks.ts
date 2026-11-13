@@ -8,8 +8,11 @@ import { TEMPLATES } from "./templates.js";
 export const KINDS = ["backend", "frontend", "fullstack"] as const;
 export type Kind = (typeof KINDS)[number];
 
-/** The database engines a stack can accept (S6): what a stack.json without `dbs` accepts. */
+/** The database engines a stack can list in `dbs` (S6). */
 export const DB_ENGINES = ["postgres", "mysql", "sqlite", "mongo"];
+
+/** What a stack.json without `dbs` accepts: the SQL engines. Mongo is opt-in, only where a stack lists it (mongo-support S1). */
+export const DEFAULT_DB_ENGINES = ["postgres", "mysql", "sqlite"];
 
 /** `plantillas/stacks/<id>/stack.json` (spec 02 §6). Everything stack-specific lives there, never in code. */
 export interface Stack {
@@ -30,7 +33,7 @@ export interface Stack {
   roles: string[];
   skills: [string, string][];
   defaultAuth?: string;
-  /** S6: the database engines the stack accepts, a subset of DB_ENGINES; missing means all of them. */
+  /** S6: the database engines the stack accepts, a subset of DB_ENGINES; missing means DEFAULT_DB_ENGINES. */
   dbs?: string[];
 }
 
@@ -65,9 +68,9 @@ export function loadStacks(dir = join(TEMPLATES, "stacks")): Stack[] {
     });
 }
 
-/** S6: the engines a stack accepts: its `dbs`, or every engine. */
+/** S6: the engines a stack accepts: its `dbs`, or the SQL engines (mongo only when listed). */
 export function dbEngines(stack: Stack): string[] {
-  return stack.dbs ?? DB_ENGINES;
+  return stack.dbs ?? DEFAULT_DB_ENGINES;
 }
 
 /** S1b: a frontend stack has no database, so neither a database engine nor Redis applies to it. */

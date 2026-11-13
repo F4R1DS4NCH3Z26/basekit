@@ -1,6 +1,6 @@
 # Stack: Java · Spring Boot (DDD modular) · v3
 
-Plantillas: `plantillas/stacks/spring/`. Auth por defecto: **Spring Security + JWT** (resource server con emisor propio). Puerto: 8080. Healthcheck: `/actuator/health`. Bases de datos: `postgres`, `mysql` y `mongo` (`stack.json → dbs`); `init` no ofrece SQLite y rechaza `--db sqlite`.
+Plantillas: `plantillas/stacks/spring/`. Auth por defecto: **Spring Security + JWT** (resource server con emisor propio). Puerto: 8080. Healthcheck: `/actuator/health`. Bases de datos: `postgres` y `mysql` (`stack.json → dbs`); `init` no ofrece SQLite ni MongoDB y rechaza `--db sqlite` y `--db mongo` (usa JPA y Flyway).
 
 ## Arquitectura (bounded contexts)
 

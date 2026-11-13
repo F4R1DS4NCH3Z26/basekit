@@ -2,7 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { hasDatabase, loadStacks } from "../src/kit/stacks.js";
+import { dbEngines, hasDatabase, loadStacks } from "../src/kit/stacks.js";
 import { REPO, sh } from "./helpers.js";
 
 const CI = readFileSync(join(REPO, ".github/workflows/ci.yml"), "utf8");
@@ -37,6 +37,15 @@ describe("CI e2e job (S8, S17)", () => {
     assert.deepEqual(rows.filter((r) => !STACKS.some((s) => s.id === r.stack)), [], "unknown stack in the matrix");
   });
 
+  it("runs <stack> + mongo in dev for every stack that lists mongo in dbs, and for no other (mongo-support S3)", () => {
+    const mongo = STACKS.filter((s) => dbEngines(s).includes("mongo")).map((s) => s.id);
+    assert.ok(mongo.length > 0, "no stack lists mongo");
+    for (const id of mongo) {
+      assert.ok(rows.some((r) => r.stack === id && r.db === "mongo" && r.env === undefined), `${id}: no dev job with mongo`);
+    }
+    assert.deepEqual(rows.filter((r) => r.db === "mongo" && !mongo.includes(r.stack)), [], "a mongo job for a stack without mongo");
+  });
+
   it("passes scripts/e2e.sh exactly <stack> [db] [--prod], with no empty argument", () => {
     const run = /^\s*- run: (bash scripts\/e2e\.sh .*)$/m.exec(CI)?.[1];
     assert.ok(run, "the e2e step");
@@ -49,5 +58,26 @@ describe("CI e2e job (S8, S17)", () => {
       const expected = [r.stack, ...(r.db ? [r.db] : []), ...(r.env === "prod" ? ["--prod"] : [])];
       assert.equal(out.stdout, expected.map((a) => `[${a}]\n`).join(""), JSON.stringify(r));
     }
+  });
+});
+
+describe("scripts/e2e.sh arguments (mongo-support S3)", () => {
+  const USAGE = "Uso: scripts/e2e.sh <stack> [postgres|mysql|sqlite|mongo] [--prod]\n";
+  // An unknown stack stops the script after the arguments are parsed and before anything runs (no Docker needed).
+  const e2e = (...args: string[]) => sh("bash", ["scripts/e2e.sh", ...args], REPO);
+
+  it("accepts every database engine, mongo included", () => {
+    for (const db of ["postgres", "mysql", "sqlite", "mongo"]) {
+      const r = e2e("no-such-stack", db);
+      assert.equal(r.code, 2, db);
+      assert.equal(r.stderr, "Stack desconocido: no-such-stack\n", db);
+    }
+  });
+
+  it("rejects any other value with the usage line, which lists mongo", () => {
+    const r = e2e("flask", "oracle");
+    assert.equal(r.code, 2);
+    assert.equal(r.stderr, USAGE);
+    assert.equal(r.stdout, "");
   });
 });
