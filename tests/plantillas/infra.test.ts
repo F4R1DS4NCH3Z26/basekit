@@ -63,19 +63,36 @@ describe("infra.sh", () => {
     assert.match(r.stdout, /^\s*~ \.env\.example \[db\]$/m);
     const overlay = read(d, "compose.db.yaml");
     assert.match(overlay, /image: mongo:/);
-    assert.match(overlay, /MONGO_URL: mongodb:\/\//);
-    assert.match(overlay, /DATABASE_URL: mongodb:\/\//);
     assert.doesNotMatch(overlay, /^\s*ports:/m, "the database publishes no ports");
-    // S4: healthy only once the real mongod answers on the service host with the root user (not the init-time
-    // localhost-only mongod), with a 30s start period.
-    assert.match(overlay, /test: \[.*mongosh.*--host db.*--authenticationDatabase admin/);
-    // As the root user, with $$ so Compose leaves the variables to the container (a single $ would be
-    // interpolated, usually empty, on the host and the check would never pass).
-    assert.match(overlay, /-u \\"\$\$\{MONGO_INITDB_ROOT_USERNAME\}\\" -p \\"\$\$\{MONGO_INITDB_ROOT_PASSWORD\}\\"/);
     assert.match(overlay, /^\s*start_period: 30s$/m);
-    assert.match(read(d, ".env.example"), /^# >>> db\nDB_NAME=app\nDB_USER=app\nDB_PASSWORD=__GENERATE__\n# <<< db$/m);
-    assert.match(read(d, ".make/db.mk"), /^DB_SHELL_CMD = .*mongosh/);
     assert.match(r.stdout, /infra OK: db=mongo redis=0/);
+  });
+
+  it("MongoDB (S2): root is root/DB_ROOT_PASSWORD and the app connects as DB_USER with readWrite on DB_NAME only", () => {
+    const d = scratch();
+    assert.equal(init(d).code, 0);
+    assert.equal(infra(d, "--db", "mongo").code, 0);
+    const overlay = read(d, "compose.db.yaml");
+    // Every app URL authenticates the app user against its own database.
+    const url = "mongodb://${DB_USER:-app}:${DB_PASSWORD}@db:27017/${DB_NAME:-app}?authSource=${DB_NAME:-app}";
+    for (const key of ["DATABASE_URL", "MONGO_URL", "SPRING_DATA_MONGODB_URI"]) {
+      assert.ok(overlay.includes(`  ${key}: ${url}\n`), `${key} does not use the app user with authSource=<db>`);
+    }
+    assert.doesNotMatch(overlay, /authSource=admin/);
+    assert.match(overlay, /^\s*MONGO_INITDB_ROOT_USERNAME: root$/m);
+    assert.match(overlay, /^\s*MONGO_INITDB_ROOT_PASSWORD: \$\{DB_ROOT_PASSWORD:\?/m);
+    // The init script travels inside the overlay (one file for infra.sh) and is mounted where the image runs it.
+    assert.match(overlay, /^\s*target: \/docker-entrypoint-initdb\.d\/[\w-]+\.js$/m);
+    assert.match(overlay, /^configs:\n\s+[\w-]+:\n\s+content: \|/m);
+    assert.match(overlay, /createUser\(/);
+    assert.match(overlay, /role: "readWrite"/);
+    // Healthy only when the app user exists: through the service host (not the init-time localhost-only mongod),
+    // as the app user against the app database. $$ leaves the variables to the container.
+    assert.match(overlay, /test: \[.*mongosh.*--host db.*-u \\"\$\$\{MONGO_APP_USERNAME\}\\" -p \\"\$\$\{MONGO_APP_PASSWORD\}\\" --authenticationDatabase \\"\$\$\{MONGO_INITDB_DATABASE\}\\"/);
+    assert.match(read(d, ".env.example"),
+      /^# >>> db\nDB_NAME=app\nDB_USER=app\nDB_PASSWORD=__GENERATE__\nDB_ROOT_PASSWORD=__GENERATE__\n# <<< db$/m);
+    assert.equal(read(d, ".make/db.mk"),
+      `DB_SHELL_CMD = sh -c 'mongosh -u "$$MONGO_APP_USERNAME" -p "$$MONGO_APP_PASSWORD" --authenticationDatabase "$$MONGO_INITDB_DATABASE" "$$MONGO_INITDB_DATABASE"'\n`);
   });
 
   it("rejects an unknown engine and lists mongo among the valid ones", () => {

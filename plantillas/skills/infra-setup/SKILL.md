@@ -20,7 +20,11 @@ Qué hace:
   - `DATABASE_URL` (Prisma, Drizzle, SQLAlchemy).
   - `DB_HOST`, `DB_PORT`, `DB_DATABASE`… (Laravel).
   - `SPRING_DATASOURCE_*` (Spring).
-  - Con MongoDB: `DATABASE_URL` y `MONGO_URL` (`mongodb://…`), y `SPRING_DATA_MONGODB_URI`.
+  - Con MongoDB: `DATABASE_URL` y `MONGO_URL` (`mongodb://…?authSource=<DB_NAME>`), y `SPRING_DATA_MONGODB_URI`.
+- Con MongoDB hay dos usuarios:
+  - `root`, con `DB_ROOT_PASSWORD`, solo para administrar;
+  - el de la app, `DB_USER`/`DB_PASSWORD`, con `readWrite` solo en `DB_NAME`. Es el de las URLs, el healthcheck y `make db-shell`.
+  - El usuario de la app lo crea un script de inicio que va dentro del mismo overlay (`configs` de Compose; necesita Docker Compose 2.23.1 o posterior). Corre solo en el primer arranque de un volumen vacío: en un volumen ya inicializado, créalo a mano como `root` o recrea el volumen (`make clean CONFIRM=1`, borra los datos locales).
 - La base de datos **no publica puertos** al host. Para entrar, usa `make db-shell` (`mongosh` con MongoDB).
 - Solo deja la conexión: no crea tablas, colecciones ni datos. Con MongoDB, el ORM de la plantilla es SQL: integra el driver u ODM de Mongo del stack.
 - Sin `Makefile` (proyecto solo con Docker) no escribe `.make/`: copia `.env.example` a `.env` y reemplaza los `__GENERATE__` a mano.
