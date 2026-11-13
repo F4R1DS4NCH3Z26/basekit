@@ -3,7 +3,7 @@
   "name": "Java · Spring Boot (DDD modular)",
   "language": "Java",
   "kind": "backend",
-  "dbs": ["postgres", "mysql", "mongo"],
+  "dbs": ["postgres", "mysql"],
   "port": 8080,
   "health": "/actuator/health",
   "detect": { "files": [], "manifest": "pom.xml", "contains": "spring-boot", "priority": 10 },

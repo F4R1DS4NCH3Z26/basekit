@@ -50,7 +50,8 @@ Opciones de init:
   --context <texto>       De qué trata el proyecto
   --db <motor>            auto | postgres | mysql | sqlite | mongo | none (por defecto: auto;
                           un stack frontend solo admite auto o none; los demás, los motores de su
-                          stack.json (dbs; todos si falta); en un combinado, va al backend)
+                          stack.json (dbs; si falta, postgres, mysql y sqlite: mongo solo si el
+                          stack lo lista); en un combinado, va al backend)
   --redis                 Agrega Redis (no en un stack frontend; en un combinado, va al backend)
   --docker                Vuelve a usar Docker en un proyecto creado sin Docker
   --no-docker             Sin Docker ni Makefile (no compatible con --redis, un combinado ni --db distinto de auto/none)

@@ -4,8 +4,10 @@ import { UsageError } from "./errors.js";
 import { TEMPLATES } from "./templates.js";
 /** The kinds of app a stack builds (S1b). A frontend stack has no database. */
 export const KINDS = ["backend", "frontend", "fullstack"];
-/** The database engines a stack can accept (S6): what a stack.json without `dbs` accepts. */
+/** The database engines a stack can list in `dbs` (S6). */
 export const DB_ENGINES = ["postgres", "mysql", "sqlite", "mongo"];
+/** What a stack.json without `dbs` accepts: the SQL engines. Mongo is opt-in, only where a stack lists it (mongo-support S1). */
+export const DEFAULT_DB_ENGINES = ["postgres", "mysql", "sqlite"];
 const ID = /^[a-z0-9][a-z0-9-]*$/;
 /** Every stack, sorted by id (that is also the detection order). */
 export function loadStacks(dir = join(TEMPLATES, "stacks")) {
@@ -35,9 +37,9 @@ export function loadStacks(dir = join(TEMPLATES, "stacks")) {
         return s;
     });
 }
-/** S6: the engines a stack accepts: its `dbs`, or every engine. */
+/** S6: the engines a stack accepts: its `dbs`, or the SQL engines (mongo only when listed). */
 export function dbEngines(stack) {
-    return stack.dbs ?? DB_ENGINES;
+    return stack.dbs ?? DEFAULT_DB_ENGINES;
 }
 /** S1b: a frontend stack has no database, so neither a database engine nor Redis applies to it. */
 export function hasDatabase(stack) {

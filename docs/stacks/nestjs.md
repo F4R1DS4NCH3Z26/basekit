@@ -12,10 +12,12 @@ src/
 ├── app.module.ts            # registro de módulos (orquestador)
 ├── health/                  # GET /health (lo crea make new-app)
 ├── common/                  # ZodValidationPipe; auth/ (JwtAuthGuard, CurrentUser)
-├── prisma/                  # PrismaService con el adaptador de la BD (si hay BD)
+├── prisma/                  # PrismaService con el adaptador de la BD (si la BD es SQL)
 ├── generated/prisma/        # cliente generado (ignorado por git)
+├── mongo/                   # MongoModule (MONGO_URL) y sync-indexes.ts (si la BD es MongoDB)
 └── modules/<m>/
     ├── <m>.schemas.ts  <m>.repository.ts     # data-writer
+    ├── <m>.model.ts                          # data-writer (solo MongoDB: @Schema e índices)
     ├── <m>.errors.ts   <m>.service.ts        # logic-writer (sin HTTP)
     ├── <m>.controller.ts  <m>.module.ts      # web-writer
     └── *.spec.ts                             # qa-writer
@@ -23,14 +25,14 @@ test/                        # e2e (qa-writer)
 ```
 
 - **ESM**: `nest new` (12.x) crea un proyecto `"type": "module"`, con Vitest y oxlint. Los imports relativos llevan `.js`.
-- **Mismos patrones de datos que Next.js**: Prisma + Zod. La validación usa un `ZodValidationPipe` propio (`src/common/zod-validation.pipe.ts`) con `z.strictObject`, así un campo extra responde 400.
+- **Mismos patrones de datos que Next.js**: Prisma + Zod (con MongoDB, Mongoose + Zod). La validación usa un `ZodValidationPipe` propio (`src/common/zod-validation.pipe.ts`) con `z.strictObject`, así un campo extra responde 400.
 
 ## Roles y zonas
 
 | Rol | Zona |
 |---|---|
-| Orquestador | común + `package.json`, configs, `prisma/**`, `prisma.config.ts`, `src/main.ts`, `src/app.*`, `src/common/**`, `src/config/**`, `src/health/**`, `src/prisma/**`, `src/generated/**`, `src/types/**` |
-| data-writer | `src/modules/*/*.schemas.ts`, `*.repository.ts` |
+| Orquestador | común + `package.json`, configs, `prisma/**`, `prisma.config.ts`, `src/main.ts`, `src/app.*`, `src/common/**`, `src/config/**`, `src/health/**`, `src/prisma/**`, `src/mongo/**`, `src/generated/**`, `src/types/**` |
+| data-writer | `src/modules/*/*.schemas.ts`, `*.repository.ts`, `*.model.ts` |
 | logic-writer | `*.service.ts`, `*.errors.ts` |
 | web-writer | `*.controller.ts`, `*.module.ts`, `*.guard.ts` |
 | qa-writer | `src/*.spec.ts`, `src/**/*.spec.ts`, `test/**` |
@@ -49,6 +51,16 @@ Prisma 7 fija el proveedor en `schema.prisma` y necesita un *driver adapter*. `a
 
 `prisma.config.ts` toma `DATABASE_URL` para las migraciones (los tres formatos del overlay son los de Prisma). Sin `compose.db.yaml` no se instala Prisma: la app arranca solo con `/health`. Si activas la BD después, ejecuta `bash .agents/skills/nest-scaffold/scripts/app-setup.sh` dentro de `make sh` y agrega `PrismaModule` a `src/app.module.ts` si el script lo avisa.
 
+### MongoDB: Mongoose (`@nestjs/mongoose`)
+
+Con `--db mongo` (`DB_DRIVER: mongodb`) no hay Prisma. `app-setup.sh` instala `@nestjs/mongoose@12` y `mongoose@9` (versión exacta, la más nueva con 14 días) y crea:
+
+- `src/mongo/mongo.module.ts`: `MongooseModule.forRootAsync` con `MONGO_URL` (falla al arrancar si falta). El overlay conecta con el usuario de la app, que solo tiene `readWrite` en su base de datos. Nest espera la conexión antes de escuchar: un `/health` que responde prueba que la BD conectó.
+- `autoIndex` encendido en dev y apagado con `NODE_ENV=production` (lo fijan el target `build`/`prod` del Dockerfile y `compose.prod.yaml`): en prod los índices los crea `make migrate ENV=prod`, no el arranque.
+- `src/mongo/sync-indexes.ts`: lo corre `make migrate`. Levanta el contexto de la app, llama a `createIndexes()` en cada modelo registrado e imprime cuántos modelos sincronizó. Solo crea los índices declarados, nunca borra: quitar un índice del modelo no lo quita de la BD (en prod podría estar en uso o haberlo creado otra persona). Para borrarlo, `make db-shell` (`ENV=prod` en producción) y `db.<colección>.dropIndex('<nombre>')` (el nombre sale de `db.<colección>.getIndexes()`).
+
+Por módulo, `scaffold.sh` agrega `<m>.model.ts` (clase `@Schema` + `SchemaFactory`, `_id` UUID en texto para que el contrato y `ParseUUIDPipe` no cambien), un repository que inyecta el `Model` con `@InjectModel` y `MongooseModule.forFeature` en `<m>.module.ts`. `make migration` solo explica que MongoDB no tiene migraciones: los índices se declaran en los modelos.
+
 Redis llega como `REDIS_URL` / `REDIS_PASSWORD` desde `compose.redis.yaml`; la app no lo usa hasta que un contrato lo pida (caché, rate limit, colas).
 
 ## Docker
@@ -57,18 +69,18 @@ Redis llega como `REDIS_URL` / `REDIS_PASSWORD` desde `compose.redis.yaml`; la a
 |---|---|
 | `deps` | `npm ci` (o `pnpm install --frozen-lockfile`) con caché |
 | `dev` | `prisma generate` (si hay `prisma/schema.prisma`) + `nest start --watch` |
-| `build` | `prisma generate` + `nest build`. También lo usa `migrate` en prod (uid 1001) |
+| `build` | `prisma generate` (si hay schema) + `nest build`. También lo usa `migrate` en prod (uid 1001) |
 | `prod-deps` → `prod` | Solo dependencias de runtime + `dist/`; usuario `nestjs` (1001), `read_only` + `tmpfs: /tmp`, `cap_drop: [ALL]`, healthcheck con `fetch` |
 
 - En dev, `node_modules` va en un **volumen con nombre** para que el bind mount no lo oculte; `make install` vuelve a ejecutar `npm ci` en el volumen. `TSC_WATCHFILE`/`TSC_WATCHDIRECTORY` con polling para que el hot reload funcione en Docker Desktop y WSL.
-- `migrate` ejecuta `prisma migrate deploy` solo si existe `prisma/schema.prisma`; sin BD informa que no hay nada que migrar.
+- `migrate` ejecuta `prisma migrate deploy` si existe `prisma/schema.prisma`; con MongoDB, `node dist/mongo/sync-indexes.js` (en dev compila antes con `tsc -p tsconfig.build.json`; en prod el target `build` ya lo compiló); sin ninguno de los dos imprime `Sin prisma/schema.prisma ni src/mongo/sync-indexes.ts: nada que migrar`.
 - La base incluye `openssl` (lo necesita el motor de migraciones de Prisma en Alpine). `better-sqlite3` usa binarios precompilados para musl.
 
-`make new-app` (si no hay `package.json`):
+`make new-app` (si no hay `package.json`; si falla, quita `package.json` para que puedas reintentar):
 1. Instala `@nestjs/cli@12.0.10` en `/tmp` del contenedor `node:24-alpine` (la misma versión de Node que el Dockerfile: el npm 10 de Node 22 falla al resolver los peers de Nest 12 con `Cannot read properties of null (reading 'edgesOut')`) y corre `nest new app --package-manager npm --skip-git --skip-install --no-observe` (sin TTY no pregunta nada: queda ESM con Vitest). Corre como root y al final devuelve los archivos a tu uid, también si un paso falla.
    Todas las dependencias se resuelven con `npm_config_before` = hace 14 días. La regla también vale para versiones exactas: si subes `NEST_CLI_VERSION` o `PRISMA_VERSION` (o las pasas con `make new-app NEST_CLI_VERSION=…`) a una versión publicada hace menos de 14 días, `make new-app` falla con `ETARGET` hasta que cumpla los 14 días.
 2. Copia el resultado sin pisar archivos del kit (`AGENTS.md`, `README.md`, `.gitignore`…) y ejecuta `npm install`.
-3. `app-setup.sh`: instala `zod`, crea `/health`, `ZodValidationPipe` y `src/main.ts` con CORS; si hay BD, instala `prisma@7.10.1`, `@prisma/client` y el adaptador (versión exacta), crea `prisma/schema.prisma`, `prisma.config.ts`, `src/prisma/` y genera el cliente; agrega `node_modules/`, `dist/`, `coverage/` y `src/generated/` a `.gitignore`.
+3. `app-setup.sh`: instala `zod`, crea `/health`, `ZodValidationPipe` y `src/main.ts` con CORS; si hay BD, instala `prisma@7.10.1`, `@prisma/client` y el adaptador (versión exacta), crea `prisma/schema.prisma`, `prisma.config.ts`, `src/prisma/` y genera el cliente (con MongoDB, `@nestjs/mongoose`, `mongoose` y `src/mongo/`); agrega `node_modules/`, `dist/`, `coverage/` y `src/generated/` a `.gitignore`.
 
 ## Auth: JWT (detalle en `nest-patterns/references/auth.md`)
 
@@ -84,8 +96,8 @@ Redis llega como `REDIS_URL` / `REDIS_PASSWORD` desde `compose.redis.yaml`; la a
 make dev
 make test
 make verify SCOPE=src/modules/<m>
-make migration NAME=x
-make migrate
+make migration NAME=x   # Prisma; con MongoDB solo explica que no hay migraciones
+make migrate            # Prisma: migraciones; MongoDB: crea los índices declarados (nunca borra)
 make sh
 ```
 
@@ -94,6 +106,7 @@ make sh
 - **Mass assignment**: schemas de entrada con `z.strictObject`; `ownerId`, `role` y fechas nunca vienen del body.
 - **Salida**: el repository usa `select` con los campos del contrato; nunca devuelve la fila completa.
 - **SQL**: solo el query builder de Prisma o `$queryRaw` con template; nunca `$queryRawUnsafe` con input.
+- **MongoDB**: filtros solo con valores validados por Zod; nunca un objeto del cliente dentro de un filtro (inyección NoSQL con `$ne`, `$gt`…) ni `$where`. Lecturas con proyección y `.lean()`.
 - **Errores**: mensajes genéricos; los errores de dominio se traducen a HTTP en el controller.
 
 ## Errores comunes
@@ -102,4 +115,5 @@ make sh
 - Lanzar `NotFoundException` desde el service (el dominio no conoce HTTP).
 - Olvidar registrar el módulo en `src/app.module.ts`.
 - `npx tsc` sin `--no-install`.
+- Con MongoDB, `@Prop()` sin `type`: compila con `tsc`, pero Vitest no emite metadata de decoradores y el modelo falla en los tests.
 - Cambiar de BD sin regenerar: el `provider` de `schema.prisma` y el adaptador son los de la BD activa al correr `app-setup.sh`.

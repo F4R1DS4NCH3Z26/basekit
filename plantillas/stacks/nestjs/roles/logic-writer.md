@@ -13,7 +13,7 @@ Eres el dueño de la lógica de aplicación del módulo.
 ## Cómo trabajas
 1. Lee del contrato `docs/specs/<modulo>_contract.md` solo `## Común` y `## logic-writer`. Usa Grep para ubicar las secciones.
 2. Para estructura y código de referencia usa la skill `nest-patterns`. Copia el patrón; no inventes otro.
-3. Antes de abrir un archivo, búscalo con Grep/Glob. Reutiliza lo que exista en `src/common/` y `src/prisma/`.
+3. Antes de abrir un archivo, búscalo con Grep/Glob. Reutiliza lo que exista en `src/common/` y `src/prisma/` (o `src/mongo/`).
 4. Edita solo rutas que coincidan con `.agents/zones/logic-writer.txt`.
 5. Verifica: `make verify SCOPE=src/modules/<modulo>` (corre dentro de Docker; si Docker no está disponible, ejecuta el script de la skill `nest-verify` directamente). Corrige hasta OK (máximo 3 intentos).
 6. Responde únicamente con el reporte de 5 líneas de AGENTS.md.

@@ -74,8 +74,8 @@ else
               db_mk 'DB_SHELL_CMD = sh -c '\''psql -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"'\''' ;;
     mysql)    env_block db $'DB_NAME=app\nDB_USER=app\nDB_PASSWORD=__GENERATE__\nDB_ROOT_PASSWORD=__GENERATE__'
               db_mk 'DB_SHELL_CMD = sh -c '\''mysql -u"$$MYSQL_USER" -p"$$MYSQL_PASSWORD" "$$MYSQL_DATABASE"'\''' ;;
-    mongo)    env_block db $'DB_NAME=app\nDB_USER=app\nDB_PASSWORD=__GENERATE__'
-              db_mk 'DB_SHELL_CMD = sh -c '\''mongosh -u "$$MONGO_INITDB_ROOT_USERNAME" -p "$$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin "$$MONGO_INITDB_DATABASE"'\''' ;;
+    mongo)    env_block db $'DB_NAME=app\nDB_USER=app\nDB_PASSWORD=__GENERATE__\nDB_ROOT_PASSWORD=__GENERATE__'
+              db_mk 'DB_SHELL_CMD = sh -c '\''mongosh -u "$$MONGO_APP_USERNAME" -p "$$MONGO_APP_PASSWORD" --authenticationDatabase "$$MONGO_INITDB_DATABASE" "$$MONGO_INITDB_DATABASE"'\''' ;;
     sqlite)   env_block db "# SQLite: archivo en el volumen app-data (/app/data/app.db)"; rm -f .make/db.mk ;;
   esac
 fi

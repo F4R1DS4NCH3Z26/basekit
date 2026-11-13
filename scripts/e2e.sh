@@ -2,10 +2,10 @@
 # Acceptance test 12 (spec 02 §13): after `basekit init` and `make new-app`, a real `make dev`
 # must answer on the stack healthcheck. Needs Docker; meant for CI.
 # Usage: scripts/e2e.sh <stack> [db] [--prod]
-#   db: postgres | mysql | sqlite (default: no database). --prod: production images (make prod-up) instead of make dev.
+#   db: postgres | mysql | sqlite | mongo (default: no database; the stack must accept it). --prod: production images (make prod-up) instead of make dev.
 set -euo pipefail
 
-usage() { echo "Uso: scripts/e2e.sh <stack> [postgres|mysql|sqlite] [--prod]" >&2; exit 2; }
+usage() { echo "Uso: scripts/e2e.sh <stack> [postgres|mysql|sqlite|mongo] [--prod]" >&2; exit 2; }
 stack="${1:-}"
 [ $# -gt 0 ] && shift
 db=""
@@ -13,7 +13,7 @@ env="dev"
 for arg in "$@"; do
   case "$arg" in
     --prod) env="prod" ;;
-    postgres | mysql | sqlite) db="$arg" ;;
+    postgres | mysql | sqlite | mongo) db="$arg" ;;
     *) usage ;;
   esac
 done

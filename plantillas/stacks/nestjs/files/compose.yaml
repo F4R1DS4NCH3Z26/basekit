@@ -8,6 +8,7 @@ services:
     build:
       context: .
     profiles: ["tools"]
-    # Sin prisma/schema.prisma (proyecto sin BD) no hay nada que migrar.
-    command: ["sh", "-c", "if [ -f prisma/schema.prisma ]; then exec npx --no-install prisma migrate deploy; else echo 'Sin prisma/schema.prisma: nada que migrar'; fi"]
+    # Prisma: migrate deploy. Mongoose: crea los índices declarados de los modelos con el script compilado (en dev compila
+    # antes; en prod el target build ya lo compiló y corre como uid 1001). Sin ninguno de los dos no hay nada que migrar.
+    command: ["sh", "-c", "if [ -f prisma/schema.prisma ]; then exec npx --no-install prisma migrate deploy; elif [ -f src/mongo/sync-indexes.ts ]; then { [ \"$$NODE_ENV\" = production ] || npx --no-install tsc -p tsconfig.build.json; } && exec node dist/mongo/sync-indexes.js; else echo 'Sin prisma/schema.prisma ni src/mongo/sync-indexes.ts: nada que migrar'; fi"]
     security_opt: ["no-new-privileges:true"]

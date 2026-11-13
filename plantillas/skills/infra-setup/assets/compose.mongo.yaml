@@ -1,4 +1,9 @@
 # Overlay de MongoDB 8.0 (activado por infra-setup). Solo la conexión: no crea colecciones ni datos.
+# Dos usuarios: root (DB_ROOT_PASSWORD), solo para administrar, y el de la app (DB_USER), con readWrite
+# solo en DB_NAME. El de la app lo crea el script de mongo-init en el primer arranque de un volumen vacío.
+# Un volumen creado por la versión anterior de este overlay (root = DB_USER, sin usuario de la app) no pasa el
+# healthcheck: sigue el paso «Volumen MongoDB anterior» de la skill infra-setup.
+# Necesita Docker Compose 2.23.1 o posterior (configs con content).
 x-db-env: &db-env
   DB_DRIVER: mongodb
   DB_CONNECTION: mongodb
@@ -7,23 +12,29 @@ x-db-env: &db-env
   DB_DATABASE: ${DB_NAME:-app}
   DB_USERNAME: ${DB_USER:-app}
   DB_PASSWORD: ${DB_PASSWORD}
-  DATABASE_URL: mongodb://${DB_USER:-app}:${DB_PASSWORD}@db:27017/${DB_NAME:-app}?authSource=admin
-  MONGO_URL: mongodb://${DB_USER:-app}:${DB_PASSWORD}@db:27017/${DB_NAME:-app}?authSource=admin
-  SPRING_DATA_MONGODB_URI: mongodb://${DB_USER:-app}:${DB_PASSWORD}@db:27017/${DB_NAME:-app}?authSource=admin
+  DATABASE_URL: mongodb://${DB_USER:-app}:${DB_PASSWORD}@db:27017/${DB_NAME:-app}?authSource=${DB_NAME:-app}
+  MONGO_URL: mongodb://${DB_USER:-app}:${DB_PASSWORD}@db:27017/${DB_NAME:-app}?authSource=${DB_NAME:-app}
+  SPRING_DATA_MONGODB_URI: mongodb://${DB_USER:-app}:${DB_PASSWORD}@db:27017/${DB_NAME:-app}?authSource=${DB_NAME:-app}
 
 services:
   db:
     image: mongo:8.0
     environment:
       MONGO_INITDB_DATABASE: ${DB_NAME:-app}
-      MONGO_INITDB_ROOT_USERNAME: ${DB_USER:-app}
-      MONGO_INITDB_ROOT_PASSWORD: ${DB_PASSWORD:?Define DB_PASSWORD (make env)}
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?Define DB_ROOT_PASSWORD (make env)}
+      MONGO_APP_USERNAME: ${DB_USER:-app}
+      MONGO_APP_PASSWORD: ${DB_PASSWORD:?Define DB_PASSWORD (make env)}
+    configs:
+      - source: mongo-init
+        target: /docker-entrypoint-initdb.d/10-app-user.js
     volumes:
       - db-data:/data/db
     healthcheck:
-      # Through the service host and with the root user: on a first start the image runs a temporary mongod
-      # bound only to localhost to create that user, and it must not count as healthy.
-      test: ["CMD-SHELL", "mongosh --quiet --host db -u \"$${MONGO_INITDB_ROOT_USERNAME}\" -p \"$${MONGO_INITDB_ROOT_PASSWORD}\" --authenticationDatabase admin --eval \"db.adminCommand('ping').ok\""]
+      # Through the service host and with the app user: on a first start the image runs a temporary mongod
+      # bound only to localhost to create the users, and it must not count as healthy. Authenticating as the
+      # app user also proves the init script created it.
+      test: ["CMD-SHELL", "mongosh --quiet --host db -u \"$${MONGO_APP_USERNAME}\" -p \"$${MONGO_APP_PASSWORD}\" --authenticationDatabase \"$${MONGO_INITDB_DATABASE}\" --eval \"db.adminCommand('ping').ok\""]
       interval: 5s
       timeout: 3s
       retries: 20
@@ -40,6 +51,19 @@ services:
       db:
         condition: service_healthy
     environment: *db-env
+
+# Run by the image's entrypoint (mongosh, as root, against MONGO_INITDB_DATABASE) only when /data/db is empty.
+# The values come from the container environment (process.env), so the file holds no secrets and needs no
+# Compose escaping.
+configs:
+  mongo-init:
+    content: |
+      const name = process.env.MONGO_INITDB_DATABASE;
+      db.getSiblingDB(name).createUser({
+        user: process.env.MONGO_APP_USERNAME,
+        pwd: process.env.MONGO_APP_PASSWORD,
+        roles: [{ role: "readWrite", db: name }],
+      });
 
 volumes:
   db-data: {}

@@ -94,3 +94,25 @@ describe("acceptance 9: compose config with the DB overlay", { skip: docker ? fa
     }
   }
 });
+
+describe("S2: compose config with the MongoDB overlay", { skip: docker ? false : "Docker no disponible" }, () => {
+  // Acceptance 9 reaches this overlay only through stacks that list mongo (nestjs); here infra.sh activates it on nextjs.
+  it("is valid, mounts the init script and gives the app the app-user URL with authSource=<db>", () => {
+    const d = scratch();
+    assert.equal(basekit(["init", d, "-y", "--no-external-skills", "--stack", "nextjs"]).code, 0);
+    const r = sh("bash", [".agents/skills/infra-setup/scripts/infra.sh", "--db", "mongo"], d);
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    assert.equal(sh("make", ["env"], d).code, 0);
+    const cfg = sh("docker", ["compose", "-f", "compose.yaml", "-f", "compose.dev.yaml", "-f", "compose.db.yaml",
+      "--profile", "tools", "config", "--format", "json"], d);
+    assert.equal(cfg.code, 0, cfg.stderr);
+    const model = JSON.parse(cfg.stdout);
+    const { db, migrate } = model.services;
+    assert.equal(db.environment.MONGO_INITDB_ROOT_USERNAME, "root");
+    assert.match(db.environment.MONGO_INITDB_ROOT_PASSWORD, /^[0-9a-f]{64}$/, "DB_ROOT_PASSWORD was not generated");
+    assert.notEqual(db.environment.MONGO_INITDB_ROOT_PASSWORD, db.environment.MONGO_APP_PASSWORD);
+    assert.deepEqual(db.configs, [{ source: "mongo-init", target: "/docker-entrypoint-initdb.d/10-app-user.js" }]);
+    assert.match(model.configs["mongo-init"].content, /createUser\(/);
+    assert.match(migrate.environment.DATABASE_URL, /^mongodb:\/\/app:[0-9a-f]{64}@db:27017\/app\?authSource=app$/);
+  });
+});

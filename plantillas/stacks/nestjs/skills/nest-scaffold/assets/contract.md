@@ -5,11 +5,20 @@ Estado: borrador   <!-- los agentes solo trabajan si dice "cerrado" -->
 - Propósito (1 línea):
 - Permisos: <rol> puede <acción>; anónimo puede <acción>
 - Prefijo HTTP: `/__NAME__`
+<!-- prisma -->
 - Modelo Prisma (lo agrega el orquestador en `prisma/schema.prisma` y genera la migración):
 
 | Campo | Tipo Prisma | Nulo | Índice / relación |
 |---|---|---|---|
 | id | String @id @default(uuid()) | no | PK |
+<!-- /prisma -->
+<!-- mongo -->
+- Modelo Mongoose (`__NAME__.model.ts`, lo escribe el data-writer; colección `__NAME__`; los índices los crea `make migrate`):
+
+| Campo | Tipo (@Prop) | Nulo | Índice |
+|---|---|---|---|
+| _id | String, default randomUUID() | no | PK |
+<!-- /mongo -->
 
 ## data-writer
 ### Schemas (`__NAME__.schemas.ts`, Zod)
@@ -19,7 +28,7 @@ Estado: borrador   <!-- los agentes solo trabajan si dice "cerrado" -->
 | __PASCAL__Read (tipo) | | respuesta |
 
 ### Repository (`__NAME__.repository.ts`)
-- `create(data: Create__PASCAL__Input, ownerId: string): Promise<__PASCAL__Read>` · `select` solo con los campos de `__PASCAL__Read`
+- `create(data: Create__PASCAL__Input, ownerId: string): Promise<__PASCAL__Read>` · solo los campos de `__PASCAL__Read` (`select` en Prisma, proyección en Mongoose)
 
 ## logic-writer
 - Errores: `__PASCAL__NotFoundError`

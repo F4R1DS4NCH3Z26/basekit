@@ -2,6 +2,7 @@ import { after, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { checkStackDb, dbChoices } from "../../../src/commands/init/options.js";
 import { loadStacks } from "../../../src/kit/stacks.js";
 import { basekit, cleanup, fakeNpx, gitCommitAll, REPO, scratch, sh } from "../../helpers.js";
 
@@ -932,20 +933,45 @@ describe("a saved database without Docker (docker follow-ups S5)", () => {
 const INFRA_PATH = ".agents/skills/infra-setup/scripts/infra.sh";
 const AUTO_REDIS = "Redis guardado con base de datos auto: infra.sh necesita un motor; ejecútalo con --db <motor> --redis";
 
-describe("--db mongo (S2)", () => {
-  it("is accepted: infra-setup adds the Mongo overlay and the manifest stores it", () => {
-    const d = scratch();
-    const r = init(d, "--stack", "flask", "--db", "mongo");
-    assert.equal(r.code, 0, r.stderr);
-    assert.match(r.stdout, /infra OK: db=mongo/);
-    assert.match(read(d, "compose.db.yaml"), /mongo/);
-    assert.match(read(d, ".make/db.mk"), /mongosh/);
-    assert.match(read(d, ".env.example"), /^DB_PASSWORD=__GENERATE__$/m);
-    assert.equal(JSON.parse(read(d, ".agents/manifest.json")).options.db, "mongo");
+const FLASK_MONGO = "ERROR: --db 'mongo' no aplica a flask: motores admitidos: postgres, mysql, sqlite (o auto, none)\n";
+
+describe("--db mongo (S2; opt-in per stack, mongo-support S1)", () => {
+  it("on a stack whose dbs does not list it is a usage error, with exit 2 and before writing anything", () => {
+    for (const stack of ["flask", "flask+react"]) {
+      const d = scratch();
+      const r = init(d, "--stack", stack, "--db", "mongo");
+      assert.equal(r.code, 2, `${stack}: ${r.stdout}`);
+      assert.equal(r.stderr, FLASK_MONGO, stack);
+      assert.equal(r.stdout, "", stack);
+      assert.deepEqual(readdirSync(d), [], stack);
+    }
   });
 
-  it("is listed in the help and in the invalid-value error", () => {
-    assert.ok(basekit(["--help"]).stdout.includes("--db <motor>            auto | postgres | mysql | sqlite | mongo | none (por defecto: auto;"));
+  it("is accepted by a stack that lists it in dbs, and offered in its database question", () => {
+    const flask = loadStacks().find((s) => s.id === "flask")!;
+    const withMongo = { ...flask, dbs: ["postgres", "mongo"] };
+    assert.equal(checkStackDb(withMongo, "mongo", undefined, true), "mongo");
+    assert.deepEqual(dbChoices(withMongo).map((c) => c.label), ["PostgreSQL", "MongoDB"]);
+    assert.throws(() => checkStackDb(flask, "mongo", undefined, true), /--db 'mongo' no aplica a flask/);
+  });
+
+  it("is not offered in the database question of a stack without dbs", () => {
+    const flask = loadStacks().find((s) => s.id === "flask")!;
+    assert.deepEqual(dbChoices(flask).map((c) => c.label), ["MySQL", "SQLite", "PostgreSQL"]);
+  });
+
+  it("is listed in the help, which says it is only for the stacks that list it, and in the invalid-value error", () => {
+    assert.ok(
+      basekit(["--help"]).stdout.includes(
+        [
+          "  --db <motor>            auto | postgres | mysql | sqlite | mongo | none (por defecto: auto;",
+          "                          un stack frontend solo admite auto o none; los demás, los motores de su",
+          "                          stack.json (dbs; si falta, postgres, mysql y sqlite: mongo solo si el",
+          "                          stack lo lista); en un combinado, va al backend)",
+          "",
+        ].join("\n"),
+      ),
+    );
     const r = init(scratch(), "--stack", "flask", "--db", "oracle");
     assert.equal(r.code, 2);
     assert.equal(r.stderr, "ERROR: --db 'oracle' no es válido. Valores: auto, postgres, mysql, sqlite, mongo, none\n");
@@ -953,7 +979,7 @@ describe("--db mongo (S2)", () => {
 });
 
 describe("engines per stack (S6)", () => {
-  const SPRING_SQLITE = "ERROR: --db 'sqlite' no aplica a spring: motores admitidos: postgres, mysql, mongo (o auto, none)\n";
+  const SPRING_SQLITE = "ERROR: --db 'sqlite' no aplica a spring: motores admitidos: postgres, mysql (o auto, none)\n";
 
   it("rejects an explicit engine the stack does not accept, with exit 2 and before writing anything", () => {
     const d = scratch();
@@ -961,6 +987,14 @@ describe("engines per stack (S6)", () => {
     assert.equal(r.code, 2, r.stdout);
     assert.equal(r.stderr, SPRING_SQLITE);
     assert.equal(r.stdout, "");
+    assert.deepEqual(readdirSync(d), []);
+  });
+
+  it("spring rejects mongo (mongo-support S1)", () => {
+    const d = scratch();
+    const r = init(d, "--stack", "spring", "--db", "mongo");
+    assert.equal(r.code, 2, r.stdout);
+    assert.equal(r.stderr, "ERROR: --db 'mongo' no aplica a spring: motores admitidos: postgres, mysql (o auto, none)\n");
     assert.deepEqual(readdirSync(d), []);
   });
 
@@ -974,11 +1008,11 @@ describe("engines per stack (S6)", () => {
 
   it("accepts an engine the stack lists", () => {
     const d = scratch();
-    const r = init(d, "--stack", "spring", "--db", "mongo");
+    const r = init(d, "--stack", "spring", "--db", "mysql");
     assert.equal(r.code, 0, r.stderr);
-    assert.match(r.stdout, /infra OK: db=mongo/);
-    assert.match(read(d, "compose.db.yaml"), /mongo/);
-    assert.equal(JSON.parse(read(d, ".agents/manifest.json")).options.db, "mongo");
+    assert.match(r.stdout, /infra OK: db=mysql/);
+    assert.match(read(d, "compose.db.yaml"), /mysql/);
+    assert.equal(JSON.parse(read(d, ".agents/manifest.json")).options.db, "mysql");
   });
 
   it("keeps an engine already saved in the manifest without validating it again", () => {
@@ -994,8 +1028,8 @@ describe("engines per stack (S6)", () => {
     assert.equal(JSON.parse(read(d, ".agents/manifest.json")).options.db, "sqlite");
   });
 
-  it("a stack without dbs still accepts every engine", () => {
-    for (const db of ["postgres", "mysql", "sqlite", "mongo"]) {
+  it("a stack without dbs still accepts postgres, mysql and sqlite", () => {
+    for (const db of ["postgres", "mysql", "sqlite"]) {
       const r = init(scratch(), "--stack", "flask", "--db", db);
       assert.equal(r.code, 0, `${db}: ${r.stderr}`);
       assert.match(r.stdout, new RegExp(`infra OK: db=${db}`));
