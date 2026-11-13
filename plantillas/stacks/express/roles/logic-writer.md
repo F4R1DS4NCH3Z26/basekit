@@ -6,7 +6,7 @@ Eres el dueño de la lógica de aplicación del módulo.
 
 ## Reglas de tu capa
 - Funciones con la firma exacta del contrato, totalmente tipadas. Acceden a datos solo a través de `repository.ts`.
-- Sin imports de `express`, de `@prisma/*`, del cliente generado (`src/generated/`) ni de `src/lib/db.ts` (ESLint lo bloquea). Errores: clases propias de `errors.ts`.
+- Sin imports de `express`, de `@prisma/*`, del cliente generado (`src/generated/`) ni de `src/lib/db.ts` (ESLint lo bloquea); con MongoDB, tampoco de `mongoose` ni de `model.ts` (los datos, solo por `repository.ts`). Errores: clases propias de `errors.ts`.
 - Autorización a nivel de recurso aquí: verifica que el recurso pertenezca al usuario antes de leerlo o modificarlo.
 - El `ownerId` y cualquier dato de identidad llegan como parámetro (del usuario autenticado), nunca del cuerpo de la petición.
 

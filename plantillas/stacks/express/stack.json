@@ -1,6 +1,6 @@
 {
   "id": "express",
-  "name": "TypeScript · Express (API REST minimalista) + Prisma",
+  "name": "TypeScript · Express (API REST minimalista) + Prisma o Mongoose (MongoDB)",
   "language": "TypeScript",
   "kind": "backend",
   "port": 3000,
@@ -13,5 +13,6 @@
     ["express-patterns", "Antes de escribir cualquier capa; auth en references/auth.md"],
     ["express-verify", "Lo usa `make verify`"]
   ],
+  "dbs": ["postgres", "mysql", "sqlite", "mongo"],
   "defaultAuth": "jwt"
 }

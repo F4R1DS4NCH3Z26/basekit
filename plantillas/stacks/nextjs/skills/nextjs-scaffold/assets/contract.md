@@ -3,7 +3,17 @@ Estado: borrador   <!-- los agentes solo trabajan si dice "cerrado" -->
 
 ## Común
 - Propósito (1 línea):
+<!-- sql -->
 - Entidad / tabla y campos (nombre: tipo, nullable):
+<!-- /sql -->
+<!-- mongo -->
+- Modelo Mongoose `__PASCAL__Model` (`model.ts`, lo escribe el data-writer; colección `__NAME__`; los índices los crea `make migrate`):
+
+| Campo | Tipo (Schema) | Nulo | Índice |
+|---|---|---|---|
+| _id | String, default randomUUID() | no | PK |
+
+<!-- /mongo -->
 - Permisos: <rol> puede <acción>; anónimo puede <acción>
 - Rutas: `/__NAME__` (pública | requiere sesión)
 

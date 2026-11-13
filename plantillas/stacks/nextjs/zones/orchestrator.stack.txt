@@ -11,6 +11,7 @@ components.json
 prisma/**
 drizzle/**
 src/lib/**
+src/instrumentation.ts
 src/types/**
 src/app/layout.tsx
 src/app/globals.css

@@ -186,6 +186,9 @@ jobs:
           - { stack: fastapi, db: mongo }
           - { stack: flask, db: mongo }
           - { stack: python-native, db: mongo }
+          - { stack: express, db: mongo }
+          - { stack: node-native, db: mongo }
+          - { stack: nextjs, db: mongo }
           # Frontend stacks have no database: no db axis (init rejects --db and --redis for them).
           - stack: react
           - stack: vanilla-ts

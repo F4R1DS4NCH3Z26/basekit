@@ -21,4 +21,6 @@ services:
     environment:
       # npx writes its cache under HOME; uid 1001 has no home directory in the build stage.
       HOME: /tmp
+      # The build stage has no NODE_ENV: with MongoDB, the migrate command runs the compiled index script only in prod.
+      NODE_ENV: production
     cap_drop: [ALL]

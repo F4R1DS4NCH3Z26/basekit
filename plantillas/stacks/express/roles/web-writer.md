@@ -6,7 +6,7 @@ Eres el dueño de la capa web del módulo.
 
 ## Reglas de tu capa
 - Cada endpoint: `safeParse` del body, params y query con los schemas del módulo (inválido → 422 con `fieldErrors`), código de estado explícito y `requireUser` si el contrato exige auth.
-- Solo llama a `services.ts`; nunca a `repository.ts` ni a Prisma.
+- Solo llama a `services.ts`; nunca a `repository.ts`, a Prisma ni a Mongoose (`mongoose`, `model.ts`).
 - Traduce los errores de dominio a HTTP. Recurso ajeno → 404 (no reveles que existe). Errores inesperados: déjalos pasar al manejador de `src/lib/http.ts` (Express 5 propaga los async).
 - No registras el router en `src/app.ts` (es del orquestador): indícalo en NOTAS.
 

@@ -11,5 +11,6 @@ prisma/**
 src/app.ts
 src/server.ts
 src/lib/**
+src/mongo/**
 src/generated/**
 src/types/**
