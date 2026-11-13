@@ -436,7 +436,7 @@ describe("init with interactive answers", () => {
   it("asks for the database after Docker and the Makefile: yes and an engine run infra-setup like --db (S1)", async () => {
     const d = join(scratch(), "app");
     const { p, output } = prompter("", "", "", "1", "", "");
-    assert.equal(await quietInit({ dir: d, stack: "flask", agents: "codex" }, p), 0);
+    assert.equal(await quietInit({ dir: d, stack: "django", agents: "codex" }, p), 0);
     p.close();
     const text = output();
     const ask = text.indexOf("¿Integrar base de datos? [S/n]");

@@ -184,6 +184,8 @@ jobs:
           # MongoDB, only on the stacks whose stack.json lists mongo in dbs (dev; the CI tests enforce the list).
           - { stack: nestjs, db: mongo }
           - { stack: fastapi, db: mongo }
+          - { stack: flask, db: mongo }
+          - { stack: python-native, db: mongo }
           # Frontend stacks have no database: no db axis (init rejects --db and --redis for them).
           - stack: react
           - stack: vanilla-ts

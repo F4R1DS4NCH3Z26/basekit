@@ -8,5 +8,7 @@ services:
     build:
       context: .
     profiles: ["tools"]
-    command: ["alembic", "upgrade", "head"]
+    # SQLAlchemy: migraciones de Alembic. PyMongo (MongoDB): crea los índices declarados de los módulos, nunca borra uno.
+    # Sin ninguno de los dos falla: no hay nada que aplicar.
+    command: ["sh", "-c", "if [ -f alembic.ini ]; then exec alembic upgrade head; elif [ -f src/core/create_indexes.py ]; then exec python -m src.core.create_indexes; else echo 'ERROR: sin alembic.ini (SQLAlchemy) ni src/core/create_indexes.py (MongoDB) no hay migraciones que aplicar: ejecuta make new-app' >&2; exit 1; fi"]
     security_opt: ["no-new-privileges:true"]

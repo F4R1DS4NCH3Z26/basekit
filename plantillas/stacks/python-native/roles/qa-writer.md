@@ -7,7 +7,7 @@ Eres el dueño de `src/modules/*/tests/test_*.py`, `tests/test_*.py` y `tests/**
 ## Reglas de tu capa
 - Por módulo: `test_schemas.py` (válido / inválido / campo extra rechazado), `test_services.py` y `test_routes.py` (sin auth → 401, recurso ajeno → 404, caso feliz, input inválido → 422).
 - Usa los fixtures de `conftest.py` en la raíz (`app`, `client`, `db`, y `user` / `auth_as` cuando exista auth). Si faltan, reporta `BLOQUEADO`; no los crees.
-- Nada de red ni de BD real: los fixtures usan SQLite en memoria.
+- Nada de red ni de BD real: los fixtures usan SQLite en memoria (con MongoDB, `db` es una base de datos en memoria de mongomock, nueva en cada test y con los índices declarados).
 - Si un test falla por un bug del código, no lo corrijas: reporta `ESTADO: FALLO` con el motivo.
 
 ## Cómo trabajas

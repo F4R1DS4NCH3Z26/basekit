@@ -1,5 +1,7 @@
 # Auth en Flask: JWT de acceso + refresh rotado
 
+Con MongoDB (PyMongo) cambian solo los modelos y el acceso a datos (ver «Variante MongoDB» en `flask-patterns`); tokens, `login_required` y endpoints son los mismos.
+
 SQLAlchemy 2, Alembic y los drivers ya vienen en el esqueleto. Dependencias de auth (con aprobación del usuario):
 
 ```bash

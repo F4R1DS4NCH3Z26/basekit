@@ -1,5 +1,7 @@
 # Auth en la API Python nativa: JWT de acceso + refresh rotado
 
+Con MongoDB (PyMongo) cambian solo los modelos y el acceso a datos (ver «Variante MongoDB» en `pynative-patterns`); tokens, `require_user` y endpoints son los mismos.
+
 SQLAlchemy 2, Alembic y los drivers ya vienen en el esqueleto. Sin framework, la auth es código propio en `src/core/security.py`; solo el JWT y el hash de contraseñas son librerías. Dependencias (con aprobación del usuario):
 
 ```bash

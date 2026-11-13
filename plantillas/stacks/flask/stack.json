@@ -1,12 +1,13 @@
 {
   "id": "flask",
-  "name": "Python · Flask + SQLAlchemy 2 (API REST ligera)",
+  "name": "Python · Flask + SQLAlchemy 2 o PyMongo (MongoDB) (API REST ligera)",
   "language": "Python",
   "kind": "backend",
   "port": 8000,
   "health": "/health",
   "detect": { "files": [], "manifest": "pyproject.toml", "contains": "flask", "priority": 30 },
   "appMarker": "pyproject.toml",
+  "dbs": ["postgres", "mysql", "sqlite", "mongo"],
   "roles": ["data-writer", "logic-writer", "web-writer", "qa-writer"],
   "skills": [
     ["flask-scaffold", "Módulo nuevo: estructura + contrato"],

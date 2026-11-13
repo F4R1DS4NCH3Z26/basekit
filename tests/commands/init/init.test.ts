@@ -933,31 +933,31 @@ describe("a saved database without Docker (docker follow-ups S5)", () => {
 const INFRA_PATH = ".agents/skills/infra-setup/scripts/infra.sh";
 const AUTO_REDIS = "Redis guardado con base de datos auto: infra.sh necesita un motor; ejecútalo con --db <motor> --redis";
 
-const FLASK_MONGO = "ERROR: --db 'mongo' no aplica a flask: motores admitidos: postgres, mysql, sqlite (o auto, none)\n";
+const DJANGO_MONGO = "ERROR: --db 'mongo' no aplica a django: motores admitidos: postgres, mysql, sqlite (o auto, none)\n";
 
 describe("--db mongo (S2; opt-in per stack, mongo-support S1)", () => {
   it("on a stack whose dbs does not list it is a usage error, with exit 2 and before writing anything", () => {
-    for (const stack of ["flask", "flask+react"]) {
+    for (const stack of ["django", "django+react"]) {
       const d = scratch();
       const r = init(d, "--stack", stack, "--db", "mongo");
       assert.equal(r.code, 2, `${stack}: ${r.stdout}`);
-      assert.equal(r.stderr, FLASK_MONGO, stack);
+      assert.equal(r.stderr, DJANGO_MONGO, stack);
       assert.equal(r.stdout, "", stack);
       assert.deepEqual(readdirSync(d), [], stack);
     }
   });
 
   it("is accepted by a stack that lists it in dbs, and offered in its database question", () => {
-    const flask = loadStacks().find((s) => s.id === "flask")!;
-    const withMongo = { ...flask, dbs: ["postgres", "mongo"] };
+    const django = loadStacks().find((s) => s.id === "django")!;
+    const withMongo = { ...django, dbs: ["postgres", "mongo"] };
     assert.equal(checkStackDb(withMongo, "mongo", undefined, true), "mongo");
     assert.deepEqual(dbChoices(withMongo).map((c) => c.label), ["PostgreSQL", "MongoDB"]);
-    assert.throws(() => checkStackDb(flask, "mongo", undefined, true), /--db 'mongo' no aplica a flask/);
+    assert.throws(() => checkStackDb(django, "mongo", undefined, true), /--db 'mongo' no aplica a django/);
   });
 
   it("is not offered in the database question of a stack without dbs", () => {
-    const flask = loadStacks().find((s) => s.id === "flask")!;
-    assert.deepEqual(dbChoices(flask).map((c) => c.label), ["MySQL", "SQLite", "PostgreSQL"]);
+    const django = loadStacks().find((s) => s.id === "django")!;
+    assert.deepEqual(dbChoices(django).map((c) => c.label), ["MySQL", "SQLite", "PostgreSQL"]);
   });
 
   it("is listed in the help, which says it is only for the stacks that list it, and in the invalid-value error", () => {

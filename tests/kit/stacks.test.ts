@@ -61,7 +61,7 @@ describe("stack.json", () => {
   });
 
   it("dbEngines: a stack without dbs accepts postgres, mysql and sqlite, never mongo (mongo-support S1)", () => {
-    assert.deepEqual(dbEngines(loadStacks().find((s) => s.id === "flask")!), ["postgres", "mysql", "sqlite"]);
+    assert.deepEqual(dbEngines(loadStacks().find((s) => s.id === "django")!), ["postgres", "mysql", "sqlite"]);
   });
 
   it("dbEngines: a stack that lists mongo in dbs accepts it (mongo-support S1)", () => {
