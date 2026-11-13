@@ -1,84 +1,127 @@
 #!/usr/bin/env bash
 # Cambia el esqueleto de basekit (SQLAlchemy + Alembic) a MongoDB con Beanie cuando el overlay que activó infra-setup es
 # MongoDB (compose.db.yaml con DB_DRIVER: mongodb). Lo ejecuta `make new-app` antes de `uv lock`; con otra BD o sin BD no
-# hace nada. Sin red. Idempotente: un archivo que ya tiene la variante Beanie se conserva.
-# Para pasar a MongoDB después de make new-app: activa la BD con infra-setup, borra uv.lock y vuelve a ejecutar make new-app.
+# hace nada. Sin red. Nunca pisa un archivo tuyo: reemplaza o borra un archivo del esqueleto solo si sigue intacto (igual
+# a como lo copió basekit init); si alguno cambió, se detiene, lo lista y no toca nada. Idempotente: un archivo que ya
+# tiene la variante Beanie se conserva.
 set -euo pipefail
 # The project is four levels above this script (<project>/.agents/skills/<skill>/scripts/), also in backend/ or frontend/.
 root=$(cd "$(dirname "$0")/../../../.." && pwd); cd "$root"
 [ -f pyproject.toml ] || { echo "ERROR: ejecútalo en la raíz del proyecto FastAPI (falta pyproject.toml)"; exit 2; }
 
-# Same source as nest-scaffold's app-setup.sh: the DB_DRIVER of the overlay infra-setup activated.
-driver=""
-[ -f compose.db.yaml ] && driver=$(sed -n 's/^[[:space:]]*DB_DRIVER:[[:space:]]*\([a-z]*\).*/\1/p' compose.db.yaml | head -1)
-[ "$driver" = mongodb ] || exit 0
+# One exact match, shared with scaffold.sh and .make/stack.mk: the DB_DRIVER of the overlay infra-setup activated.
+grep -Eqs '^[[:space:]]*DB_DRIVER:[[:space:]]*mongodb[[:space:]]*$' compose.db.yaml || exit 0
 
-# Alembic revisions are never deleted: a project that already has them chose SQL.
-if [ -d alembic/versions ] && find alembic/versions -type f -name '*.py' | grep -q .; then
+# Alembic revisions are never deleted: a project that already has them chose SQL. find -print -quit, not find | grep -q:
+# under pipefail, grep exiting first kills find with SIGPIPE and the check would read "no revisions".
+revisions=""
+[ -d alembic/versions ] && revisions=$(find alembic/versions -type f -name '*.py' -print -quit)
+if [ -n "$revisions" ]; then
   echo "ERROR: alembic/versions tiene migraciones; no se borran. MongoDB no usa Alembic: quítalas tú si de verdad cambias de BD"
+  exit 2
+fi
+
+# cksum (POSIX: CRC and size) of each starter file this script replaces or removes, as basekit init copies it from
+# plantillas/stacks/fastapi/starter/. When the starter changes, update its line (tests/plantillas/fastapi-mongo.test.ts
+# fails otherwise).
+starter_sum() {
+  case $1 in
+    pyproject.toml)            echo "2671609089 1246" ;;
+    src/core/config.py)        echo "3567397175 1189" ;;
+    src/core/db.py)            echo "4092713954 1769" ;;
+    src/main.py)               echo "1845771651 1058" ;;
+    conftest.py)               echo "3090153807 1493" ;;
+    alembic.ini)               echo "187729484 723" ;;
+    alembic/env.py)            echo "1279185857 1595" ;;
+    alembic/script.py.mako)    echo "3038668147 637" ;;
+    alembic/versions/.gitkeep) echo "4294967295 0" ;;
+    *) return 1 ;;
+  esac
+}
+is_starter() { [ -f "$1" ] && [ "$(cksum < "$1")" = "$(starter_sum "$1")" ]; }
+# The text that marks a file as already holding the Beanie variant.
+marker() {
+  case $1 in
+    pyproject.toml) echo '"beanie==' ;;
+    src/core/config.py) echo 'mongo_url' ;;
+    src/core/db.py) echo 'init_beanie' ;;
+    src/core/create_indexes.py) echo 'create_indexes OK' ;;
+    src/main.py) echo 'lifespan=lifespan' ;;
+    conftest.py) echo 'AsyncMongoMockClient' ;;
+  esac
+}
+written="pyproject.toml src/core/config.py src/core/db.py src/core/create_indexes.py src/main.py conftest.py"
+removed="alembic.ini alembic/env.py alembic/script.py.mako alembic/versions/.gitkeep"
+
+# Check everything before writing anything: a file is written only when it is missing, still the starter or already
+# Beanie; Alembic goes away only when it holds nothing but the starter's files (and Python's __pycache__).
+changed=""
+for f in $written; do
+  [ ! -e "$f" ] || grep -qF -- "$(marker "$f")" "$f" || is_starter "$f" || changed="$changed  $f"$'\n'
+done
+for f in $removed; do
+  [ ! -e "$f" ] || is_starter "$f" || changed="$changed  $f"$'\n'
+done
+if [ -d alembic ]; then
+  while IFS= read -r f; do
+    case " $removed " in *" $f "*) ;; *) changed="$changed  $f"$'\n' ;; esac
+  done < <(find alembic -type f ! -path '*/__pycache__/*' | LC_ALL=C sort)
+fi
+if [ -n "$changed" ]; then
+  printf 'ERROR: estos archivos ya no son los del esqueleto de basekit y no se sobrescriben:\n%s' "$changed"
+  echo "No se cambió nada. Pásalos a Beanie a mano (la variante está en la skill py-patterns) o devuélvelos al esqueleto y vuelve a ejecutar este script."
   exit 2
 fi
 
 # to_beanie <ruta> <marca>: escribe stdin en la ruta salvo que ya tenga la marca de la variante Beanie (atómico).
 # chmod 644: mktemp creates 0600 files, and the starter's files are world-readable.
 to_beanie() {
-  if [ -f "$1" ] && grep -q "$2" "$1"; then cat >/dev/null; echo "  = $1"; return 0; fi
+  if [ -f "$1" ] && grep -qF -- "$2" "$1"; then cat >/dev/null; echo "  = $1"; return 0; fi
   mkdir -p "$(dirname "$1")"; local tmp; tmp=$(mktemp "$1.XXXXXX"); cat > "$tmp"; chmod 644 "$tmp"; mv "$tmp" "$1"; echo "  ~ $1"
 }
 
-to_beanie pyproject.toml '"beanie==' <<'TOML'
-[project]
-name = "app"
-version = "0.1.0"
-requires-python = ">=3.12"
-# Exact versions (repo rule), each at least 14 days old. MongoDB with Beanie (an ODM over PyMongo's async API);
-# `make migrate` creates the declared indexes (src/core/create_indexes.py). PyMongo is pinned too, so uv lock never
-# picks a driver release younger than 14 days.
-dependencies = [
-    "fastapi[standard]==0.162.0",
-    "pydantic-settings==2.16.1",
-    "beanie==2.2.0",
-    "pymongo==4.19.0",
-]
-
-[dependency-groups]
-# pymongo-async-mock + mongomock: the in-memory MongoDB of the tests (conftest.py), with no network or real database.
-dev = [
-    "pytest==9.1.1",
-    "ruff==0.17.2",
-    "mypy==2.4.0",
-    "httpx==0.28.1",
-    "pymongo-async-mock==0.1.3",
-    "mongomock==4.3.0",
-]
-
-[tool.ruff]
-line-length = 100
-target-version = "py312"
-# Agent files and docs hold Markdown with sample code: ruff must not reformat them.
-extend-exclude = [".agents", ".claude", ".opencode", ".hermes", "docs"]
-
-[tool.ruff.lint]
-select = ["E", "F", "I", "B", "UP", "S", "SIM"]   # S = reglas de seguridad (bandit)
-
-[tool.ruff.lint.isort]
-known-first-party = ["src"]
-
-[tool.ruff.lint.per-file-ignores]
-"**/tests/**" = ["S101"]
-"tests/**" = ["S101"]
-
-[tool.mypy]
-strict = true
-plugins = ["pydantic.mypy"]
-
-[[tool.mypy.overrides]]
-module = ["mongomock.*", "pymongo_async_mock.*"]
-ignore_missing_imports = true
-
-[tool.pytest.ini_options]
-testpaths = ["src", "tests"]
-TOML
+# pyproject.toml is derived from the starter's, which the check above proved untouched: the SQL dependencies and the
+# Alembic settings go, Beanie and PyMongo come in. Exact versions (repo rule), each at least 14 days old; PyMongo is
+# pinned too, so uv lock never picks a driver release younger than 14 days. pymongo-async-mock + mongomock are the
+# in-memory MongoDB of the tests (conftest.py), with no network or real database.
+if ! grep -qF '"beanie==' pyproject.toml; then
+  pyproject=$(awk '
+    /^# Exact versions/ {
+      print "# Exact versions (repo rule), each at least 14 days old. MongoDB with Beanie (an ODM over PyMongo'"'"'s async API);"
+      print "# `make migrate` creates the declared indexes (src/core/create_indexes.py). PyMongo is pinned too, so uv lock never"
+      print "# picks a driver release younger than 14 days."
+      next
+    }
+    /^# the prod `migrate` service/ || /^ {4}"(sqlalchemy|alembic|psycopg|pymysql)/ { next }
+    /^ {4}"pydantic-settings==/ { print; print "    \"beanie==2.2.0\","; print "    \"pymongo==4.19.0\","; next }
+    /^dev = \[.*\]$/ {
+      print "# pymongo-async-mock + mongomock: the in-memory MongoDB of the tests (conftest.py), with no network or real database."
+      print "dev = ["
+      items = $0; sub(/^dev = \[/, "", items); sub(/\]$/, "", items)
+      n = split(items, dev, /, */)
+      for (i = 1; i <= n; i++) print "    " dev[i] ","
+      print "    \"pymongo-async-mock==0.1.3\","
+      print "    \"mongomock==4.3.0\","
+      print "]"
+      next
+    }
+    /^extend-exclude = / { sub(/"alembic\/versions", /, "") }
+    /^# The local alembic\/ folder/ || /^known-third-party = \["alembic"\]$/ || /^exclude = \["alembic\/versions\/"\]$/ { next }
+    /^\[tool\.pytest\.ini_options\]$/ {
+      print "[[tool.mypy.overrides]]"
+      print "module = [\"mongomock.*\", \"pymongo_async_mock.*\"]"
+      print "ignore_missing_imports = true"
+      print ""
+    }
+    { print }
+  ' pyproject.toml)
+  if grep -Eiq 'sqlalchemy|alembic|psycopg|pymysql' <<<"$pyproject" || ! grep -qF '"beanie==' <<<"$pyproject"; then
+    echo "ERROR: no se pudo derivar pyproject.toml del esqueleto; no se cambió nada"; exit 3
+  fi
+  printf '%s\n' "$pyproject" | to_beanie pyproject.toml '"beanie=='
+else
+  echo "  = pyproject.toml"
+fi
 
 to_beanie src/core/config.py 'mongo_url' <<'PY'
 """Configuración tipada desde variables de entorno (nunca leas .env a mano)."""
@@ -334,6 +377,7 @@ def client(app: FastAPI) -> Iterator[TestClient]:
         yield c
 PY
 
+# The check above proved alembic.ini and alembic/ hold only the starter's files (and __pycache__).
 for f in alembic.ini alembic; do
   if [ -e "$f" ]; then rm -rf "$f"; echo "  - $f"; fi
 done

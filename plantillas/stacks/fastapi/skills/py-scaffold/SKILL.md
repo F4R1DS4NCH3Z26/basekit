@@ -12,7 +12,7 @@ bash .agents/skills/py-scaffold/scripts/scaffold.sh <modulo>   # snake_case: ord
 
 Crea `src/modules/<modulo>/` con archivos que solo tienen docstring (no asume framework), `tests/__init__.py` y `docs/specs/<modulo>_contract.md` a partir de `assets/contract.md`. No sobrescribe nada.
 
-Con MongoDB (`compose.db.yaml` con `DB_DRIVER: mongodb`), `models.py` ya trae un `Document` de Beanie con `id` UUID en texto y el contrato describe la colección en vez de la tabla SQL. `scripts/mongo-setup.sh` cambia el esqueleto de SQLAlchemy + Alembic a Beanie: lo corre `make new-app` antes de `uv lock` y no hace nada con otra BD.
+Con MongoDB (`compose.db.yaml` con `DB_DRIVER: mongodb`), `models.py` ya trae un `Document` de Beanie con `id` UUID en texto y el contrato describe la colección en vez de la tabla SQL. `scripts/mongo-setup.sh` cambia el esqueleto de SQLAlchemy + Alembic a Beanie: lo corre `make new-app` antes de `uv lock` y no hace nada con otra BD. Solo reemplaza archivos que siguen siendo el esqueleto de basekit; si alguno cambió, lo lista, sale con código 2 y no toca nada.
 
 Después del scaffold:
 1. Llena el contrato con el usuario: firmas y tablas, no prosa. Márcalo `Estado: cerrado`.

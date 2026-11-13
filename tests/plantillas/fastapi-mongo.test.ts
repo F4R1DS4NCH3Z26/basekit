@@ -1,6 +1,6 @@
 import { after, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { basekit, cleanup, REPO, scratch, sh } from "../helpers.js";
 
@@ -225,7 +225,7 @@ describe("migrations on FastAPI (mongo-support S7)", () => {
     return { ...r, calls: fake.calls() };
   }
 
-  it("make migrate with Beanie creates the declared indexes; with Alembic it upgrades; without either, nothing to do", () => {
+  it("make migrate with Beanie creates the declared indexes; with Alembic it upgrades", () => {
     assert.ok(migrateScript, "no sh -c migrate command in compose.yaml");
     const mongo = migrate(["src/core/create_indexes.py"]);
     assert.equal(mongo.code, 0, mongo.stdout + mongo.stderr);
@@ -233,10 +233,152 @@ describe("migrations on FastAPI (mongo-support S7)", () => {
     const sql = migrate(["alembic.ini", "src/core/db.py"]);
     assert.equal(sql.code, 0, sql.stdout + sql.stderr);
     assert.equal(sql.calls, "alembic upgrade head\n");
+  });
+
+  // mongo-support S8.2: nothing it can run is a failure, never a silent success.
+  it("make migrate without alembic.ini or the index script fails with a clear message and runs nothing", () => {
     const none = migrate([]);
-    assert.equal(none.code, 0);
+    assert.equal(none.code, 1, none.stdout + none.stderr);
     assert.equal(none.calls, "");
-    assert.equal(none.stdout, "Sin alembic.ini ni src/core/create_indexes.py: nada que migrar\n");
+    assert.equal(none.stdout, "");
+    assert.equal(
+      none.stderr,
+      "ERROR: falta alembic.ini (SQLAlchemy) y src/core/create_indexes.py (MongoDB): no hay migraciones que aplicar\n",
+    );
+  });
+});
+
+describe("mongo-setup.sh never overwrites a changed file (mongo-support S8.1)", () => {
+  // Every starter file the Beanie variant replaces or removes.
+  const replaced = ["pyproject.toml", "src/core/config.py", "src/core/db.py", "src/main.py", "conftest.py", "alembic.ini", "alembic/env.py"];
+  for (const f of replaced) {
+    it(`stops and changes nothing when ${f} is no longer the untouched starter`, () => {
+      const d = fastapiProject("mongo");
+      writeFileSync(join(d, f), read(d, f) + "# a change of mine\n");
+      const before = tree(d);
+      const r = sh("bash", [MONGO_SETUP], d);
+      assert.equal(r.code, 2, r.stdout + r.stderr);
+      assert.match(r.stdout, /^ERROR: estos archivos ya no son los del esqueleto de basekit y no se sobrescriben:$/m);
+      assert.match(r.stdout, new RegExp(`^ {2}${f.replaceAll(".", "\\.")}$`, "m"));
+      assert.deepEqual(tree(d), before);
+    });
+  }
+
+  it("stops and changes nothing when alembic/ holds a file the starter does not have", () => {
+    const d = fastapiProject("mongo");
+    writeFileSync(join(d, "alembic/README"), "notes\n");
+    const before = tree(d);
+    const r = sh("bash", [MONGO_SETUP], d);
+    assert.equal(r.code, 2, r.stdout + r.stderr);
+    assert.match(r.stdout, /^ {2}alembic\/README$/m);
+    assert.deepEqual(tree(d), before);
+  });
+
+  it("an untouched starter file next to one that already holds the Beanie variant: replaces the first, keeps the second", () => {
+    const d = fastapiProject("mongo");
+    assert.equal(sh("bash", [MONGO_SETUP], d).code, 0);
+    const beanieMain = read(d, "src/main.py") + "# registered routers\n";
+    writeFileSync(join(d, "src/main.py"), beanieMain);
+    writeFileSync(join(d, "src/core/config.py"), readFileSync(join(REPO, "plantillas/stacks/fastapi/starter/src/core/config.py"), "utf8"));
+    const r = sh("bash", [MONGO_SETUP], d);
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    assert.equal(read(d, "src/main.py"), beanieMain);
+    assert.match(read(d, "src/core/config.py"), /mongo_url: str \| None = None/);
+  });
+
+  it("the Mongo pyproject.toml is derived from the starter's: every line that is not SQL-specific is kept (S8.5)", () => {
+    const d = fastapiProject("mongo");
+    assert.equal(sh("bash", [MONGO_SETUP], d).code, 0);
+    const mongo = read(d, "pyproject.toml").split("\n");
+    const starter = readFileSync(join(REPO, "plantillas/stacks/fastapi/starter/pyproject.toml"), "utf8").split("\n");
+    const sqlOnly = /sqlalchemy|alembic|psycopg|pymysql|^dev = |^# Exact versions|^# the prod/i;
+    for (const l of starter.filter((l) => !sqlOnly.test(l))) assert.ok(mongo.includes(l), `starter line dropped: ${l}`);
+    const script = readFileSync(join(REPO, "plantillas/stacks/fastapi/skills/py-scaffold/scripts/mongo-setup.sh"), "utf8");
+    assert.doesNotMatch(script, /fastapi\[standard\]==|\[tool\.ruff\]/, "mongo-setup.sh still holds a hand copy of the starter's pyproject.toml");
+  });
+});
+
+describe("mongo-setup.sh guards (mongo-support S8.4)", () => {
+  it("with thousands of Alembic revisions it still stops (no find | grep -q under pipefail)", () => {
+    const d = fastapiProject("mongo");
+    const long = "x".repeat(60);
+    for (let i = 0; i < 3000; i++) writeFileSync(join(d, `alembic/versions/${String(i).padStart(4, "0")}_${long}.py`), "");
+    const r = sh("bash", [MONGO_SETUP], d);
+    assert.equal(r.code, 2, r.stdout + r.stderr);
+    assert.match(r.stdout, /ERROR: alembic\/versions tiene migraciones/);
+    assert.ok(existsSync(join(d, "alembic.ini")));
+    assert.match(read(d, "pyproject.toml"), /"sqlalchemy==/);
+  });
+});
+
+describe("one MongoDB detection (mongo-support S8.3)", () => {
+  // The same exact match in stack.mk ($$ is make's escape for $), mongo-setup.sh and scaffold.sh.
+  const MATCH = "^[[:space:]]*DB_DRIVER:[[:space:]]*mongodb[[:space:]]*$";
+  it("stack.mk, mongo-setup.sh and scaffold.sh hold the same exact DB_DRIVER match", () => {
+    const base = join(REPO, "plantillas/stacks/fastapi");
+    assert.ok(readFileSync(join(base, "files/.make/stack.mk"), "utf8").includes(`'${MATCH.replace("$", () => "$$")}'`), "stack.mk");
+    for (const s of ["mongo-setup.sh", "scaffold.sh"]) {
+      assert.ok(readFileSync(join(base, `skills/py-scaffold/scripts/${s}`), "utf8").includes(`'${MATCH}'`), s);
+    }
+  });
+
+  /** What each of the three tools decides for a compose.db.yaml whose DB_DRIVER line is `line`. */
+  function decisions(line: string) {
+    const d = fastapiProject("mongo");
+    const yaml = read(d, "compose.db.yaml").replace(/^ {2}DB_DRIVER: mongodb$/m, line);
+    assert.notEqual(yaml, read(d, "compose.db.yaml"));
+    writeFileSync(join(d, "compose.db.yaml"), yaml);
+    assert.equal(sh("make", ["env"], d).code, 0);
+    const fake = fakeBin(["docker"]);
+    const migration = sh("make", ["migration", "NAME=create_orders"], d, { PATH: `${fake.path}:${process.env.PATH}` });
+    const setup = sh("bash", [MONGO_SETUP], d);
+    assert.equal(setup.code, 0, setup.stdout + setup.stderr);
+    assert.equal(sh("bash", [SCAFFOLD, "orders"], d).code, 0);
+    return {
+      stackMk: migration.stdout === MIGRATION_LINE,
+      mongoSetup: /beanie/.test(read(d, "pyproject.toml")),
+      scaffold: /\(Document\)/.test(read(d, "src/modules/orders/models.py")),
+    };
+  }
+
+  it("`DB_DRIVER: mongodbfoo` is not MongoDB for any of them", () => {
+    assert.deepEqual(decisions("  DB_DRIVER: mongodbfoo"), { stackMk: false, mongoSetup: false, scaffold: false });
+  });
+
+  it("`DB_DRIVER: mongodb` with trailing spaces is MongoDB for all of them", () => {
+    assert.deepEqual(decisions("  DB_DRIVER: mongodb  "), { stackMk: true, mongoSetup: true, scaffold: true });
+  });
+});
+
+describe("make new-app and make migration robustness (mongo-support S8.5)", () => {
+  it("a SQL project without the py-scaffold skill still runs uv lock", () => {
+    const d = fastapiProject("postgres");
+    rmSync(join(d, ".agents/skills/py-scaffold"), { recursive: true });
+    const fake = fakeBin(["docker"]);
+    const r = sh("make", ["new-app"], d, { PATH: `${fake.path}:${process.env.PATH}` });
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+    assert.match(fake.calls(), /uv lock\n$/);
+  });
+
+  it("a MongoDB project without the py-scaffold skill fails before uv lock with a clear message", () => {
+    const d = fastapiProject("mongo");
+    rmSync(join(d, ".agents/skills/py-scaffold"), { recursive: true });
+    const fake = fakeBin(["docker"]);
+    const r = sh("make", ["new-app"], d, { PATH: `${fake.path}:${process.env.PATH}` });
+    assert.notEqual(r.code, 0);
+    assert.match(r.stdout, /^ERROR: falta \.agents\/skills\/py-scaffold\/scripts\/mongo-setup\.sh/m);
+    assert.equal(fake.calls(), "");
+    assert.ok(!existsSync(join(d, "uv.lock")));
+  });
+
+  // stack.mk's Mongo override (`migration: DC = @echo …; :`) only works while the core recipe keeps this shape:
+  // the NAME check through MIGRATION_NAME_CHECK, then a line that starts with $(DC).
+  it("the core Makefile's migration recipe keeps the shape stack.mk's DC override relies on", () => {
+    const core = readFileSync(join(REPO, "plantillas/core/Makefile"), "utf8").split("\n");
+    const at = core.findIndex((l) => l.startsWith("migration:"));
+    assert.ok(at > 0);
+    const recipe = core.slice(at + 1).filter((_, i, all) => all.slice(0, i + 1).every((l) => l.startsWith("\t")));
+    assert.deepEqual(recipe, ["\t@$(if $(NO_DB_MSG),:,$(MIGRATION_NAME_CHECK))", "\t$(DC) run --rm -e NAME $(APP) $(MAKE_MIGRATION_CMD)"]);
   });
 });
 

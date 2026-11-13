@@ -11,9 +11,10 @@ root=$(cd "$(dirname "$0")/../../../.." && pwd); cd "$root"
 dir="src/modules/$name"
 [ -e "$dir" ] && { echo "ERROR: $dir ya existe; no se sobrescribe"; exit 1; }
 pascal=$(echo "$name" | awk -F_ '{for(i=1;i<=NF;i++) printf toupper(substr($i,1,1)) substr($i,2)}')
-# Same source as mongo-setup.sh: the DB_DRIVER of the overlay infra-setup activated. mongodb → Beanie; anything else → SQL.
-driver=""
-[ -f compose.db.yaml ] && driver=$(sed -n 's/^[[:space:]]*DB_DRIVER:[[:space:]]*\([a-z]*\).*/\1/p' compose.db.yaml | head -1)
+# One exact match, shared with mongo-setup.sh and .make/stack.mk: the DB_DRIVER of the overlay infra-setup activated.
+# mongodb → Beanie; anything else → SQL.
+mongo=""
+grep -Eqs '^[[:space:]]*DB_DRIVER:[[:space:]]*mongodb[[:space:]]*$' compose.db.yaml && mongo=1
 
 mkdir -p "$dir/tests" docs/specs
 [ -e src/modules/__init__.py ] || : > src/modules/__init__.py
@@ -21,7 +22,7 @@ put() { [ -e "$1" ] && { echo "  = $1 (existe)"; return 0; }; printf '%s\n' "$2"
 # The contract goes on its own docstring line: with a long module name, one line would break ruff's E501 (100).
 doc() { printf '"""%s\n\nContrato: docs/specs/%s_contract.md § %s.\n"""' "$1" "$name" "$2"; }
 put "$dir/__init__.py"   ""
-if [ "$driver" = mongodb ]; then
+if [ -n "$mongo" ]; then
 put "$dir/models.py"     "$(doc "Modelos Beanie (MongoDB) de $name." data-writer)
 
 from uuid import uuid4

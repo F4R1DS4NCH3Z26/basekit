@@ -9,6 +9,6 @@ services:
       context: .
     profiles: ["tools"]
     # SQLAlchemy: migraciones de Alembic. Beanie (MongoDB): crea los índices declarados de los modelos, nunca borra uno.
-    # Sin ninguno de los dos no hay nada que migrar.
-    command: ["sh", "-c", "if [ -f alembic.ini ]; then exec alembic upgrade head; elif [ -f src/core/create_indexes.py ]; then exec python -m src.core.create_indexes; else echo 'Sin alembic.ini ni src/core/create_indexes.py: nada que migrar'; fi"]
+    # Sin ninguno de los dos falla: no hay nada que aplicar y make migrate no debe decir que migró.
+    command: ["sh", "-c", "if [ -f alembic.ini ]; then exec alembic upgrade head; elif [ -f src/core/create_indexes.py ]; then exec python -m src.core.create_indexes; else echo 'ERROR: falta alembic.ini (SQLAlchemy) y src/core/create_indexes.py (MongoDB): no hay migraciones que aplicar' >&2; exit 1; fi"]
     security_opt: ["no-new-privileges:true"]
