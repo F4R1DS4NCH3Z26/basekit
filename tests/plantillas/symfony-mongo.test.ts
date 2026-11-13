@@ -145,7 +145,7 @@ describe("make new-app on Symfony (mongo-support S9)", () => {
       const fake = fakeBin(["docker"]);
       const r = sh("make", ["_new-app"], d, { PATH: `${fake.path}:${process.env.PATH}` });
       assert.equal(r.code, 0, r.stdout + r.stderr);
-      assert.equal(fake.calls().split("\n").filter(Boolean).length, 1);
+      assert.equal(fake.calls().split(/\n(?=docker )/).filter(Boolean).length, 1);
       assert.ok(read(d, "Dockerfile").includes(STARTER_EXT), "the SQL image changed");
     });
   }

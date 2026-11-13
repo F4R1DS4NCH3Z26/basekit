@@ -192,7 +192,7 @@ describe("make new-app on Laravel (mongo-support S9)", () => {
     const fake = fakeBin(["docker"]);
     const r = sh("make", ["_new-app"], d, { PATH: `${fake.path}:${process.env.PATH}` });
     assert.equal(r.code, 0, r.stdout + r.stderr);
-    const calls = fake.calls().split("\n").filter(Boolean);
+    const calls = fake.calls().split(/\n(?=docker )/).filter(Boolean);
     assert.equal(calls.length, 2, fake.calls());
     assert.match(calls[0] ?? "", /composer create-project laravel\/laravel/);
     assert.match(calls[1] ?? "", /composer require .*mongodb\/laravel-mongodb:5\.12\.0/);
@@ -216,7 +216,7 @@ describe("make new-app on Laravel (mongo-support S9)", () => {
       const fake = fakeBin(["docker"]);
       const r = sh("make", ["_new-app"], d, { PATH: `${fake.path}:${process.env.PATH}` });
       assert.equal(r.code, 0, r.stdout + r.stderr);
-      assert.equal(fake.calls().split("\n").filter(Boolean).length, 1);
+      assert.equal(fake.calls().split(/\n(?=docker )/).filter(Boolean).length, 1);
       assert.doesNotMatch(r.stdout + fake.calls(), /mongo/i);
       assert.ok(read(d, "Dockerfile").includes(STARTER_EXT), "the SQL image changed");
     });
