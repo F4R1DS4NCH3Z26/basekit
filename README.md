@@ -208,6 +208,7 @@ npm install
 npm test                    # compila con tsc y corre node --test (las pruebas de compose se ejecutan si hay Docker)
 npm run compile && bash scripts/e2e.sh nextjs            # prueba 12 real (necesita Docker; la usa el CI)
 bash scripts/e2e.sh spring postgres                     # con base de datos (Spring la necesita para arrancar)
+BASEKIT_E2E_PORT=3999 bash scripts/e2e.sh nestjs       # en otro puerto, si el del stack está ocupado
 ```
 
 `dist/src` se commitea: después de cambiar `src/`, ejecuta `npm run compile` y commitea `dist/src` junto con el cambio. El CI falla si no coinciden.

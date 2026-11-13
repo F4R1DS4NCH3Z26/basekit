@@ -81,4 +81,15 @@ describe("scripts/e2e.sh arguments (mongo-support S3)", () => {
     assert.equal(r.stderr, USAGE);
     assert.equal(r.stdout, "");
   });
+  // mongo-support S9: BASEKIT_E2E_PORT moves the app to another host port (parallel runs, a busy default port).
+  it("takes BASEKIT_E2E_PORT only as a port number", () => {
+    const withPort = (port: string) => sh("env", [`BASEKIT_E2E_PORT=${port}`, "bash", "scripts/e2e.sh", "no-such-stack"], REPO);
+    const bad = withPort("80a");
+    assert.equal(bad.code, 2);
+    assert.equal(bad.stderr, "BASEKIT_E2E_PORT debe ser un número de puerto\n");
+    assert.equal(bad.stdout, "");
+    const good = withPort("8101");
+    assert.equal(good.code, 2);
+    assert.equal(good.stderr, "Stack desconocido: no-such-stack\n");
+  });
 });
