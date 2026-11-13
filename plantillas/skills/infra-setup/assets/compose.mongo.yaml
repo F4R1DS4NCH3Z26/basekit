@@ -1,6 +1,8 @@
 # Overlay de MongoDB 8.0 (activado por infra-setup). Solo la conexión: no crea colecciones ni datos.
 # Dos usuarios: root (DB_ROOT_PASSWORD), solo para administrar, y el de la app (DB_USER), con readWrite
 # solo en DB_NAME. El de la app lo crea el script de mongo-init en el primer arranque de un volumen vacío.
+# Un volumen creado por la versión anterior de este overlay (root = DB_USER, sin usuario de la app) no pasa el
+# healthcheck: sigue el paso «Volumen MongoDB anterior» de la skill infra-setup.
 # Necesita Docker Compose 2.23.1 o posterior (configs con content).
 x-db-env: &db-env
   DB_DRIVER: mongodb

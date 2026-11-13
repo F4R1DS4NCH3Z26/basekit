@@ -11,6 +11,8 @@ after(cleanup);
 const APP_SETUP = ".agents/skills/nest-scaffold/scripts/app-setup.sh";
 const SCAFFOLD = ".agents/skills/nest-scaffold/scripts/scaffold.sh";
 const MIGRATION_MSG = /MongoDB no tiene migraciones: los índices se declaran en los modelos/;
+const MIGRATION_LINE =
+  "MongoDB no tiene migraciones: los índices se declaran en los modelos (src/modules/<m>/<m>.model.ts) y make migrate los crea\n";
 const read = (dir: string, f: string) => readFileSync(join(dir, f), "utf8");
 
 /** A directory with fake executables that log their calls to `calls.log`. */
@@ -63,11 +65,21 @@ describe("app-setup.sh (mongo-support S4)", () => {
     assert.match(mod, /uri: requireEnv\('MONGO_URL'\)/);
     assert.match(mod, /autoIndex: process\.env\.NODE_ENV !== 'production'/);
     assert.match(mod, /throw new Error\(`Falta \$\{name\}/);
-    assert.match(read(d, "src/mongo/sync-indexes.ts"), /\.syncIndexes\(\)/);
     const app = read(d, "src/app.module.ts");
     assert.match(app, /import \{ MongoModule \} from '\.\/mongo\/mongo\.module\.js';/);
     assert.match(app, /imports: \[MongoModule, HealthModule\]/);
     assert.match(r.stdout, /app-setup OK: \/health, MongoDB \(Mongoose\)/);
+  });
+
+  it("with the MongoDB overlay: sync-indexes.ts only creates the declared indexes (createIndexes, never a drop) and counts the models", () => {
+    const d = nestProject("mongo");
+    fakeNestApp(d);
+    assert.equal(appSetup(d).code, 0);
+    const script = read(d, "src/mongo/sync-indexes.ts");
+    const code = script.replace(/^\s*\/\/.*$/gm, ""); // the comment explains how to drop an index by hand
+    assert.match(code, /await model\.createIndexes\(\)/);
+    assert.doesNotMatch(code, /syncIndexes|dropIndex|cleanIndexes/, "the script can drop indexes");
+    assert.match(script, /`sync-indexes OK: \$\{models\.length\} modelos`/);
   });
 
   it("with the PostgreSQL overlay: still installs Prisma with its adapter and runs prisma generate", () => {
@@ -116,6 +128,17 @@ describe("scaffold.sh (mongo-support S4)", () => {
     assert.match(read(d, "docs/specs/order-items_contract.md"), /Modelo Mongoose/);
   });
 
+  it("with the MongoDB overlay: the contract keeps the Mongoose section, drops the Prisma one and every marker", () => {
+    const d = nestProject("mongo");
+    fakeNestApp(d);
+    assert.equal(sh("bash", [SCAFFOLD, "orders"], d).code, 0);
+    const contract = read(d, "docs/specs/orders_contract.md");
+    assert.match(contract, /^- Modelo Mongoose \(`orders\.model\.ts`/m);
+    assert.match(contract, /^\| _id \| String, default randomUUID\(\) \| no \| PK \|$/m);
+    assert.doesNotMatch(contract, /Prisma \(lo agrega|Tipo Prisma|@default\(uuid\(\)\)/, "the Prisma section stayed");
+    assert.doesNotMatch(contract, /<!-- \/?(prisma|mongo) -->/, "a marker stayed");
+  });
+
   it("with the PostgreSQL overlay: the Prisma repository, no model file and no forFeature", () => {
     const d = nestProject("postgres");
     fakeNestApp(d);
@@ -125,6 +148,17 @@ describe("scaffold.sh (mongo-support S4)", () => {
     assert.ok(!existsSync(join(d, "src/modules/products/products.model.ts")), "a Mongo model was created");
     assert.doesNotMatch(read(d, "src/modules/products/products.module.ts"), /Mongoose/);
     assert.match(read(d, "docs/specs/products_contract.md"), /Modelo Prisma/);
+  });
+
+  it("with the PostgreSQL overlay: the contract keeps the Prisma section, drops the Mongoose one and every marker", () => {
+    const d = nestProject("postgres");
+    fakeNestApp(d);
+    assert.equal(sh("bash", [SCAFFOLD, "products"], d).code, 0);
+    const contract = read(d, "docs/specs/products_contract.md");
+    assert.match(contract, /^- Modelo Prisma \(lo agrega el orquestador/m);
+    assert.match(contract, /^\| id \| String @id @default\(uuid\(\)\) \| no \| PK \|$/m);
+    assert.doesNotMatch(contract, /Modelo Mongoose|Tipo \(@Prop\)|randomUUID/, "the Mongoose section stayed");
+    assert.doesNotMatch(contract, /<!-- \/?(prisma|mongo) -->/, "a marker stayed");
   });
 });
 
@@ -137,10 +171,23 @@ describe("make migration and make migrate on NestJS (mongo-support S4)", () => {
       const r = sh("make", ["migration", ...args], d, { PATH: `${fake.path}:${process.env.PATH}` });
       assert.equal(r.code, 0, `${args.join(" ")}: ${r.stdout}${r.stderr}`);
       assert.match(r.stdout, MIGRATION_MSG, args.join(" "));
-      assert.match(r.stdout, /make migrate los sincroniza/, args.join(" "));
+      assert.match(r.stdout, /make migrate los crea/, args.join(" "));
       assert.doesNotMatch(r.stdout, /Uso: make migration/, args.join(" "));
     }
     assert.equal(fake.calls(), "", "docker was called");
+  });
+
+  it("with MongoDB, make migration prints exactly the message, from its own variable (not NO_DB_MSG)", () => {
+    const d = nestProject("mongo");
+    assert.equal(sh("make", ["env"], d).code, 0);
+    for (const args of [[], ["NAME=create_orders"], ["NAME=Bad Name"]]) {
+      const r = sh("make", ["migration", ...args], d);
+      assert.equal(r.code, 0, r.stdout + r.stderr);
+      assert.equal(r.stdout + r.stderr, MIGRATION_LINE, args.join(" "));
+    }
+    const mk = read(d, ".make/stack.mk");
+    assert.match(mk, /^MONGO_MIGRATION_MSG := MongoDB no tiene migraciones/m);
+    assert.doesNotMatch(mk, /NO_DB_MSG/, "the Mongo migration reuses NO_DB_MSG");
   });
 
   it("with PostgreSQL, make migration still checks NAME and runs prisma migrate dev in the app container", () => {
@@ -194,6 +241,30 @@ describe("make migration and make migrate on NestJS (mongo-support S4)", () => {
     const none = migrate([]);
     assert.equal(none.code, 0);
     assert.equal(none.calls, "");
-    assert.match(none.stdout, /nada que migrar/);
+    assert.equal(none.stdout, "Sin prisma/schema.prisma ni src/mongo/sync-indexes.ts: nada que migrar\n");
+  });
+});
+
+describe("make new-app on NestJS (mongo-support S6)", () => {
+  it("a failing run exits non-zero, leaves no package.json or package-lock.json, and a retry runs again", () => {
+    const d = nestProject("mongo");
+    // A docker that fails halfway: the files of a partial `nest new` + `npm install` are already in the project.
+    const bin = scratch();
+    const log = join(bin, "calls.log");
+    writeFileSync(
+      join(bin, "docker"),
+      `#!/bin/sh\nprintf 'docker %s\\n' "$1" >> "${log}"\necho '{}' > package.json; echo '{}' > package-lock.json; exit 1\n`,
+      { mode: 0o755 },
+    );
+    const env = { PATH: `${bin}:${process.env.PATH}` };
+    for (const attempt of [1, 2]) {
+      const r = sh("make", ["new-app"], d, env);
+      assert.notEqual(r.code, 0, `attempt ${attempt}: ${r.stdout}`);
+      assert.match(r.stdout, /ERROR: make new-app falló; se quitó package\.json para reintentar/, `attempt ${attempt}`);
+      assert.doesNotMatch(r.stdout, /Ya existe package\.json/, `attempt ${attempt}`);
+      assert.ok(!existsSync(join(d, "package.json")), `attempt ${attempt}: package.json stayed`);
+      assert.ok(!existsSync(join(d, "package-lock.json")), `attempt ${attempt}: package-lock.json stayed`);
+    }
+    assert.equal(readFileSync(log, "utf8"), "docker run\ndocker run\n", "the retry did not run docker again");
   });
 });

@@ -12,4 +12,4 @@
 | web-writer | `*.controller.ts`, `*.module.ts`, `*.guard.ts` de módulo |
 | qa-writer | `src/**/*.spec.ts`, `test/` |
 
-Comandos: `make dev` (puerto 3000) · `make test` · `make verify SCOPE=src/modules/<m>` · `make migration NAME=x` (Prisma; con MongoDB no hay migraciones) · `make migrate` (Prisma: migraciones; MongoDB: sincroniza los índices de los modelos)
+Comandos: `make dev` (puerto 3000) · `make test` · `make verify SCOPE=src/modules/<m>` · `make migration NAME=x` (Prisma; con MongoDB no hay migraciones) · `make migrate` (Prisma: migraciones; MongoDB: crea los índices de los modelos, nunca los borra)

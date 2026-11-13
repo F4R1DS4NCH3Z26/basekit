@@ -13,7 +13,7 @@ Estado: borrador   <!-- los agentes solo trabajan si dice "cerrado" -->
 | id | String @id @default(uuid()) | no | PK |
 <!-- /prisma -->
 <!-- mongo -->
-- Modelo Mongoose (`__NAME__.model.ts`, lo escribe el data-writer; colección `__NAME__`; los índices los sincroniza `make migrate`):
+- Modelo Mongoose (`__NAME__.model.ts`, lo escribe el data-writer; colección `__NAME__`; los índices los crea `make migrate`):
 
 | Campo | Tipo (@Prop) | Nulo | Índice |
 |---|---|---|---|

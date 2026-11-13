@@ -18,7 +18,7 @@ Lee `DB_DRIVER` de `compose.db.yaml`, igual que `app-setup.sh`. Con MongoDB (`mo
 
 Después del scaffold:
 1. Llena el contrato con el usuario: firmas y tablas, no prosa. Márcalo `Estado: cerrado`.
-2. Orquestador: registra el módulo en `src/app.module.ts` (el script imprime la línea). Con Prisma, agrega el modelo a `prisma/schema.prisma` y `make migration NAME=<x>` (pide confirmación antes de `make migrate`). Con MongoDB no hay migraciones: el data-writer escribe el modelo y sus índices en `<modulo>.model.ts`, y `make migrate` los sincroniza (en dev ya los crea la app al arrancar).
+2. Orquestador: registra el módulo en `src/app.module.ts` (el script imprime la línea). Con Prisma, agrega el modelo a `prisma/schema.prisma` y `make migration NAME=<x>` (pide confirmación antes de `make migrate`). Con MongoDB no hay migraciones: el data-writer escribe el modelo y sus índices en `<modulo>.model.ts`, y `make migrate` los crea (en dev ya los crea la app al arrancar).
 3. Sigue el flujo de AGENTS.md (zone-check --snapshot → data-writer → logic-writer → web-writer → qa-writer).
 
 `scripts/app-setup.sh` no es para módulos: lo ejecuta `make new-app` (agrega `/health`, `ZodValidationPipe` y Prisma con el adaptador de la BD, o Mongoose con `src/mongo/` si la BD es MongoDB). Si activas la BD después con infra-setup, ejecútalo dentro de `make sh`.

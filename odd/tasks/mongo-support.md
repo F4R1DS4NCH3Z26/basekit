@@ -63,6 +63,15 @@ User: "dame mas opciones ... y preguntame antes de hacerlo".
   - Django and django-htmx: stay on SQL
 - Each stack follows S4's shape: scaffold branch, index sync, agent docs, `dbs` plus CI only after its e2e passes.
 
+### S6 · Review advisories on ffbc157, eb4164c and 62922c3
+User: "sigue con las advertencias".
+- S6.1 Upgrade path for old Mongo volumes (R4-mongo-overlay-existing-volume, R3-003). A `db-data` volume created by the old overlay (root = `DB_USER` in `admin`, no app user in `DB_NAME`) never turns healthy with the new overlay, and the init script does not rerun. The infra-setup `SKILL.md` gives an exact, copy-pasteable procedure (and the overlay a short comment pointing to it): it creates the app user in `DB_NAME` with the OLD root credentials through `docker compose exec db mongosh …`, using the container's env vars, and says it applies to projects whose volume was created before this change. No new machinery in `infra.sh`. Proved with real Docker: old overlay → new overlay (healthcheck fails) → procedure → healthy, app user reads and writes.
+- S6.2 `syncIndexes()` drops undeclared indexes in prod (R4-syncindexes-drops-prod-indexes, R1-001). The generated `src/mongo/sync-indexes.ts` only creates the declared indexes (`Model.createIndexes()`), never drops; its output says how many models were synced. nest-patterns, data-writer and the stack doc say that removing an index from a schema does not drop it, and how to drop it by hand.
+- S6.3 Stale texts. `docs/spec/05_bootstrap_bd_auth.md` (MongoDB row) and infra-setup `SKILL.md` say NestJS ships the Mongoose wiring and other stacks offer mongo only when their stack.json lists it. The compose.yaml migrate fallback names both sources: `Sin prisma/schema.prisma ni src/mongo/sync-indexes.ts: nada que migrar`. `docs/stacks/nestjs.md` stays consistent.
+- S6.4 Missing tests (R3-001, R3-002): the `make new-app` failure path (exits non-zero, no package.json or package-lock.json, a retry runs again), and the contract marker stripping in scaffold.sh (mongo keeps the Mongoose section and drops the Prisma one and every marker; postgres the reverse).
+- S6.5 Readability (R2-mongo-migration-dc-override): the Mongo `make migration` message gets its own variable (`MONGO_MIGRATION_MSG`) and a one-line comment on the target-specific override. Output byte-identical.
+- Risk: item 1 is touched only by documentation (a manual procedure on existing data, proved with Docker); S6.2 removes an automatic drop, which reduces risk.
+
 ## Tasks
 | ID | Specs | Route | Status | Commit |
 |---|---|---|---|---|
@@ -71,6 +80,7 @@ User: "dame mas opciones ... y preguntame antes de hacerlo".
 | T2 | S2 in Node `plantillas/skills/infra-setup` (copied to Go by the parent) | delegated (writer trigger a: parallel with T1n and T1g) | done. RED→GREEN in infra.test. Real Docker proof: healthy on first start; the app user reads and writes `app`; `other`/`admin` are Unauthorized; root logs in; restart healthy and the init script does not rerun. Compose ≥ 2.23.1. | uncommitted |
 | T4 | S4 NestJS (templates; real e2e with Docker), then the CI entry (S3) in both repos | delegated, after T1n/T1g/T2 | done. RED→GREEN in tests/plantillas/nestjs-mongo.test.ts and ci.test. Real Docker: `e2e.sh nestjs mongo` OK; a module writes and reads through the API; `make migrate` creates the indexes in dev and in prod (uid 1001); `e2e.sh nestjs postgres` OK. `e2e.sh --prod` hit the user's own server on port 3000, so it was reproduced by hand on 3999 and passed. @nestjs/mongoose 12.0.0, mongoose 9.11.4. | uncommitted |
 | T5 | Parent: copy plantillas to Go, regenerate the parity manifest, seam check, cross-implementation run | inline | done. 20 template files copied; parity manifest regenerated from the Node working tree (it must be regenerated from the commit). Go make verify OK, windows vet OK. Node verify OK. Same 6 scenarios on both CLIs: identical. Go real e2e: see L5. | uncommitted |
+| T6 | S6 (Node `plantillas/`, docs and tests; the parent ports the templates to Go) | delegated (review-advisory batch) | done. RED→GREEN: createIndexes test, fallback-message test, MONGO_MIGRATION_MSG test (byte part green before and after). The new-app failure test and both contract-marker tests already passed on 62922c3. verify OK. Real Docker: the upgrade procedure, run verbatim from SKILL.md in zsh, took an old-overlay volume from failing auth to healthy; manual dev flow on APP_PORT=3998 (3000 busy): `make migrate` recreated a declared index and kept a hand-made one. | uncommitted |
 
 ## Log
 - L1 (2026-11-12) User: "si decido usar bd en un proyecto, estan son sus opciones, qu debo hacer con mongo para funcione?", then "cual es la mejor forma de implementarlo?", "y con flask?", and "arranquemos como ibamos y dame mas opcopnes par mantener con mongo segun el lenguaje y framer y preguntame antes de hacerlo". NestJS choice: "@nestjs/mongoose (Recommended)".
@@ -97,3 +107,8 @@ User: "dame mas opciones ... y preguntame antes de hacerlo".
 - L6 (2026-11-13) User: "ponlo en otro puerto".
   - Added the test-only `BASEKIT_E2E_PORT` to Go's dev and prod e2e. It exports `APP_PORT`, which Compose prefers over the `--env-file` value, and polls that port. `TestE2EPortOverride` covers it, and the README documents it. stack.json and the templates are unchanged.
   - Rerun with `BASEKIT_E2E_PORT=3999`: `--- PASS: TestDevAnswersHealthcheck/nestjs (50.30s)`.
+- L7 (2026-11-13) User: "sigue con las advertencias". T6 decisions (writer):
+  - The upgrade procedure also creates `root` with `DB_ROOT_PASSWORD` and then drops the old root (`DB_USER` in `admin`), because the old root shares the app's password. If `DB_USER` is `root`, the first step fails on the root creation and the drop step fails on auth, so nothing is lost.
+  - The procedure's bash block has no inline comments: zsh without `interactivecomments` would pass them as arguments.
+  - `make migration` with Mongo overrides `MIGRATION_NAME_CHECK = :` for that target, since the core Makefile skips the NAME check only when `NO_DB_MSG` is set.
+  - `e2e.sh nestjs mongo` was not run: the user's server holds port 3000. The dev flow was reproduced by hand on APP_PORT=3998.

@@ -8,7 +8,7 @@ Eres el dueño de la capa de datos del módulo: schemas de entrada/salida y acce
 - Schemas de entrada con `z.strictObject` (campo extra → 400), cadenas con `.trim()` y `.max()`. Tipos derivados con `z.infer`.
 - Los schemas de entrada nunca incluyen campos que decide el servidor (`id`, `ownerId`, `role`, fechas).
 - Prisma (BD SQL): el repository inyecta `PrismaService` y usa `select` con los campos del contrato: nunca devuelve la fila completa. Sin SQL crudo con strings interpolados (`$queryRaw` con template, nunca `$queryRawUnsafe` con input). No editas `prisma/schema.prisma` ni escribes migraciones: indica en NOTAS el modelo que el orquestador debe agregar.
-- Mongoose (MongoDB, existe `src/mongo/`): escribes `<modulo>.model.ts` (campos e índices del contrato, tipo explícito en cada `@Prop`) y el repository inyecta el `Model` con `@InjectModel`, lee con proyección y `.lean()` y mapea `_id` a `id`. Filtros solo con valores validados por Zod: nunca un objeto del cliente dentro de un filtro (inyección NoSQL), ni `$where`.
+- Mongoose (MongoDB, existe `src/mongo/`): escribes `<modulo>.model.ts` (campos e índices del contrato, tipo explícito en cada `@Prop`) y el repository inyecta el `Model` con `@InjectModel`, lee con proyección y `.lean()` y mapea `_id` a `id`. `make migrate` solo crea los índices declarados: si quitas uno del modelo, indica en NOTAS que el orquestador debe borrarlo a mano (`make db-shell` → `db.<colección>.dropIndex('<nombre>')`). Filtros solo con valores validados por Zod: nunca un objeto del cliente dentro de un filtro (inyección NoSQL), ni `$where`.
 
 ## Cómo trabajas
 1. Lee del contrato `docs/specs/<modulo>_contract.md` solo `## Común` y `## data-writer`. Usa Grep para ubicar las secciones.

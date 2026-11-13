@@ -223,14 +223,15 @@ import type { Connection } from 'mongoose';
 import { AppModule } from '../app.module.js';
 
 // `make migrate`: MongoDB no tiene migraciones. Crea los índices que declaran los modelos registrados con
-// MongooseModule.forFeature y borra los que ya no declaran (Model.syncIndexes). Corre compilado: dist/mongo/sync-indexes.js.
+// MongooseModule.forFeature (Model.createIndexes) y nunca borra ninguno: un índice que quitas del modelo sigue en la BD
+// hasta que lo borras a mano (make db-shell → db.<colección>.dropIndex('<nombre>')). Corre compilado: dist/mongo/sync-indexes.js.
 const app = await NestFactory.createApplicationContext(AppModule, { logger: ['error', 'warn'] });
 try {
   const connection = app.get<Connection>(getConnectionToken());
   const models = Object.values(connection.models);
   for (const model of models) {
-    const dropped = await model.syncIndexes();
-    console.log(`  ${model.modelName}: índices al día${dropped.length ? ` (borrados: ${dropped.join(', ')})` : ''}`);
+    await model.createIndexes();
+    console.log(`  ${model.modelName}: índices declarados creados`);
   }
   console.log(models.length ? `sync-indexes OK: ${models.length} modelos` : 'sync-indexes: ningún modelo registrado');
 } finally {

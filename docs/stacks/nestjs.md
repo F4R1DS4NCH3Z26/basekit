@@ -57,7 +57,7 @@ Con `--db mongo` (`DB_DRIVER: mongodb`) no hay Prisma. `app-setup.sh` instala `@
 
 - `src/mongo/mongo.module.ts`: `MongooseModule.forRootAsync` con `MONGO_URL` (falla al arrancar si falta). El overlay conecta con el usuario de la app, que solo tiene `readWrite` en su base de datos. Nest espera la conexión antes de escuchar: un `/health` que responde prueba que la BD conectó.
 - `autoIndex` encendido en dev y apagado con `NODE_ENV=production` (lo fijan el target `build`/`prod` del Dockerfile y `compose.prod.yaml`): en prod los índices los crea `make migrate ENV=prod`, no el arranque.
-- `src/mongo/sync-indexes.ts`: lo corre `make migrate`. Levanta el contexto de la app y llama a `syncIndexes()` en cada modelo registrado (crea los índices declarados y borra los que el modelo ya no declara).
+- `src/mongo/sync-indexes.ts`: lo corre `make migrate`. Levanta el contexto de la app, llama a `createIndexes()` en cada modelo registrado e imprime cuántos modelos sincronizó. Solo crea los índices declarados, nunca borra: quitar un índice del modelo no lo quita de la BD (en prod podría estar en uso o haberlo creado otra persona). Para borrarlo, `make db-shell` (`ENV=prod` en producción) y `db.<colección>.dropIndex('<nombre>')` (el nombre sale de `db.<colección>.getIndexes()`).
 
 Por módulo, `scaffold.sh` agrega `<m>.model.ts` (clase `@Schema` + `SchemaFactory`, `_id` UUID en texto para que el contrato y `ParseUUIDPipe` no cambien), un repository que inyecta el `Model` con `@InjectModel` y `MongooseModule.forFeature` en `<m>.module.ts`. `make migration` solo explica que MongoDB no tiene migraciones: los índices se declaran en los modelos.
 
@@ -73,7 +73,7 @@ Redis llega como `REDIS_URL` / `REDIS_PASSWORD` desde `compose.redis.yaml`; la a
 | `prod-deps` → `prod` | Solo dependencias de runtime + `dist/`; usuario `nestjs` (1001), `read_only` + `tmpfs: /tmp`, `cap_drop: [ALL]`, healthcheck con `fetch` |
 
 - En dev, `node_modules` va en un **volumen con nombre** para que el bind mount no lo oculte; `make install` vuelve a ejecutar `npm ci` en el volumen. `TSC_WATCHFILE`/`TSC_WATCHDIRECTORY` con polling para que el hot reload funcione en Docker Desktop y WSL.
-- `migrate` ejecuta `prisma migrate deploy` si existe `prisma/schema.prisma`; con MongoDB, `node dist/mongo/sync-indexes.js` (en dev compila antes con `tsc -p tsconfig.build.json`; en prod el target `build` ya lo compiló); sin BD informa que no hay nada que migrar.
+- `migrate` ejecuta `prisma migrate deploy` si existe `prisma/schema.prisma`; con MongoDB, `node dist/mongo/sync-indexes.js` (en dev compila antes con `tsc -p tsconfig.build.json`; en prod el target `build` ya lo compiló); sin ninguno de los dos imprime `Sin prisma/schema.prisma ni src/mongo/sync-indexes.ts: nada que migrar`.
 - La base incluye `openssl` (lo necesita el motor de migraciones de Prisma en Alpine). `better-sqlite3` usa binarios precompilados para musl.
 
 `make new-app` (si no hay `package.json`; si falla, quita `package.json` para que puedas reintentar):
@@ -97,7 +97,7 @@ make dev
 make test
 make verify SCOPE=src/modules/<m>
 make migration NAME=x   # Prisma; con MongoDB solo explica que no hay migraciones
-make migrate            # Prisma: migraciones; MongoDB: sincroniza los índices
+make migrate            # Prisma: migraciones; MongoDB: crea los índices declarados (nunca borra)
 make sh
 ```
 

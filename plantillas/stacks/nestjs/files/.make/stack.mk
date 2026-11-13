@@ -9,10 +9,12 @@ LINT_CMD    := npx --no-install oxlint --ignore-pattern 'src/generated/**' src t
 MAKE_MIGRATION_CMD = sh -c 'npx --no-install prisma migrate dev --name "$$NAME" && npx --no-install prisma generate'
 VERIFY_CMD  = bash .agents/skills/nest-verify/scripts/verify.sh "$${SCOPE:-src}"
 # MongoDB (compose.db.yaml with DB_DRIVER: mongodb) has no migrations: the indexes live in the models and `make migrate`
-# syncs them (src/mongo/sync-indexes.ts). make migration only says so: no NAME check and no container.
+# creates them (src/mongo/sync-indexes.ts). make migration only says so: no NAME check and no container.
 ifneq ($(shell grep -Eqs '^[[:space:]]*DB_DRIVER:[[:space:]]*mongodb' compose.db.yaml && echo mongo),)
-NO_DB_MSG := MongoDB no tiene migraciones: los índices se declaran en los modelos (src/modules/<m>/<m>.model.ts) y make migrate los sincroniza
-migration: DC = @echo "$(NO_DB_MSG)"; :
+MONGO_MIGRATION_MSG := MongoDB no tiene migraciones: los índices se declaran en los modelos (src/modules/<m>/<m>.model.ts) y make migrate los crea
+# Target-specific overrides, for make migration only: the Makefile's NAME check becomes `:` and DC just prints the message.
+migration: MIGRATION_NAME_CHECK = :
+migration: DC = @echo "$(MONGO_MIGRATION_MSG)"; :
 endif
 # 12.0.10: newest @nestjs/cli release that is at least 14 days old (2026-10-20). 7.10.1: same rule for Prisma (2026-10-15).
 # Bump them only to releases at least 14 days old: npm_config_before (below) applies to exact versions too,

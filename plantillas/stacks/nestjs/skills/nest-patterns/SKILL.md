@@ -241,7 +241,7 @@ export const ProductsEntitySchema = SchemaFactory.createForClass(ProductsEntity)
 ProductsEntitySchema.index({ ownerId: 1, createdAt: -1 }); // los índices viven aquí, no en migraciones
 ```
 
-Índices: en dev Mongoose los crea al arrancar (`autoIndex`); en prod no, los crea `make migrate ENV=prod` (`src/mongo/sync-indexes.ts`, que también borra los que el modelo ya no declara). `make migration` no aplica: no hay migraciones.
+Índices: en dev Mongoose los crea al arrancar (`autoIndex`); en prod no, los crea `make migrate ENV=prod` (`src/mongo/sync-indexes.ts`, con `Model.createIndexes()`). Ninguno de los dos borra: quitar un índice del modelo no lo quita de la BD. Bórralo a mano en `make db-shell` (`ENV=prod` en producción): `db.products.getIndexes()` para ver su nombre y `db.products.dropIndex('<nombre>')`. Cambiar las opciones de un índice que ya existe (por ejemplo `unique` o `expireAfterSeconds`) hace fallar `make migrate` con `IndexOptionsConflict`: bórralo a mano primero y luego corre `make migrate`. `make migration` no aplica: no hay migraciones.
 
 ### products.repository.ts — data-writer
 
