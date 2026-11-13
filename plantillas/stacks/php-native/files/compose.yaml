@@ -8,5 +8,7 @@ services:
     build:
       context: .
     profiles: ["tools"]
-    command: ["php", "bin/migrate.php", "up"]
+    # SQL: migraciones de bin/migrate.php. MongoDB: crea los índices que declaran los módulos (Migrations/indexes.php),
+    # nunca borra uno.
+    command: ["sh", "-c", "if [ -f bin/mongo-indexes.php ]; then exec php bin/mongo-indexes.php; else exec php bin/migrate.php up; fi"]
     security_opt: ["no-new-privileges:true"]

@@ -13,6 +13,20 @@ VERIFY_CMD  = bash .agents/skills/phpnative-verify/scripts/verify.sh "$${SCOPE:-
 COMPOSER_IMAGE ?= composer:2.10.2
 # User data is read from the environment inside the recipe, never interpolated by make.
 export M PKGS
+# MongoDB (compose.db.yaml with DB_DRIVER: mongodb; same exact match as phpnative-scaffold's scripts): new-app first runs
+# mongo-setup.sh (mongodb/mongodb, the extension in the Dockerfile, src/Core/Database/Mongo.php, bin/mongo-indexes.php).
+# There are no migrations: the indexes live in src/Modules/<M>/Migrations/indexes.php and `make migrate` creates them.
+MONGO := $(shell [ "$$(sed -n 's/^[[:space:]]*DB_DRIVER:[[:space:]]*\([a-z]*\).*/\1/p' compose.db.yaml 2>/dev/null | head -1)" = mongodb ] && echo 1)
+MODULE_MIGRATION_CHECK = [[ "$${M:-}" =~ ^[A-Z][A-Za-z0-9]{1,40}$$ && "$${NAME:-}" =~ ^[a-z0-9_]{3,60}$$ ]] || { echo "Uso: make module-migration M=Products NAME=create_products"; exit 2; }
+ifneq ($(MONGO),)
+MONGO_MIGRATION_MSG := MongoDB no tiene migraciones: los índices se declaran en src/Modules/<M>/Migrations/indexes.php y make migrate los crea
+# Target-specific overrides, for make migration and make module-migration only: the NAME check becomes `:` and DC just
+# prints the message.
+migration: MIGRATION_NAME_CHECK = :
+migration: DC = @echo "$(MONGO_MIGRATION_MSG)"; :
+module-migration: MODULE_MIGRATION_CHECK = :
+module-migration: DC = @echo "$(MONGO_MIGRATION_MSG)"; :
+endif
 
 # The guard and the work live in one shell decision: an `exit 0` on its own recipe line would only end that line.
 new-app: ## Genera composer.lock en Docker (el esqueleto PHP nativo lo dejó basekit)
@@ -22,6 +36,7 @@ new-app: ## Genera composer.lock en Docker (el esqueleto PHP nativo lo dejó bas
 
 # COMPOSER_AUTH is forwarded by name, so a GitHub token never shows up on the command line.
 _new-app:
+	$(if $(MONGO),@bash .agents/skills/phpnative-scaffold/scripts/mongo-setup.sh)
 	docker run --rm --user "$$(id -u):$$(id -g)" -e HOME=/tmp -e COMPOSER_HOME=/tmp/composer -e COMPOSER_AUTH \
 	  -v "$$PWD":/app -w /app $(COMPOSER_IMAGE) \
 	  composer update --no-install --no-interaction --no-scripts '--ignore-platform-req=ext-*'
@@ -37,5 +52,5 @@ deps-add: ## Agrega dependencias con versión exacta: make deps-add PKGS="vendor
 	echo "composer.json y composer.lock actualizados. Siguiente: make install (dev) o make build"
 
 module-migration: _env-check ## Migración SQL de un módulo: make module-migration M=Products NAME=create_products
-	@[[ "$${M:-}" =~ ^[A-Z][A-Za-z0-9]{1,40}$$ && "$${NAME:-}" =~ ^[a-z0-9_]{3,60}$$ ]] || { echo "Uso: make module-migration M=Products NAME=create_products"; exit 2; }
+	@$(MODULE_MIGRATION_CHECK)
 	$(DC) run --rm --no-deps -e M -e NAME $(APP) php bin/migrate.php new "$$NAME" "$$M"

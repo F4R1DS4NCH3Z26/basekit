@@ -8,5 +8,7 @@ services:
     build:
       context: .
     profiles: ["tools"]
-    command: ["php", "bin/console", "doctrine:migrations:migrate", "--no-interaction", "--allow-no-migration"]
+    # Doctrine ORM: migraciones. Doctrine MongoDB ODM: crea los índices declarados de los documentos, nunca borra uno
+    # (schema:create --index; schema:update sí borraría los no declarados). Sin ninguno de los dos, falla.
+    command: ["sh", "-c", "if [ -f config/packages/doctrine_mongodb.yaml ]; then exec php bin/console doctrine:mongodb:schema:create --index; else exec php bin/console doctrine:migrations:migrate --no-interaction --allow-no-migration; fi"]
     security_opt: ["no-new-privileges:true"]

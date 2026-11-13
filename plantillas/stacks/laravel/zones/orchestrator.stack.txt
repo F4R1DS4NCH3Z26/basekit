@@ -11,3 +11,4 @@ phpunit.xml*
 .php-cs-fixer*
 tests/Pest.php
 tests/TestCase.php
+stubs/**

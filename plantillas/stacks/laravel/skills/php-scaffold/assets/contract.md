@@ -7,11 +7,22 @@ Estado: borrador   <!-- los agentes solo trabajan si dice "cerrado" -->
 - Prefijo: `/api/__KEBAB__` · Guard: sanctum
 
 ## data-writer
+<!-- sql -->
 ### Tabla `__SNAKE__`
 | Columna | Tipo | Nulo | Índice / FK |
 |---|---|---|---|
 | id | uuid | no | PK |
 | owner_id | foreignId(users) | no | index, cascadeOnDelete |
+<!-- /sql -->
+<!-- mongo -->
+### Colección `__SNAKE__` (MongoDB, `Domain/Models/__NAME__.php`)
+| Campo | Tipo | Nulo | Índice |
+|---|---|---|---|
+| _id | string (UUID, HasUuids) | no | PK |
+| owner_id | string | no | index (migración) |
+
+- Índices: una migración en `Database/Migrations/` (`make migration NAME=create___SNAKE___indexes`); los crea `make migrate`.
+<!-- /mongo -->
 
 - `$fillable`:
 - Enums:

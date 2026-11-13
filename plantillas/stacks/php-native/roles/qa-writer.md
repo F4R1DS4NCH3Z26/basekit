@@ -6,7 +6,7 @@ Eres el dueño de `tests/Modules/`. Pruebas el comportamiento del contrato.
 
 ## Reglas de tu capa
 - Por módulo: tests HTTP por endpoint (401 sin auth, 422 input inválido, campo protegido ignorado, 404 recurso ajeno, caso feliz verificando la BD) y unitarios por handler.
-- Tests HTTP con `App\Tests\Support\AppTestCase`: Kernel real sobre SQLite en memoria con todas las migraciones; `$this->request()` y `$this->actingAs(new Identity(...))`. Datos creados en el test con los repositorios o `$this->pdo`.
+- Tests HTTP con `App\Tests\Support\AppTestCase`: Kernel real sobre SQLite en memoria con todas las migraciones; `$this->request()` y `$this->actingAs(new Identity(...))`. Datos creados en el test con los repositorios o `$this->pdo`. Con MongoDB, los tests del módulo corren contra el MongoDB de `make dev` y vacían sus colecciones en `setUp()` con `deleteMany([])` (variante de `phpnative-patterns`).
 - Nada de red ni de servidor: los servicios externos se reemplazan con `$this->container->instance(Interfaz::class, $fake)`.
 - Si un test falla por un bug del código, no lo corrijas: reporta `ESTADO: FALLO` con el motivo.
 

@@ -7,11 +7,22 @@ Estado: borrador   <!-- los agentes solo trabajan si dice "cerrado" -->
 - Prefijo: `/api/__KEBAB__` · Auth: access token (firewall `main`)
 
 ## data-writer
+<!-- sql -->
 ### Entidad `__NAME__` → tabla `__SNAKE__`
 | Campo | Tipo Doctrine | Nulo | Índice / relación |
 |---|---|---|---|
 | id | uuid (Symfony Uid) | no | PK |
 | owner | ManyToOne(User) | no | index, onDelete CASCADE |
+<!-- /sql -->
+<!-- mongo -->
+### Documento `__NAME__` → colección `__SNAKE__` (Doctrine MongoDB ODM, `Domain/Entity/__NAME__.php`)
+| Campo | Tipo ODM | Nulo | Índice |
+|---|---|---|---|
+| id | string (UUID, strategy NONE) | no | PK (`_id`) |
+| ownerId | string | no | `#[ODM\Index]` |
+
+- Índices: `#[ODM\Index]` en el documento; los crea `make migrate`.
+<!-- /mongo -->
 
 - Campos que asigna el servidor (sin setter):
 - Enums:

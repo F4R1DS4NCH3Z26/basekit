@@ -1,5 +1,5 @@
 ## Stack: PHP · Symfony (API REST) + Doctrine
-- Servidor: FrankenPHP en Docker. Datos: Doctrine ORM + Migrations sobre `DATABASE_URL`. Auth: access tokens de Symfony Security (detalle en `symfony-patterns/references/auth.md`). Tests: PHPUnit (`WebTestCase`).
+- Servidor: FrankenPHP en Docker. Datos: Doctrine ORM + Migrations sobre `DATABASE_URL` o, con MongoDB, Doctrine MongoDB ODM sobre `MONGO_URL` (documentos en `Domain/Entity/`, índices con `#[ODM\Index]`, sin migraciones). Auth: access tokens de Symfony Security (detalle en `symfony-patterns/references/auth.md`). Tests: PHPUnit (`WebTestCase`).
 - Módulos en `src/Modules/<M>/` (namespace `App\Modules\`): `Domain/` (Entity, Repository, Enum) · `Application/` (DTO readonly, handlers, Voters) · `Http/` (controladores invocables con `#[Route]`, Request con constraints, Resource).
 - `declare(strict_types=1)` en todo; entrada con `#[MapRequestPayload]`; autorización con Voters; salida con campos explícitos; recurso ajeno → 404.
 - `/api/**` exige autenticación por defecto (`config/packages/security.yaml`); `/health` es público.
@@ -13,4 +13,4 @@
 | http-writer | `Http/` |
 | qa-writer | `tests/Modules/` |
 
-Comandos: `make dev` (puerto 8000; health en `/health`) · `make test` · `make verify SCOPE=src/Modules/<M>` · `make migration NAME=x` (Doctrine diff) · `make migrate` · `make sh` y dentro `php bin/console …`
+Comandos: `make dev` (puerto 8000; health en `/health`) · `make test` · `make verify SCOPE=src/Modules/<M>` · `make migration NAME=x` (Doctrine diff; con MongoDB no hay migraciones) · `make migrate` (MongoDB: crea los índices, nunca los borra) · `make sh` y dentro `php bin/console …`

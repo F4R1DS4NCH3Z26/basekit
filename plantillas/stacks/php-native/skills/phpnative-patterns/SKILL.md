@@ -158,6 +158,59 @@ final class ProductRepository
 - Nunca concatenes entrada en SQL. Para un `ORDER BY` elegido por el cliente, mapea contra una lista cerrada (`['name' => 'name', 'newest' => 'created_at DESC']`).
 - Ids UUID v7 ordenados por tiempo: `ORDER BY id` equivale a orden de creación.
 
+### Variante MongoDB (mongodb/mongodb)
+
+Con MongoDB (existe `src/Core/Database/Mongo.php`; lo deja `make new-app` con el overlay de infra-setup) no hay SQL ni migraciones: el repositorio recibe `App\Core\Database\Mongo` (autowiring) y los índices se declaran en `Migrations/indexes.php`. `make migrate` (`bin/mongo-indexes.php`) crea los que falten y nunca borra uno.
+
+```php
+// Migrations/indexes.php — colección => specs de createIndexes
+return [
+    'products' => [
+        ['key' => ['owner_id' => 1]],
+        ['key' => ['owner_id' => 1, 'name' => 1], 'unique' => true],
+    ],
+];
+```
+
+```php
+// Domain/Repository/ProductRepository.php
+use App\Core\Database\Mongo;
+use MongoDB\Collection;
+
+final class ProductRepository
+{
+    private readonly Collection $collection;
+
+    public function __construct(Mongo $mongo)
+    {
+        $this->collection = $mongo->collection('products');
+    }
+
+    public function findOwnedBy(string $id, string $ownerId): ?Product
+    {
+        $document = $this->collection->findOne(['_id' => $id, 'owner_id' => $ownerId]);   // solo escalares validados
+
+        return is_array($document) ? Product::fromRow($document) : null;                   // los documentos llegan como arrays
+    }
+
+    public function insert(Product $product): void
+    {
+        $this->collection->insertOne([
+            '_id' => $product->id,                                   // App\Core\Uuid::v7()
+            'owner_id' => $product->ownerId,
+            'name' => $product->name(),
+            'price_cents' => $product->priceCents(),
+            'status' => $product->status()->value,
+            'created_at' => $product->createdAt->format(DATE_ATOM),
+        ]);
+    }
+}
+```
+
+- `fromRow()` recibe el documento: mapea `_id` a `id`.
+- Filtros solo con escalares validados: nunca un array del cliente dentro de un filtro (inyección NoSQL, `$where`, `$ne`).
+- Quitar un índice de `indexes.php` no lo borra de la BD: el orquestador lo borra a mano (`make db-shell` → `db.<colección>.dropIndex('<nombre>')`).
+
 ## Application — app-writer
 
 ```php
@@ -405,3 +458,4 @@ final class CreateProductTest extends AppTestCase
 - `AppTestCase` arma el Kernel real sobre SQLite en memoria con todas las migraciones, una base vacía por test. Sin servidor ni red.
 - Un servicio externo se reemplaza antes del request: `$this->container->instance(PaymentGateway::class, new FakePaymentGateway())`.
 - Unitarios de handler: construye el handler con un repositorio sobre `$this->pdo` (`new CreateProduct(new ProductRepository($this->pdo))`).
+- Con MongoDB no hay base en memoria: los tests de un módulo corren contra el MongoDB de `make dev` (`make test` lo levanta; `make verify` lo usa si ya está corriendo) y vacían sus colecciones en `setUp()` con `$this->container->get(Mongo::class)->collection('products')->deleteMany([])` (borra los documentos, conserva los índices). Crea los índices que el test necesite con `make migrate` antes.

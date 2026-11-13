@@ -73,6 +73,25 @@ framework:
 
 Si las descargas fallan con `504` o por límite de peticiones, exporta `COMPOSER_AUTH='{"github-oauth":{"github.com":"<token>"}}'` antes; `make new-app` lo pasa al contenedor por nombre.
 
+## MongoDB (Doctrine MongoDB ODM)
+
+Con `--db mongo` (o el overlay MongoDB de infra-setup), `make new-app` cambia tres pasos. Con otra BD, todo queda igual que antes.
+
+1. Antes de crear la app, `symfony-scaffold/scripts/mongo-setup.sh` agrega la extensión PECL `mongodb-2.5.5` a la línea `install-php-extensions` del `Dockerfile`. La imagen SQL no cambia. Si el `Dockerfile` no tiene la línea del kit, el script se detiene sin cambiar nada y dice qué agregar.
+2. `composer require` pide `doctrine/mongodb-odm-bundle` 5.6.1, `doctrine/mongodb-odm` 2.17.4 y `mongodb/mongodb` 2.5.0, con versión exacta, en lugar del bundle de Doctrine, el ORM y Migrations.
+3. `setup.php config-mongo` escribe `config/packages/doctrine_mongodb.yaml`:
+   - conexión `%env(MONGO_URL)%` (el usuario de la app, con permisos solo sobre `DB_NAME`);
+   - `default_database` `%env(DB_DATABASE)%`;
+   - documentos con atributos en `src/Modules`.
+
+   Descarta lo que deja el recipe del bundle (`MONGODB_URI`, `src/Document`).
+
+- **Documentos**: viven en `src/Modules/<M>/Domain/Entity/`, la misma carpeta que las entidades, así que `services.yaml` y las zonas no cambian. `symfony-scaffold` genera un documento con `_id` UUID en texto.
+- **Índices**: se declaran con `#[ODM\Index]`. `make migrate` (también en prod, con el usuario `app`) corre `doctrine:mongodb:schema:create --index`, que crea los que falten y nunca borra uno. `schema:update` no se usa porque borra los índices no declarados. Quitar un índice del documento no lo borra de la BD: se borra a mano con `make db-shell` y `db.<colección>.dropIndex('<nombre>')`.
+- **`make migration`** solo dice que MongoDB no tiene migraciones.
+- **Tests**: no hay BD `_test`, porque el usuario de la app solo puede usar `DB_NAME`, ni transacciones, porque el servidor no es un replica set. Los tests corren contra el MongoDB de `make dev` y vacían sus colecciones en `setUp()` con `deleteMany([])`.
+- **Prod**: `cache:warmup` genera los proxies y los hydrators del ODM en `/tmp`, así que funciona con el sistema de archivos de solo lectura.
+
 ## Auth: access tokens (detalle en `symfony-patterns/references/auth.md`)
 
 1. Módulo `Auth`: entidades `User` y `AccessToken` (se guarda el sha256 del token, con `expiresAt`), `IssueAccessToken` y `AccessTokenHandler`.

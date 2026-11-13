@@ -71,6 +71,61 @@ return new class extends Migration {
 };
 ```
 
+## Variante MongoDB (mongodb/laravel-mongodb) — data-writer
+
+Con MongoDB (`make new-app` con el overlay de infra-setup deja la conexión `mongodb` en `config/database.php`, desde `MONGO_URL`) el modelo extiende el de laravel-mongodb y no hay esquema de tabla: las migraciones solo crean índices.
+
+```php
+namespace App\Modules\Products\Domain\Models;
+
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use MongoDB\Laravel\Eloquent\Model;
+
+class Product extends Model
+{
+    use HasUuids;                                 // _id = UUID en texto (como lo deja php-scaffold)
+
+    protected $connection = 'mongodb';
+
+    protected $table = 'products';                // la colección
+
+    protected $fillable = ['name', 'price_cents']; // owner_id NO va aquí
+
+    protected function casts(): array
+    {
+        return ['price_cents' => 'integer'];
+    }
+}
+```
+
+```php
+// Database/Migrations/2026_01_01_000000_create_products_indexes.php (make migration NAME=create_products_indexes usa este stub)
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Support\Facades\Schema;
+use MongoDB\Laravel\Schema\Blueprint;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::table('products', function (Blueprint $collection): void {
+            $collection->index('owner_id');
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::table('products', function (Blueprint $collection): void {
+            $collection->dropIndex(['owner_id']);    // solo el índice; nunca la colección ni sus documentos
+        });
+    }
+};
+```
+
+- `make migrate` corre las migraciones pendientes: crea los índices y nunca borra uno. Quitar un índice de una migración ya aplicada no lo borra: hace falta una migración nueva con `dropIndex`.
+- `where('owner_id', $user->id)` funciona igual que en SQL; nunca pases un array del cliente como valor de un filtro (inyección NoSQL).
+- Tests (qa-writer): corren contra el MongoDB de `make dev`. `RefreshDatabase`, `DatabaseMigrations` y `DatabaseTruncation` borran la base de datos y el usuario de la app no puede: en su lugar, `protected function setUp(): void { parent::setUp(); Product::truncate(); }` (borra los documentos y conserva los índices).
+
 ## Application — app-writer
 
 ```php

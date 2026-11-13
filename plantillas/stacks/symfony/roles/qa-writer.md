@@ -6,7 +6,7 @@ Eres el dueño de `tests/Modules/`. Pruebas el comportamiento del contrato.
 
 ## Reglas de tu capa
 - Por módulo: tests funcionales por endpoint (401 sin auth, 422 input inválido, campo protegido ignorado, 404 recurso ajeno, caso feliz verificando la BD) y unitarios por handler.
-- `WebTestCase` con `static::createClient()`; datos creados en el test con el EntityManager. Nada de red: `MockHttpClient` para servicios externos.
+- `WebTestCase` con `static::createClient()`; datos creados en el test con el EntityManager (con MongoDB, el `DocumentManager`: el test vacía sus colecciones en `setUp()` con `deleteMany([])`, porque corre contra el MongoDB de `make dev` sin transacciones). Nada de red: `MockHttpClient` para servicios externos.
 - Si un test falla por un bug del código, no lo corrijas: reporta `ESTADO: FALLO` con el motivo.
 
 ## Cómo trabajas

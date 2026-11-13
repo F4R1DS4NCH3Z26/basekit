@@ -7,6 +7,7 @@ Estado: borrador   <!-- los agentes solo trabajan si dice "cerrado" -->
 - Prefijo: `/api/__KEBAB__` · Auth: bearer token (todas las rutas salvo `public: true`)
 
 ## data-writer
+<!-- sql -->
 ### Tabla `__SNAKE__` (migración en `src/Modules/__NAME__/Migrations/`)
 | Columna | Tipo SQL (portable) | Nulo | Índice / relación |
 |---|---|---|---|
@@ -15,6 +16,15 @@ Estado: borrador   <!-- los agentes solo trabajan si dice "cerrado" -->
 | created_at | TIMESTAMP (UTC) | no | |
 
 - Variantes por motor (solo si hace falta): `.pgsql.sql` / `.mysql.sql` / `.sqlite.sql`
+<!-- /sql -->
+<!-- mongo -->
+### Colección `__SNAKE__` (MongoDB; índices en `src/Modules/__NAME__/Migrations/indexes.php`)
+| Campo | Tipo | Nulo | Índice |
+|---|---|---|---|
+| _id | string (UUID v7) | no | PK |
+| owner_id | string (UUID) | no | `['key' => ['owner_id' => 1]]` |
+| created_at | string (ISO 8601, UTC) | no | |
+<!-- /mongo -->
 - Campos que asigna el servidor (sin setter):
 - Enums:
 - Repositorio: `findOwnedBy(string $id, string $ownerId): ?<X>`
