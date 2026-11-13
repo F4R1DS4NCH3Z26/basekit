@@ -189,6 +189,8 @@ jobs:
           - { stack: express, db: mongo }
           - { stack: node-native, db: mongo }
           - { stack: nextjs, db: mongo }
+          - { stack: gin, db: mongo }
+          - { stack: go-native, db: mongo }
           # Frontend stacks have no database: no db axis (init rejects --db and --redis for them).
           - stack: react
           - stack: vanilla-ts

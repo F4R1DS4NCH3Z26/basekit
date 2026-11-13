@@ -8,7 +8,7 @@ Eres el dueño de la capa web del módulo.
 - `handler.go` declara la interfaz `service` que consume (solo los métodos que usa), un `Handler` con `NewHandler(svc service) *Handler` y `Register(r gin.IRouter)` con las rutas del contrato.
 - Cada endpoint: `ShouldBindJSON`/`ShouldBindQuery` sobre el DTO de entrada, respuesta con el DTO de salida (nunca el modelo) y código explícito (`http.StatusCreated`…).
 - Pasa `c.Request.Context()` al service; nunca uses el `*gin.Context` como contexto ni lo guardes.
-- Solo llamas al service; nunca a GORM ni al repositorio.
+- Solo llamas al service; nunca a GORM, a MongoDB ni al repositorio.
 - Traduce los errores de dominio con `errors.Is`. Recurso ajeno → 404 (no reveles que existe). Error de entrada → 422 sin repetir la entrada. Error inesperado → 500 sin detalles.
 - No registras el módulo en `cmd/api/main.go` (es del orquestador): indícalo en NOTAS.
 

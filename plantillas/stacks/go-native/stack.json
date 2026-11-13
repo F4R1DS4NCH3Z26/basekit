@@ -1,12 +1,13 @@
 {
   "id": "go-native",
-  "name": "Go · Nativo (net/http + database/sql, sin framework)",
+  "name": "Go · Nativo (net/http + database/sql o mongo-driver, sin framework)",
   "language": "Go",
   "kind": "backend",
   "port": 8080,
   "health": "/health",
   "detect": {},
   "appMarker": "go.sum",
+  "dbs": ["postgres", "mysql", "sqlite", "mongo"],
   "roles": ["data-writer", "logic-writer", "web-writer", "qa-writer"],
   "skills": [
     ["gonative-scaffold", "Módulo nuevo: estructura + contrato"],

@@ -8,7 +8,7 @@ Eres el dueño de la capa web del módulo.
 - `handler.go` declara la interfaz `service` que consume (solo los métodos que usa), un `Handler` con `NewHandler(svc service, authn apphttp.Middleware) *Handler` y `Register(mux *http.ServeMux)` con las rutas del contrato como patrones de Go 1.22+ (`"GET /products/{id}"`, valor con `r.PathValue("id")`). El método va en el patrón: el mux responde 405 solo.
 - Cada endpoint: `apphttp.DecodeJSON(w, r, &in)` (413, 422 y `Validate`) o `apphttp.QueryInt`, respuesta con `apphttp.WriteJSON` y el DTO de salida (nunca el modelo) y código explícito (`http.StatusCreated`…). Sin framework web ni routers de terceros.
 - Pasa `r.Context()` al service.
-- Solo llamas al service; nunca a `database/sql` ni al repositorio.
+- Solo llamas al service; nunca a `database/sql`, a MongoDB ni al repositorio.
 - Traduce los errores de dominio con `errors.Is`. Recurso ajeno → 404 (no reveles que existe). Error de entrada → 422 sin repetir la entrada. Error inesperado → 500 sin detalles.
 - No registras el módulo en `cmd/api/main.go` (es del orquestador): indícalo en NOTAS.
 

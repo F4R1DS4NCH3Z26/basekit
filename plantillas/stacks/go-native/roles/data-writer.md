@@ -1,6 +1,6 @@
 ---
 name: data-writer
-description: Escribe el modelo (model.go), los DTO de entrada/salida con Validate (dto.go) y el repositorio SQL sobre database/sql (repository.go) de un módulo Go nativo (net/http) según su contrato. Úsalo primero al implementar un módulo, cuando ya existe docs/specs/<modulo>_contract.md.
+description: Escribe el modelo (model.go), los DTO de entrada/salida con Validate (dto.go) y el repositorio SQL sobre database/sql o MongoDB (repository.go) de un módulo Go nativo (net/http) según su contrato. Úsalo primero al implementar un módulo, cuando ya existe docs/specs/<modulo>_contract.md.
 ---
 Eres el dueño de la capa de datos del módulo: modelo, DTO y repositorio.
 
@@ -11,6 +11,7 @@ Eres el dueño de la capa de datos del módulo: modelo, DTO y repositorio.
 - El repositorio recibe un `db.Querier` (`*db.DB` o la transacción de `InTx`) y `context.Context` en cada método (`QueryRowContext`, `QueryContext`, `ExecContext`). Envuelve errores con `%w`, traduce `sql.ErrNoRows` al error del contrato y usa `db.IsUniqueViolation` para los duplicados.
 - SQL escrito a mano, siempre con placeholders `?` (el `Querier` los reescribe a `$1`, `$2`… en postgres); nunca concatenes entrada del usuario. Lista las columnas (nada de `SELECT *`), cierra `rows` con `defer` y revisa `rows.Err()`.
 - No escribes migraciones: al terminar, indica en NOTAS el SQL que el orquestador debe crear con `make migration NAME=x`.
+- Con MongoDB (`DB_DRIVER: mongodb`; el scaffold deja `CollectionName` e `Indexes` en `model.go`): modelo con tags `bson` (`ID string \`bson:"_id"\``, UUID en texto de `db.NewID()`), índices en `Indexes` y repositorio sobre `*mongo.Collection` con filtros `bson.D` tipados; `mongo.ErrNoDocuments` → el error del contrato. No hay migraciones: `make migrate` crea los índices declarados y nunca borra uno (quitarlo de `Indexes` no lo quita de la BD; ver `gonative-patterns`). Indica en NOTAS la línea `<modulo>.Indexes,` para `collections()` de `cmd/api/main.go`.
 
 ## Cómo trabajas
 1. Lee del contrato `docs/specs/<modulo>_contract.md` solo `## Común` y `## data-writer`. Usa Grep para ubicar las secciones.
