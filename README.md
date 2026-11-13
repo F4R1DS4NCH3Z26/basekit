@@ -134,7 +134,7 @@ basekit init mi-proyecto --stack nextjs --context "Reservas de canchas de pádel
 basekit stacks        # stacks y agentes soportados
 ```
 
-Opciones de `init`: `--stack <id>` (o `<backend>+<frontend>`), `--agents a,b` (o `none`: sin adaptadores, solo `AGENTS.md` y `.agents/`), `--context`, `--db auto|postgres|mysql|sqlite|mongo|none` (sin `--db`, `init` pregunta si integrar base de datos y cuál; cada stack admite los motores de su `stack.json`: Spring no admite `sqlite`), `--redis`, `--docker` (vuelve a usar Docker en un proyecto creado sin Docker), `--no-docker` (sin Docker ni Makefile; no con `--redis`, un combinado ni `--db` distinto de `auto`/`none`), `--no-makefile` (Docker sin Makefile: usa `docker compose` directo; no con un combinado), `--no-git`, `--external-skills a,b` (o `none`: reemplaza la elección guardada de skills externas sin preguntar), `--no-external-skills`, `--force`, `--dry-run`, `-y/--yes`. Detalle en `basekit help`.
+Opciones de `init`: `--stack <id>` (o `<backend>+<frontend>`), `--agents a,b` (o `none`: sin adaptadores, solo `AGENTS.md` y `.agents/`), `--context`, `--db auto|postgres|mysql|sqlite|mongo|none` (sin `--db`, `init` pregunta si integrar base de datos y cuál; cada stack admite los motores de su `stack.json`: sin `dbs`, `postgres`, `mysql` y `sqlite`; `mongo` solo en los stacks que lo listan; Spring no admite `sqlite`), `--redis`, `--docker` (vuelve a usar Docker en un proyecto creado sin Docker), `--no-docker` (sin Docker ni Makefile; no con `--redis`, un combinado ni `--db` distinto de `auto`/`none`), `--no-makefile` (Docker sin Makefile: usa `docker compose` directo; no con un combinado), `--no-git`, `--external-skills a,b` (o `none`: reemplaza la elección guardada de skills externas sin preguntar), `--no-external-skills`, `--force`, `--dry-run`, `-y/--yes`. Detalle en `basekit help`.
 
 ### Stacks
 
@@ -150,7 +150,7 @@ Opciones de `init`: `--stack <id>` (o `<backend>+<frontend>`), `--agents a,b` (o
 | Fullstack | Python | `django-htmx` |
 | Fullstack | TypeScript | `nextjs` |
 
-Los `*-native` (y `vanilla-ts`) no usan framework web. Cada stack se describe en `plantillas/stacks/<id>/stack.json` (`kind`, `language`, `name`…) y en su guía `docs/stacks/<id>.md`. Un stack frontend no tiene base de datos: `init` rechaza `--db` (salvo `auto` o `none`) y `--redis`. El campo opcional `dbs` limita los motores de un stack (Spring: `postgres`, `mysql`, `mongo`); sin él, admite los cuatro. `init` solo ofrece esos motores en la pregunta y rechaza otro `--db` con un error de uso. `express`, `django-htmx` y los nativos nunca se detectan solos: se eligen con `--stack` o en la pregunta.
+Los `*-native` (y `vanilla-ts`) no usan framework web. Cada stack se describe en `plantillas/stacks/<id>/stack.json` (`kind`, `language`, `name`…) y en su guía `docs/stacks/<id>.md`. Un stack frontend no tiene base de datos: `init` rechaza `--db` (salvo `auto` o `none`) y `--redis`. El campo opcional `dbs` limita los motores de un stack (Spring: `postgres`, `mysql`); sin él, admite `postgres`, `mysql` y `sqlite`. MongoDB es opcional: solo lo admite un stack que lista `mongo` en `dbs` (hoy `nestjs`, con Mongoose). `init` solo ofrece esos motores en la pregunta y rechaza otro `--db` con un error de uso. `express`, `django-htmx` y los nativos nunca se detectan solos: se eligen con `--stack` o en la pregunta.
 
 ### Fullstack combinado: backend + frontend
 
@@ -177,7 +177,7 @@ Cada acción se reporta con `+` (creado), `~` (actualizado), `=` (existía, se c
 | Adaptadores (Claude Code, OpenCode, Gemini CLI, Hermes) y enlaces de skills | Hecho |
 | Skills externas fijadas (`grill-me`, `grill-with-docs`, `grilling`, `domain-modeling`) | Hecho |
 | Prueba 9 (`docker compose config` con overlays) | Pasa en `npm test` si hay Docker |
-| Prueba 12 (`make new-app` + `make dev` reales) | `scripts/e2e.sh <stack> [db]`; el CI la corre en todos los stacks al pushear a `main` o a mano (`workflow_dispatch`), no en los PR (Spring con `postgres`; los frontend sin base de datos). Pasa en `fastapi`, `laravel`, `nextjs` y `spring`; en los demás falta su primera corrida con Docker |
+| Prueba 12 (`make new-app` + `make dev` reales) | `scripts/e2e.sh <stack> [postgres\|mysql\|sqlite\|mongo]`; el CI la corre en todos los stacks al pushear a `main` o a mano (`workflow_dispatch`), no en los PR (Spring con `postgres`; los frontend sin base de datos). Pasa en `fastapi`, `laravel`, `nestjs` (con `mongo` y con `postgres`), `nextjs` y `spring`; en los demás falta su primera corrida con Docker |
 
 ## Comandos
 

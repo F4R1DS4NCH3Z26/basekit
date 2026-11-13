@@ -1,11 +1,13 @@
 ---
 name: nest-patterns
-description: "Código de referencia seguro para un módulo de API REST con NestJS - schema Zod estricto, repository Prisma con select, errores de dominio, service sin HTTP, controller con guard JWT y ZodValidationPipe, y tests con Vitest. Úsala SIEMPRE antes de escribir schemas, repositories, services, controllers o tests de un módulo NestJS."
+description: "Código de referencia seguro para un módulo de API REST con NestJS - schema Zod estricto, repository Prisma con select (o Mongoose con proyección si la BD es MongoDB), errores de dominio, service sin HTTP, controller con guard JWT y ZodValidationPipe, y tests con Vitest. Úsala SIEMPRE antes de escribir schemas, repositories, services, controllers o tests de un módulo NestJS."
 ---
 
 # nest-patterns
 
 Ejemplo con el módulo `products`. Copia la forma y cambia los nombres. El proyecto es ESM (`"type": "module"`): los imports relativos llevan `.js`. Busca con Grep lo que ya existe en `src/common/` y `src/prisma/` (`ZodValidationPipe`, `PrismaService`, `JwtAuthGuard`, `CurrentUser`) antes de asumir sus nombres; el guard y el decorador están en `references/auth.md`.
+
+**¿Prisma o Mongoose?** Si existe `src/mongo/` (BD MongoDB), el modelo y el repository son los de [Variante MongoDB](#variante-mongodb-mongoose); schemas Zod, errores, service, controller y tests no cambian.
 
 ## Modelo Prisma — orquestador (`prisma/schema.prisma`)
 
@@ -208,6 +210,94 @@ describe('ProductsController', () => {
 ```
 
 Con el guard real, una petición sin token responde 401 (lo prueba el test del guard, no cada controller). Nada de red ni de BD real: el repository se mockea en los tests del service y el service en los del controller.
+
+## Variante MongoDB (Mongoose)
+
+Con MongoDB no hay Prisma: `src/mongo/mongo.module.ts` abre la conexión (`MONGO_URL`) y cada módulo declara su modelo en `<m>.model.ts`. El `_id` es un UUID en texto, así el contrato, `ParseUUIDPipe` y el tipo `id: string` son los mismos que con Prisma.
+
+### products.model.ts — data-writer
+
+```ts
+import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
+import { randomUUID } from 'node:crypto';
+
+// Tipo explícito en cada @Prop: Vitest no emite metadata de decoradores.
+@Schema({ collection: 'products', timestamps: true, versionKey: false })
+export class ProductsEntity {
+  @Prop({ type: String, default: () => randomUUID() })
+  _id!: string;
+
+  @Prop({ type: String, required: true, maxlength: 120 })
+  name!: string;
+
+  @Prop({ type: Number, required: true })
+  price!: number;
+
+  @Prop({ type: String, required: true })
+  ownerId!: string;
+}
+
+export const ProductsEntitySchema = SchemaFactory.createForClass(ProductsEntity);
+ProductsEntitySchema.index({ ownerId: 1, createdAt: -1 }); // los índices viven aquí, no en migraciones
+```
+
+Índices: en dev Mongoose los crea al arrancar (`autoIndex`); en prod no, los crea `make migrate ENV=prod` (`src/mongo/sync-indexes.ts`, que también borra los que el modelo ya no declara). `make migration` no aplica: no hay migraciones.
+
+### products.repository.ts — data-writer
+
+```ts
+import { Injectable } from '@nestjs/common';
+import { InjectModel } from '@nestjs/mongoose';
+import type { Model } from 'mongoose';
+import { ProductsEntity } from './products.model.js';
+import type { CreateProductInput, ProductRead } from './products.schemas.js';
+
+const productProjection = { _id: 1, name: 1, price: 1 } as const; // nunca el documento completo
+const toRead = (d: Pick<ProductsEntity, '_id' | 'name' | 'price'>): ProductRead => ({ id: d._id, name: d.name, price: d.price });
+
+@Injectable()
+export class ProductsRepository {
+  constructor(@InjectModel(ProductsEntity.name) private readonly model: Model<ProductsEntity>) {}
+
+  async create(data: CreateProductInput, ownerId: string): Promise<ProductRead> {
+    return toRead(await this.model.create({ ...data, ownerId }));
+  }
+
+  async findOwned(id: string, ownerId: string): Promise<ProductRead | null> {
+    const doc = await this.model.findOne({ _id: id, ownerId }, productProjection).lean();
+    return doc ? toRead(doc) : null;
+  }
+
+  async listOwned(ownerId: string, page: number): Promise<ProductRead[]> {
+    const take = 20; // paginación acotada (máximo 100)
+    const docs = await this.model.find({ ownerId }, productProjection).sort({ createdAt: -1 }).skip((page - 1) * take).limit(take).lean();
+    return docs.map(toRead);
+  }
+}
+```
+
+- Filtros solo con valores ya validados por Zod (strings, números): nunca el `body` o un objeto del cliente dentro de un filtro (`{ $ne: … }` es inyección NoSQL). Nada de `$where` ni `$function`.
+- `.lean()` + proyección en las lecturas; mapea `_id` a `id` antes de devolver.
+
+### products.module.ts — web-writer
+
+```ts
+import { Module } from '@nestjs/common';
+import { MongooseModule } from '@nestjs/mongoose';
+import { ProductsController } from './products.controller.js';
+import { ProductsEntity, ProductsEntitySchema } from './products.model.js';
+import { ProductsRepository } from './products.repository.js';
+import { ProductsService } from './products.service.js';
+
+@Module({
+  imports: [MongooseModule.forFeature([{ name: ProductsEntity.name, schema: ProductsEntitySchema }])],
+  controllers: [ProductsController],
+  providers: [ProductsService, ProductsRepository],
+})
+export class ProductsModule {}
+```
+
+Tests: iguales; el service se prueba con el repository mockeado, nunca con una BD real.
 
 ## Redis (si el proyecto lo activó)
 

@@ -13,7 +13,7 @@ MAX_LINES=60 bash .agents/skills/nest-verify/scripts/verify.sh …          # m�
 ```
 
 - `tsc` siempre revisa el proyecto completo (los tipos cruzan módulos); oxlint y Vitest se limitan a la ruta.
-- Si hay `prisma/schema.prisma` y falta el cliente generado (`src/generated/prisma`), corre `prisma generate` primero (sin red).
+- Si hay `prisma/schema.prisma` y falta el cliente generado (`src/generated/prisma`), corre `prisma generate` primero (sin red). Con MongoDB (Mongoose) no hay schema de Prisma ni nada que generar.
 - Usa los binarios de `node_modules/.bin`. **No usa `npx`**: si TypeScript no está instalado, `npx tsc` descarga un paquete ajeno llamado `tsc`.
 - Las herramientas no instaladas se marcan `SKIP`, no `FAIL`.
 - Lee solo las líneas `FAIL` y su detalle. Si el error está fuera de tu zona, repórtalo; no lo corrijas.

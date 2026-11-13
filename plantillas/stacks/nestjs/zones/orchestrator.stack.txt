@@ -19,5 +19,6 @@ src/common/**
 src/config/**
 src/health/**
 src/prisma/**
+src/mongo/**
 src/generated/**
 src/types/**

@@ -13,5 +13,6 @@
     ["nest-patterns", "Antes de escribir cualquier capa; auth en references/auth.md"],
     ["nest-verify", "Lo usa `make verify`"]
   ],
-  "defaultAuth": "jwt"
+  "defaultAuth": "jwt",
+  "dbs": ["postgres", "mysql", "sqlite", "mongo"]
 }
