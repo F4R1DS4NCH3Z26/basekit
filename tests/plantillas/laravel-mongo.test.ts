@@ -292,3 +292,16 @@ describe("laravel stack.json (mongo-support S9)", () => {
     assert.match(stack.name, /laravel-mongodb/);
   });
 });
+
+// The CI runners' awk is gawk, whose -v processes escapes and drops the trailing backslash of the starter's
+// install-php-extensions line: the Dockerfile kept no mongodb and composer install failed (basekit-go e2e, php-native).
+describe("PHP mongo-setup.sh passes the Dockerfile lines to awk without escape processing", () => {
+  it("uses ENVIRON, never awk -v, for the install-php-extensions lines, and checks the line was written", () => {
+    for (const s of ["laravel/skills/php-scaffold", "symfony/skills/symfony-scaffold", "php-native/skills/phpnative-scaffold"]) {
+      const script = readFileSync(join(REPO, "plantillas/stacks", s, "scripts/mongo-setup.sh"), "utf8");
+      assert.doesNotMatch(script, /awk -v [a-z]+="\$(starter_ext|mongo_ext)"/, s);
+      assert.match(script, /S="\$starter_ext" M="\$mongo_ext" awk '\$0 == ENVIRON\["S"\] \{ print ENVIRON\["M"\]; next \}/, s);
+      assert.match(script, /grep -qxF "\$mongo_ext" /, s);
+    }
+  });
+});

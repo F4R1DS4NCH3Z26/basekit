@@ -114,7 +114,9 @@ write() { local tmp; mkdir -p "$(dirname "$1")"; tmp=$(mktemp "$1.XXXXXX"); cat 
 
 # 2. Apply.
 if [ $docker_action = change ]; then
-  awk -v s="$starter_ext" -v m="$mongo_ext" '$0 == s { print m; next } { print }' Dockerfile | write Dockerfile
+  # ENVIRON, not awk -v: -v processes escapes, and gawk drops the line's trailing backslash, so nothing would match.
+  S="$starter_ext" M="$mongo_ext" awk '$0 == ENVIRON["S"] { print ENVIRON["M"]; next } { print }' Dockerfile | write Dockerfile
+  grep -qxF "$mongo_ext" Dockerfile || { echo "ERROR: no se pudo agregar mongodb-$EXT_MONGODB_VERSION al Dockerfile"; exit 1; }
   echo "  ~ Dockerfile (extensión mongodb-$EXT_MONGODB_VERSION)"
 else echo "  = Dockerfile"; fi
 if [ $db_action = add ]; then
