@@ -18,7 +18,7 @@ Tu árbol de diseño **debe** cubrir estas ramas. Propón siempre tu respuesta r
 1. Qué es y para quién: actores, roles y qué hace cada uno.
 2. Alcance de la v1 y no-objetivos.
 3. **Datos**: ¿qué se guarda?, ¿quién lo crea?, ¿cuánto vive? → ¿hace falta base de datos? ¿Cuál? (`references/database.md`)
-4. **Identidad**: ¿quién inicia sesión y desde qué cliente (web, SPA, móvil, otros servicios)? ¿Social, SSO o MFA? (`references/auth.md`)
+4. **Identidad**: ¿quién inicia sesión y desde qué cliente (web, SPA, móvil, otros servicios)? ¿Social, SSO o MFA? (`references/auth.md`; si los clientes son otros servicios, `references/client-credentials.md`)
 5. Integraciones externas (pagos, correo, almacenamiento) y sus secretos.
 6. Despliegue: VPS con Docker Compose o plataforma gestionada; ¿BD gestionada en prod?
 7. Módulos o features iniciales (máximo 3–5 para la v1).

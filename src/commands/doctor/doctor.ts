@@ -94,8 +94,8 @@ export function doctor(dir: string | undefined, ctx: Context): number {
   // The auth must be decided once the bootstrap defined the project (AGENTS.md rule 4). Without docs/AUTH.md, no check.
   const auth = project.read("docs/AUTH.md");
   if (auth !== undefined) {
-    const pending = /^Estado:\s*pendiente/m.test(auth);
-    const defined = /^Estado:\s*definido/m.test(project.read("docs/PROJECT.md") ?? "");
+    const pending = /^Estado:[ \t]*pendiente/m.test(auth);
+    const defined = /^Estado:[ \t]*definido/m.test(project.read("docs/PROJECT.md") ?? "");
     if (pending && !defined) ctx.log("·     docs/AUTH.md pendiente: la completa el bootstrap (skill project-bootstrap)");
     else check(!pending, "docs/AUTH.md (autenticación)",
       "implementa la auth (skill project-bootstrap, paso 4) o, si el proyecto no la necesita, justifícalo en una ADR y cambia el estado");

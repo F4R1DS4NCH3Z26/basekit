@@ -85,21 +85,27 @@ describe("doctor and docs/AUTH.md", () => {
     assert.match(lineFor(r.stdout, /AUTH\.md/), /^· .*pendiente.*bootstrap/);
   });
 
-  it("flags a defined project whose auth is still pending, and exits 1", () => {
+  it("flags a defined project whose auth is still pending, and exits 1 because of it", () => {
     const d = project();
     setState(d, "PROJECT.md", "definido");
-    writeFileSync(join(d, ".env"), "APP_PORT=8000\n");
-    writeFileSync(join(d, "pyproject.toml"), "[project]\nname='x'\n");
-    writeFileSync(join(d, "uv.lock"), "\n");
-    const r = basekit(["doctor", d]);
-    assert.match(lineFor(r.stdout, /AUTH\.md/), /^FALTA docs\/AUTH\.md .*project-bootstrap.*ADR/);
-    assert.equal(r.code, 1);
+    const faltas = (out: string) => out.split("\n").filter((l) => l.startsWith("FALTA "));
+    const pending = basekit(["doctor", d]);
+    assert.match(lineFor(pending.stdout, /AUTH\.md/), /^FALTA docs\/AUTH\.md .*project-bootstrap.*ADR/);
+    assert.equal(pending.code, 1);
+    // Other checks (the app, .env, Docker on this machine) may fail too: the auth line must be the only difference.
+    setState(d, "AUTH.md", "completo");
+    const decided = basekit(["doctor", d]);
+    assert.deepEqual(faltas(pending.stdout).filter((l) => !/AUTH\.md/.test(l)), faltas(decided.stdout));
+    if (faltas(decided.stdout).length === 0) assert.equal(decided.code, 0);
   });
 
   it("reports OK once the auth is documented, or without docs/AUTH.md says nothing", () => {
     const d = project();
     setState(d, "PROJECT.md", "definido");
     setState(d, "AUTH.md", "completo");
+    assert.match(lineFor(basekit(["doctor", d]).stdout, /AUTH\.md/), /^OK +docs\/AUTH\.md/);
+    // Like the Makefile's grep, "Estado:" and "pendiente" must be on the same line.
+    writeFileSync(join(d, "docs/AUTH.md"), "Estado:\npendiente\n");
     assert.match(lineFor(basekit(["doctor", d]).stdout, /AUTH\.md/), /^OK +docs\/AUTH\.md/);
     rmSync(join(d, "docs/AUTH.md"));
     assert.equal(lineFor(basekit(["doctor", d]).stdout, /AUTH\.md/), "");
