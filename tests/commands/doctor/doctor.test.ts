@@ -1,6 +1,6 @@
 import { after, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { basekit, cleanup, fakeNpx, scratch } from "../../helpers.js";
 
@@ -66,5 +66,42 @@ describe("doctor", () => {
     const r = basekit(["doctor", d]);
     assert.doesNotMatch(r.stdout + r.stderr, /leak-me/);
     assert.match(lineFor(r.stdout, /^\S+ +\.env(\s|$)/), /^OK /);
+  });
+});
+
+describe("doctor and docs/AUTH.md", () => {
+  const setState = (dir: string, file: string, state: string) => {
+    const f = join(dir, "docs", file);
+    writeFileSync(f, readFileSync(f, "utf8").replace(/^Estado: .*$/m, `Estado: ${state}`));
+  };
+  const project = () => {
+    const d = scratch();
+    assert.equal(basekit(["init", d, "-y", "--stack", "fastapi", "--no-external-skills", "--agents", "none"]).code, 0);
+    return d;
+  };
+
+  it("only informs while the project is undefined (the bootstrap has not run yet)", () => {
+    const r = basekit(["doctor", project()]);
+    assert.match(lineFor(r.stdout, /AUTH\.md/), /^· .*pendiente.*bootstrap/);
+  });
+
+  it("flags a defined project whose auth is still pending, and exits 1", () => {
+    const d = project();
+    setState(d, "PROJECT.md", "definido");
+    writeFileSync(join(d, ".env"), "APP_PORT=8000\n");
+    writeFileSync(join(d, "pyproject.toml"), "[project]\nname='x'\n");
+    writeFileSync(join(d, "uv.lock"), "\n");
+    const r = basekit(["doctor", d]);
+    assert.match(lineFor(r.stdout, /AUTH\.md/), /^FALTA docs\/AUTH\.md .*project-bootstrap.*ADR/);
+    assert.equal(r.code, 1);
+  });
+
+  it("reports OK once the auth is documented, or without docs/AUTH.md says nothing", () => {
+    const d = project();
+    setState(d, "PROJECT.md", "definido");
+    setState(d, "AUTH.md", "completo");
+    assert.match(lineFor(basekit(["doctor", d]).stdout, /AUTH\.md/), /^OK +docs\/AUTH\.md/);
+    rmSync(join(d, "docs/AUTH.md"));
+    assert.equal(lineFor(basekit(["doctor", d]).stdout, /AUTH\.md/), "");
   });
 });

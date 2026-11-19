@@ -49,6 +49,7 @@ Si `make dev` falla, corrige la configuración antes de seguir. Docker y el `Mak
 2. Configura el núcleo de auth (zona del orquestador: `src/lib/`, `src/core/`, `config/` o `core/security`) siguiendo la skill `<stack>-patterns`, en su archivo `references/auth.md`.
 3. Crea el módulo de usuarios o auth con la skill `<stack>-scaffold` y su contrato. Delega los roles según `AGENTS.md`.
 4. Agrega las variables nuevas a `.env.example` (secretos como `__GENERATE__`).
+5. Cuando el login funcione y sus tests pasen, cambia `docs/AUTH.md` de `Estado: pendiente` a `Estado: completo`. Si la ADR decidió "sin auth", usa `Estado: sin auth (ADR NNNN)`. Mientras diga `pendiente`, `make prod-build` y `make prod-up` se niegan a correr y `basekit doctor` lo marca como `FALTA`.
 
 ## Paso 5 · Módulos iniciales
 

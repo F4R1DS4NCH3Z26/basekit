@@ -20,7 +20,7 @@ make test
 
 ```bash
 make env ENV=prod   # crea .env.prod; revisa los valores marcados con CAMBIAR
-make prod-up
+make prod-up        # se niega mientras docs/AUTH.md diga "Estado: pendiente"
 make prod-migrate
 ```
 
