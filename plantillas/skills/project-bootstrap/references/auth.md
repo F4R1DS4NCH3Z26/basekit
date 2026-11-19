@@ -17,6 +17,8 @@
 
 La implementación concreta está en la skill del stack, en `<stack>-patterns/references/auth.md`.
 
+Si los clientes de la API son **otros servicios** (máquina a máquina, sin usuarios), aplica `references/client-credentials.md`.
+
 "Sin autenticación" solo es válido con una ADR que lo justifique (por ejemplo, un servicio interno detrás de un gateway que ya autentica).
 
 ## Reglas comunes (no negociables)
@@ -27,10 +29,12 @@ La implementación concreta está en la skill del stack, en `<stack>-patterns/re
   - Secreto de ≥ 256 bits desde el entorno (`__GENERATE__`).
   - Sin datos personales en el payload.
   - Access de 15 min o menos.
+  - Orden de verificación: primero el formato y el tamaño, después la firma, los claims y la revocación, y recién al final `exp`. "Expirado" solo se informa para un token que en todo lo demás es válido.
+  - Un token en la query (`?access_token=`) se rechaza siempre. Los 401 llevan `WWW-Authenticate: Bearer` (con `error="invalid_token"` si el token es inválido o expiró).
 - **Refresh tokens**: opacos y aleatorios, guardados con hash. Se rotan en cada uso, y si se reutiliza uno ya rotado se revoca toda la familia. El logout también los revoca.
 - **En el navegador**: cookies `httpOnly`, `Secure` (en prod) y `SameSite=Lax`, más protección CSRF si la sesión va en cookie. Nunca guardes tokens en `localStorage`.
 - **Login**:
-  - Rate limit por IP y por cuenta.
+  - Rate limit por IP y por cuenta. Con varios workers o réplicas, nunca en memoria: en el proxy inverso o en Redis.
   - Mensaje genérico ("credenciales inválidas") que no revele si el usuario existe.
   - El mismo tiempo de respuesta exista o no el usuario.
 - **Autorización por recurso** en la capa de servicio o acciones (dueño o rol), no solo en el middleware.

@@ -8,7 +8,7 @@
 
 ## Despliegue
 1. `git pull` en el servidor (o descarga de la imagen desde tu registry).
-2. `make prod-up`
+2. `make prod-up` (se niega mientras `docs/AUTH.md` diga `Estado: pendiente`: la auth se implementa o se descarta con una ADR antes de desplegar)
 3. `make prod-migrate`
 4. `make prod-logs` y revisa el healthcheck: `make ps ENV=prod`.
 

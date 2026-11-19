@@ -231,3 +231,71 @@ describe("fixes shared with the Go implementation", () => {
     assert.match(sh("make", ["-n", "_new-app"], d).stdout, /cp -R --update=none \/tmp\/app\/\. \/work\/ && test -f \/work\/package\.json && cd \/work/);
   });
 });
+
+describe("production refuses to build or start while docs/AUTH.md is pending", () => {
+  const PENDING = /docs\/AUTH\.md dice "Estado: pendiente"/;
+  const setAuth = (dir: string, state: string) => {
+    const f = join(dir, "docs/AUTH.md");
+    writeFileSync(f, read(dir, "docs/AUTH.md").replace(/^Estado: .*$/m, `Estado: ${state}`));
+  };
+  const project = () => {
+    const d = scratch();
+    assert.equal(init(d, "--stack", "fastapi").code, 0);
+    writeFileSync(join(d, ".env.prod"), "APP_PORT=8000\n");
+    writeFileSync(join(d, ".env"), "APP_PORT=8000\n");
+    return d;
+  };
+  const run = (dir: string, ...args: string[]) => {
+    const fake = fakeBin({ docker: "exit 0" });
+    const r = sh("make", args, dir, { PATH: `${fake.path}:${process.env.PATH}` });
+    return { ...r, calls: fake.calls() };
+  };
+
+  for (const args of [["prod-build"], ["prod-up"], ["build", "ENV=prod"], ["up", "ENV=prod"], ["dev", "ENV=prod"]]) {
+    it(`make ${args.join(" ")}: stops before calling docker`, () => {
+      const r = run(project(), ...args);
+      assert.notEqual(r.code, 0);
+      assert.match(r.stdout + r.stderr, PENDING);
+      assert.equal(r.calls, "", "docker was called");
+    });
+  }
+
+  it("dev targets still work while the auth is pending", () => {
+    const d = project();
+    for (const t of ["dev", "up", "build"]) {
+      const r = run(d, t);
+      assert.equal(r.code, 0, r.stdout + r.stderr);
+      assert.match(r.calls, /^docker compose /m);
+    }
+  });
+
+  it("builds once the state is no longer pending (implemented or 'sin auth' with an ADR)", () => {
+    for (const state of ["completo", "sin auth (ADR 0003)"]) {
+      const d = project();
+      setAuth(d, state);
+      const r = run(d, "prod-build");
+      assert.equal(r.code, 0, r.stdout + r.stderr);
+      assert.match(r.calls, /^docker compose .* build/m);
+    }
+  });
+
+  it("a project without docs/AUTH.md (created before it existed) is not blocked", () => {
+    const d = project();
+    sh("rm", ["docs/AUTH.md"], d);
+    const r = run(d, "prod-build");
+    assert.equal(r.code, 0, r.stdout + r.stderr);
+  });
+
+  it("each side of a combined project reads the root docs/AUTH.md", () => {
+    const d = scratch();
+    assert.equal(init(d, "--stack", "fastapi+react").code, 0);
+    for (const side of ["backend", "frontend"]) writeFileSync(join(d, side, ".env.prod"), "APP_PORT=8000\n");
+    const side = join(d, "backend");
+    const blocked = run(side, "prod-build");
+    assert.notEqual(blocked.code, 0);
+    assert.match(blocked.stdout + blocked.stderr, /\.\.\/docs\/AUTH\.md dice "Estado: pendiente"/);
+    assert.equal(blocked.calls, "");
+    setAuth(d, "completo");
+    assert.equal(run(side, "prod-build").code, 0);
+  });
+});

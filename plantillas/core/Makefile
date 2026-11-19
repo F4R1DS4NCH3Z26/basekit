@@ -30,7 +30,7 @@ VERIFY_ENV   ?=
 DB_SHELL_CMD ?=
 
 .PHONY: help env doctor dev up down restart logs ps sh build install test lint verify migrate migration \
-        db-shell prod-build prod-up prod-down prod-logs prod-migrate clean fix-perms _env-check
+        db-shell prod-build prod-up prod-down prod-logs prod-migrate clean fix-perms _env-check _auth-check
 
 help: ## Lista los comandos disponibles
 	@grep -hE '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*## "}{printf "  \033[36m%-14s\033[0m %s\n",$$1,$$2}'
@@ -68,11 +68,11 @@ doctor: ## Revisa docker, compose, archivos de entorno y overlays activos
 	[ -f $(ENV_FILE) ] && echo "OK    $(ENV_FILE)" || echo "FALTA $(ENV_FILE) → make env$(if $(filter prod,$(ENV)), ENV=prod,)"; \
 	echo "overlays: $(or $(OVERLAYS),ninguno)"
 
-dev: _env-check ## Construye y levanta el entorno de desarrollo
+dev: _env-check _auth-check ## Construye y levanta el entorno de desarrollo
 	$(DC) up -d --build
 	@echo "→ http://localhost:$(PORT)   (logs: make logs)"
 
-up: _env-check ## Levanta los servicios sin reconstruir
+up: _env-check _auth-check ## Levanta los servicios sin reconstruir
 	$(DC) up -d
 
 down: ## Detiene los servicios (conserva los datos)
@@ -90,7 +90,7 @@ ps: ## Estado de los servicios
 sh: _env-check ## Abre una shell dentro del contenedor de la app
 	$(DC) exec $(APP) $(SHELL_CMD)
 
-build: _env-check ## Construye las imágenes del ENV actual
+build: _env-check _auth-check ## Construye las imágenes del ENV actual
 	$(DC) build
 
 install: _env-check ## Instala o actualiza dependencias dentro del contenedor
@@ -146,6 +146,16 @@ fix-perms: ## Devuelve a tu usuario los archivos creados por contenedores (Linux
 
 _env-check:
 	@[ -f $(ENV_FILE) ] || { echo "Falta $(ENV_FILE). Ejecuta: make env$(if $(filter prod,$(ENV)), ENV=prod,)"; exit 1; }
+
+# docs/AUTH.md lives at the project root; each side of a combined project (backend/, frontend/) reads the root's.
+AUTH_DOC := $(firstword $(wildcard docs/AUTH.md) $(if $(wildcard ../.agents/manifest.json),$(wildcard ../docs/AUTH.md)))
+# Production is never built or started while the auth is pending. A project without docs/AUTH.md is not blocked.
+_auth-check:
+	@if [ "$(ENV)" = prod ] && [ -n "$(AUTH_DOC)" ] && grep -qE '^Estado:[[:space:]]*pendiente' "$(AUTH_DOC)"; then \
+		echo "Producción bloqueada: $(AUTH_DOC) dice \"Estado: pendiente\"."; \
+		echo "Implementa la auth (skill project-bootstrap, paso 4) o, si el proyecto no la necesita, justifícalo en una ADR y cambia el estado."; \
+		exit 1; \
+	fi
 
 # Compose project name of this ENV (dev: DEV_PROJECT; prod: empty = Compose's default). For scripts and CI.
 _compose-project:

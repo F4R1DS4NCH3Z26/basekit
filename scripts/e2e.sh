@@ -60,6 +60,11 @@ project="$(make -s _compose-project ENV="$env")"
 make new-app
 if [ "$env" = prod ]; then
   make env ENV=prod
+  # A fresh project has docs/AUTH.md pending, so production must refuse; then the auth is marked decided.
+  if refusal="$(make prod-build 2>&1)"; then echo "FALLO: prod-build no se bloqueó con docs/AUTH.md pendiente" >&2; exit 1; fi
+  grep -q 'docs/AUTH.md dice "Estado: pendiente"' <<<"$refusal" || { echo "FALLO: prod-build falló por otro motivo: $refusal" >&2; exit 1; }
+  auth="$(sed 's/^Estado: pendiente.*/Estado: sin auth (e2e)/' docs/AUTH.md)"
+  printf '%s\n' "$auth" > docs/AUTH.md
   make prod-up
 else
   make env

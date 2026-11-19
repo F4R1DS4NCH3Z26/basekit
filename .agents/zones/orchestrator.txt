@@ -2,6 +2,7 @@
 AGENTS.md
 CLAUDE.md
 README.md
+SECURITY.md
 GLOSSARY.md
 skills-lock.json
 docs/spec/**

@@ -232,6 +232,7 @@ Imprime `OK` o `FALTA` con una sugerencia:
 - Los enlaces de skills por agente.
 - Hermes: que no exista `.hermes.md` ni `HERMES.md`.
 - `.env` (en un combinado, `backend/.env` y `frontend/.env`).
+- `docs/AUTH.md`: si `docs/PROJECT.md` dice `Estado: definido` y `docs/AUTH.md` sigue en `Estado: pendiente` → `FALTA` (implementa la auth con `project-bootstrap` o justifica "sin auth" con una ADR y cambia el estado). Mientras el proyecto no está definido, solo se informa: `·     docs/AUTH.md pendiente: la completa el bootstrap (skill project-bootstrap)`. Sin `docs/AUTH.md` (proyectos anteriores) no se revisa.
 
 Sin Docker (`options.docker: false`, resuelto con la regla de `init`, paso 3) no se revisan docker, `docker compose`, make ni openssl, ni los archivos de Docker y Make, ni `.env`: se imprime `·     sin Docker (manifest): se omiten Docker, Makefile y .env`, y la sugerencia del `appMarker` es `crea la app con las herramientas del framework`.
 

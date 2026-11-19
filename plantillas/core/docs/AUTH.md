@@ -1,6 +1,6 @@
 # Autenticación y autorización
 
-Estado: pendiente   <!-- el bootstrap lo completa según la ADR de auth -->
+Estado: pendiente   <!-- el bootstrap lo cambia a "completo" (o "sin auth (ADR NNNN)"); mientras diga "pendiente", producción no se construye -->
 
 ## Método elegido
 <!-- Better Auth / JWT propio / Sanctum / Spring Security + JWT / OIDC externo, con su ADR -->

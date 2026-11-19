@@ -18,7 +18,7 @@ Tu árbol de diseño **debe** cubrir estas ramas. Propón siempre tu respuesta r
 1. Qué es y para quién: actores, roles y qué hace cada uno.
 2. Alcance de la v1 y no-objetivos.
 3. **Datos**: ¿qué se guarda?, ¿quién lo crea?, ¿cuánto vive? → ¿hace falta base de datos? ¿Cuál? (`references/database.md`)
-4. **Identidad**: ¿quién inicia sesión y desde qué cliente (web, SPA, móvil, otros servicios)? ¿Social, SSO o MFA? (`references/auth.md`)
+4. **Identidad**: ¿quién inicia sesión y desde qué cliente (web, SPA, móvil, otros servicios)? ¿Social, SSO o MFA? (`references/auth.md`; si los clientes son otros servicios, `references/client-credentials.md`)
 5. Integraciones externas (pagos, correo, almacenamiento) y sus secretos.
 6. Despliegue: VPS con Docker Compose o plataforma gestionada; ¿BD gestionada en prod?
 7. Módulos o features iniciales (máximo 3–5 para la v1).
@@ -49,6 +49,7 @@ Si `make dev` falla, corrige la configuración antes de seguir. Docker y el `Mak
 2. Configura el núcleo de auth (zona del orquestador: `src/lib/`, `src/core/`, `config/` o `core/security`) siguiendo la skill `<stack>-patterns`, en su archivo `references/auth.md`.
 3. Crea el módulo de usuarios o auth con la skill `<stack>-scaffold` y su contrato. Delega los roles según `AGENTS.md`.
 4. Agrega las variables nuevas a `.env.example` (secretos como `__GENERATE__`).
+5. Cuando el login funcione y sus tests pasen, cambia `docs/AUTH.md` de `Estado: pendiente` a `Estado: completo`. Si la ADR decidió "sin auth", usa `Estado: sin auth (ADR NNNN)`. Mientras diga `pendiente`, `make prod-build` y `make prod-up` se niegan a correr y `basekit doctor` lo marca como `FALTA`.
 
 ## Paso 5 · Módulos iniciales
 
